@@ -93,7 +93,7 @@
     {% if not logged_in %}
     <div class="login-form">
         <h1>管理后台</h1>
-        <form method="post">
+        <form method="post" action="/admin">
             <input type="password" name="password" placeholder="请输入管理员密码" required autofocus>
             <button type="submit">登录</button>
             {% if error %}<div class="error">{{ error }}</div>{% endif %}

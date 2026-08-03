@@ -15,9 +15,19 @@ import threading
 import requests
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, Response, stream_with_context
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ai-chat-secret-key-change-in-production")
+
+# Render 环境配置（HTTPS 代理修复 + 安全 cookie）
+if os.environ.get("RENDER"):
+    # 让 Flask 正确识别 HTTPS 代理
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+    app.config["PREFERRED_URL_SCHEME"] = "https"
+    app.config["SESSION_COOKIE_SECURE"] = True
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 # ================================================================
 #  数据库（支持 SQLite 本地开发 / PostgreSQL Render 生产）
@@ -255,6 +265,7 @@ PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "sk-proxy-" + hashlib.md5(ADMIN_
 
 
 @app.route("/admin", methods=["GET", "POST"])
+@app.route("/admin/", methods=["GET", "POST"])
 def admin():
     """管理后台：查看数据库中的账号和对话数据"""
     from flask import session as flask_session
