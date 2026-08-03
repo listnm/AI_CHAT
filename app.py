@@ -249,30 +249,10 @@ def normalize_api_url(url: str) -> str:
 #  页面路由
 # ================================================================
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
-    """渲染主页面（需登录）"""
-    from flask import session as flask_session
-
-    if request.method == "POST":
-        pwd = request.form.get("password", "")
-        if pwd == ADMIN_PASSWORD:
-            flask_session["user_logged_in"] = True
-        else:
-            return render_template("index.html", logged_in=False, error="密码错误")
-
-    if not flask_session.get("user_logged_in"):
-        return render_template("index.html", logged_in=False, error="")
-
-    return render_template("index.html", logged_in=True)
-
-
-@app.route("/logout", methods=["POST"])
-def logout():
-    """退出登录（主页面）"""
-    from flask import session as flask_session, redirect
-    flask_session.clear()
-    return redirect("/")
+    """渲染主页面"""
+    return render_template("index.html")
 
 
 # ================================================================
@@ -535,8 +515,6 @@ def api_check():
     API 连通性测试接口
     支持 account_id（使用已保存账号）或直接传入 api_url / api_key / model
     """
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
     data = request.get_json(force=True)
     account_id = data.get("account_id")
 
@@ -601,8 +579,6 @@ def api_models():
     获取可用模型列表
     支持 account_id 或直接传入 api_url / api_key
     """
-    if not _require_login():
-        return {"ok": False, "models": [], "message": "请先登录"}, 401
     data = request.get_json(force=True)
     account_id = data.get("account_id")
 
@@ -661,8 +637,6 @@ def api_upload():
     上传文件接口
     返回文件类型、内容（base64 图片或纯文本），供前端构造消息
     """
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
     if "file" not in request.files:
         return {"ok": False, "message": "未选择文件"}
 
@@ -848,9 +822,6 @@ def chat():
     支持 account_id（使用已保存账号）或直接传入 api_url / api_key / model
     自动使用最快的可用账号（如果传入了 account_id="auto"）
     """
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
-
     data = request.get_json(force=True)
 
     account_id = data.get("account_id")

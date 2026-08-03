@@ -266,50 +266,12 @@
     </style>
 </head>
 <body>
-{% if not logged_in %}
-<div class="login-page">
-    <div class="login-box">
-        <h1>AI 对话</h1>
-        <form method="post" action="/">
-            <input type="password" name="password" placeholder="请输入密码" required autofocus>
-            <button type="submit">进入</button>
-            {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
-        </form>
-    </div>
-</div>
-<style>
-.login-page {
-    position: fixed; inset: 0; background: #e8ecf0; display: flex;
-    align-items: center; justify-content: center; z-index: 9999;
-}
-.login-box {
-    background: #fff; border-radius: 20px; padding: 36px 32px 28px;
-    width: 340px; max-width: 90vw; box-shadow: 0 2px 20px rgba(0,0,0,.08);
-    text-align: center;
-}
-.login-box h1 { font-size: 24px; font-weight: 700; margin-bottom: 24px; color: #1c1e21; }
-.login-box input {
-    width: 100%; padding: 12px 16px; border: 1px solid #d0d5dd; border-radius: 12px;
-    font-size: 15px; outline: none; margin-bottom: 12px; box-sizing: border-box;
-}
-.login-box input:focus { border-color: #007aff; }
-.login-box button {
-    width: 100%; padding: 12px; border: none; border-radius: 12px; font-size: 15px;
-    font-weight: 600; background: #007aff; color: #fff; cursor: pointer;
-}
-.login-box button:hover { background: #0062cc; }
-.login-error { color: #e53935; font-size: 13px; margin-top: 10px; }
-</style>
-{% else %}
 <div class="app-container" id="app">
     <div class="header">
     <button class="header-btn" id="conversationBtn" title="对话列表" aria-label="对话列表">☰</button>
     <span class="header-title" id="headerTitle">AI 对话</span>
     <div style="display:flex;align-items:center;gap:4px;">
         <button class="header-btn" id="settingsBtn" title="账号管理" aria-label="打开设置">⚙️</button>
-        <form method="post" action="/logout" style="margin:0;display:flex;" onsubmit="return confirm('确定退出登录吗？')">
-            <button class="header-btn" type="submit" title="退出登录" style="font-size:15px;min-width:36px;">⇢</button>
-        </form>
     </div>
 </div>
     <div class="chat-area" id="chatArea">
@@ -483,26 +445,25 @@ function setSettingsMsg(text, type = "info") {
 }
 
 // ================================================================
-//  账号管理
+//  账号管理（localStorage 存储，每人独立）
 // ================================================================
-async function loadAccounts() {
-    try {
-        const resp = await fetch("/api/accounts");
-        const data = await resp.json();
-        accounts = data.accounts || [];
-        renderAccountList();
-        // 更新空状态提示
-        const hint = emptyState.querySelector(".empty-state-hint");
-        if (hint) {
-            if (accounts.length > 0) {
-                hint.textContent = "点击左上角 ☰ 新建对话即可开始";
-            } else {
-                hint.textContent = "点击右上角 ⚙️ 添加 API 账号，然后新建对话";
-            }
+
+function loadAccounts() {
+    accounts = JSON.parse(localStorage.getItem("accounts") || "[]");
+    renderAccountList();
+    // 更新空状态提示
+    const hint = emptyState.querySelector(".empty-state-hint");
+    if (hint) {
+        if (accounts.length > 0) {
+            hint.textContent = "点击左上角 ☰ 新建对话即可开始";
+        } else {
+            hint.textContent = "点击右上角 ⚙️ 添加 API 账号，然后新建对话";
         }
-    } catch (e) {
-        console.error("加载账号失败", e);
     }
+}
+
+function saveAccounts() {
+    localStorage.setItem("accounts", JSON.stringify(accounts));
 }
 
 function renderAccountList() {
@@ -522,6 +483,7 @@ function renderAccountList() {
         else badge = '<span class="account-badge fail">未测速</span>';
 
         const latency = acc.latency_ms != null ? `${acc.latency_ms}ms` : "—";
+        const keyPreview = acc.api_key ? acc.api_key.slice(0, 12) + "..." : "";
         return `<div class="account-card ${isFastest ? 'fastest' : ''}">
             <div class="account-card-header">
                 <span class="account-name">${escHtml(acc.name)}</span>
@@ -531,7 +493,7 @@ function renderAccountList() {
                 <span>📍 ${escHtml(acc.api_url)}</span>
                 <span>🤖 ${escHtml(acc.model)}</span>
                 <span>⚡ ${latency}</span>
-                <span>🔑 ${escHtml(acc.api_key_preview)}</span>
+                <span>🔑 ${escHtml(keyPreview)}</span>
             </div>
             <div class="account-actions">
                 <button class="btn-account-test" onclick="testAccount('${acc.id}')">测试</button>
@@ -545,16 +507,26 @@ function renderAccountList() {
 function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c] || c); }
 
 async function testAccount(id) {
+    const acc = accounts.find(a => a.id === id);
+    if (!acc) return;
     setSettingsMsg("正在测试...", "info");
     try {
         const resp = await fetch("/api/check", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ account_id: id }),
+            body: JSON.stringify({ api_url: acc.api_url, api_key: acc.api_key, model: acc.model }),
         });
         const result = await resp.json();
         setSettingsMsg(result.message, result.ok ? "success" : "fail");
-        await loadAccounts();
+        // 更新延迟记录
+        if (result.ok) {
+            acc.latency_ms = result.latency_ms || 50;
+            acc.last_speed_test = new Date().toISOString();
+        } else {
+            acc.latency_ms = null;
+        }
+        saveAccounts();
+        renderAccountList();
     } catch (e) {
         setSettingsMsg("测试请求失败", "fail");
     }
@@ -562,14 +534,10 @@ async function testAccount(id) {
 
 async function deleteAccount(id) {
     if (!confirm("确定要删除这个账号吗？")) return;
-    try {
-        const resp = await fetch(`/api/accounts/${id}`, { method: "DELETE" });
-        const result = await resp.json();
-        setSettingsMsg(result.message, result.ok ? "success" : "fail");
-        await loadAccounts();
-    } catch (e) {
-        setSettingsMsg("删除失败", "fail");
-    }
+    accounts = accounts.filter(a => a.id !== id);
+    saveAccounts();
+    renderAccountList();
+    setSettingsMsg("账号已删除", "success");
 }
 
 // ================================================================
@@ -604,6 +572,8 @@ editModal.addEventListener("click", (e) => {
 
 editRefreshModels.addEventListener("click", async () => {
     if (!editingAccountId) return;
+    const acc = accounts.find(a => a.id === editingAccountId);
+    if (!acc) return;
     const currentModel = editModel.value;
     editRefreshModels.disabled = true;
     editRefreshModels.textContent = "⏳";
@@ -613,7 +583,7 @@ editRefreshModels.addEventListener("click", async () => {
         const resp = await fetch("/api/models", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ account_id: editingAccountId }),
+            body: JSON.stringify({ api_url: acc.api_url, api_key: acc.api_key }),
         });
         const result = await resp.json();
         editModel.innerHTML = "";
@@ -644,7 +614,7 @@ editRefreshModels.addEventListener("click", async () => {
     }
 });
 
-editSaveBtn.addEventListener("click", async () => {
+editSaveBtn.addEventListener("click", () => {
     const name = editName.value.trim();
     const url = editUrl.value.trim();
     const key = editKey.value.trim();
@@ -654,33 +624,21 @@ editSaveBtn.addEventListener("click", async () => {
     if (!url) { editMsg.textContent = "请输入 API 地址"; editMsg.className = "settings-msg fail"; return; }
     if (!model) { editMsg.textContent = "请选择模型"; editMsg.className = "settings-msg fail"; return; }
 
-    editSaveBtn.disabled = true;
-    editSaveBtn.textContent = "保存中...";
-    try {
-        const body = { name, api_url: url, model };
-        if (key) body.api_key = key;
-        const resp = await fetch(`/api/accounts/${editingAccountId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-        });
-        const result = await resp.json();
-        if (result.ok) {
-            editModal.classList.remove("active");
-            editingAccountId = null;
-            setSettingsMsg(result.message, "success");
-            await loadAccounts();
-        } else {
-            editMsg.textContent = result.message;
-            editMsg.className = "settings-msg fail";
-        }
-    } catch (e) {
-        editMsg.textContent = "保存失败";
-        editMsg.className = "settings-msg fail";
-    } finally {
-        editSaveBtn.disabled = false;
-        editSaveBtn.textContent = "保存修改";
-    }
+    const acc = accounts.find(a => a.id === editingAccountId);
+    if (!acc) { editMsg.textContent = "账号不存在"; editMsg.className = "settings-msg fail"; return; }
+
+    acc.name = name;
+    acc.api_url = url;
+    acc.model = model;
+    if (key) acc.api_key = key;
+    acc.latency_ms = null;
+    acc.last_speed_test = null;
+    saveAccounts();
+
+    editModal.classList.remove("active");
+    editingAccountId = null;
+    setSettingsMsg("账号已更新", "success");
+    loadAccounts();
 });
 
 // ================================================================
@@ -691,29 +649,41 @@ speedTestBtn.addEventListener("click", async () => {
     speedTestBtn.classList.add("loading");
     speedTestBtn.textContent = "测速中";
     setSettingsMsg("正在测试所有账号...", "info");
-    try {
-        const resp = await fetch("/api/accounts/speedtest", { method: "POST" });
-        const result = await resp.json();
-        if (result.ok) {
-            // 找出最快的
-            const ok = result.accounts.filter(a => a.success);
-            if (ok.length > 0) {
-                const fastest = ok.reduce((a, b) => (a.latency_ms < b.latency_ms ? a : b));
-                setSettingsMsg(`测速完成！最快的是「${fastest.name}」(${fastest.latency_ms}ms)`, "success");
+
+    // 逐个测试所有账号
+    for (const acc of accounts) {
+        try {
+            const start = Date.now();
+            const resp = await fetch("/api/check", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ api_url: acc.api_url, api_key: acc.api_key, model: acc.model }),
+            });
+            const result = await resp.json();
+            if (result.ok) {
+                acc.latency_ms = Date.now() - start;
+                acc.last_speed_test = new Date().toISOString();
             } else {
-                setSettingsMsg("所有账号均不可用，请检查", "fail");
+                acc.latency_ms = null;
             }
-        } else {
-            setSettingsMsg(result.message, "fail");
+        } catch (e) {
+            acc.latency_ms = null;
         }
-        await loadAccounts();
-    } catch (e) {
-        setSettingsMsg("测速请求失败", "fail");
-    } finally {
-        speedTestBtn.disabled = false;
-        speedTestBtn.classList.remove("loading");
-        speedTestBtn.textContent = "🚀 全部测速";
     }
+    saveAccounts();
+    renderAccountList();
+
+    const ok = accounts.filter(a => a.latency_ms != null);
+    if (ok.length > 0) {
+        const fastest = ok.reduce((a, b) => (a.latency_ms < b.latency_ms ? a : b));
+        setSettingsMsg(`测速完成！最快的是「${fastest.name}」(${fastest.latency_ms}ms)`, "success");
+    } else {
+        setSettingsMsg("所有账号均不可用，请检查", "fail");
+    }
+
+    speedTestBtn.disabled = false;
+    speedTestBtn.classList.remove("loading");
+    speedTestBtn.textContent = "🚀 全部测速";
 });
 
 // ================================================================
@@ -770,17 +740,23 @@ function addPreviewItem(result) {
 }
 
 // ================================================================
-//  对话管理
+//  对话管理（localStorage 存储，每人独立）
 // ================================================================
-async function loadConversations() {
-    try {
-        const resp = await fetch("/api/conversations");
-        const data = await resp.json();
-        conversations = data.conversations || [];
-        renderConversationList();
-    } catch (e) {
-        console.error("加载对话列表失败", e);
+
+function loadConversations() {
+    conversations = JSON.parse(localStorage.getItem("conversations") || "[]");
+    // 清理超过24小时的对话
+    const now = Date.now();
+    const before = conversations.length;
+    conversations = conversations.filter(c => now - new Date(c.updated_at).getTime() < 24 * 60 * 60 * 1000);
+    if (conversations.length !== before) {
+        saveConversations();
     }
+    renderConversationList();
+}
+
+function saveConversations() {
+    localStorage.setItem("conversations", JSON.stringify(conversations));
 }
 
 function renderConversationList() {
@@ -814,106 +790,91 @@ function renderConversationList() {
 
     // 删除对话
     conversationList.querySelectorAll(".conv-delete").forEach(btn => {
-        btn.addEventListener("click", async (e) => {
+        btn.addEventListener("click", (e) => {
             e.stopPropagation();
             if (!confirm("确定要删除这个对话吗？")) return;
             const id = btn.dataset.id;
-            try {
-                const resp = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
-                const result = await resp.json();
-                if (result.ok) {
-                    if (currentConvId === id) {
-                        currentConvId = null;
-                        messages = [];
-                        chatArea.innerHTML = "";
-                        chatArea.appendChild(emptyState);
-                        headerTitle.textContent = "AI 对话";
-                    }
-                    await loadConversations();
-                    showToast("对话已删除");
-                }
-            } catch (e) {
-                showToast("删除失败");
+            conversations = conversations.filter(c => c.id !== id);
+            saveConversations();
+            if (currentConvId === id) {
+                currentConvId = null;
+                messages = [];
+                chatArea.innerHTML = "";
+                chatArea.appendChild(emptyState);
+                headerTitle.textContent = "AI 对话";
             }
+            renderConversationList();
+            showToast("对话已删除");
         });
     });
 }
 
-async function createNewConversation() {
-    try {
-        const resp = await fetch("/api/conversations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: "新对话" }),
-        });
-        const result = await resp.json();
-        if (result.ok) {
-            currentConvId = result.conversation.id;
-            messages = [];
-            chatArea.innerHTML = "";
-            chatArea.appendChild(emptyState);
-            headerTitle.textContent = "新对话";
-            await loadConversations();
-            conversationOverlay.classList.remove("active");
-            showToast("已创建新对话");
-        } else {
-            showToast(result.message || "创建对话失败");
-        }
-    } catch (e) {
-        showToast("网络错误，创建对话失败");
-    }
+function createNewConversation() {
+    const now = new Date().toISOString();
+    const conv = {
+        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2),
+        title: "新对话",
+        messages: [],
+        created_at: now,
+        updated_at: now,
+    };
+    conversations.unshift(conv);
+    saveConversations();
+    currentConvId = conv.id;
+    messages = [];
+    chatArea.innerHTML = "";
+    chatArea.appendChild(emptyState);
+    headerTitle.textContent = "新对话";
+    renderConversationList();
+    conversationOverlay.classList.remove("active");
+    showToast("已创建新对话");
 }
 
-async function switchConversation(convId) {
-    try {
-        const resp = await fetch(`/api/conversations/${convId}`);
-        const result = await resp.json();
-        if (result.ok) {
-            currentConvId = convId;
-            messages = result.conversation.messages || [];
-            headerTitle.textContent = result.conversation.title || "AI 对话";
-            // 重新渲染对话区域
-            chatArea.innerHTML = "";
-            if (messages.length === 0) {
-                chatArea.appendChild(emptyState);
-            } else {
-                messages.forEach(m => {
-                    if (m.role === "user") {
-                        const bubble = document.createElement("div");
-                        bubble.className = "message user";
-                        bubble.textContent = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-                        chatArea.appendChild(bubble);
-                    } else if (m.role === "assistant") {
-                        const bubble = document.createElement("div");
-                        bubble.className = m.content && m.content.startsWith("⚠️") ? "message error" : "message assistant";
-                        bubble.textContent = m.content || "";
-                        chatArea.appendChild(bubble);
-                    }
-                });
+function switchConversation(convId) {
+    const conv = conversations.find(c => c.id === convId);
+    if (!conv) { showToast("对话不存在"); return; }
+    currentConvId = convId;
+    messages = conv.messages || [];
+    headerTitle.textContent = conv.title || "AI 对话";
+    // 重新渲染对话区域
+    chatArea.innerHTML = "";
+    if (messages.length === 0) {
+        chatArea.appendChild(emptyState);
+    } else {
+        messages.forEach(m => {
+            if (m.role === "user") {
+                const bubble = document.createElement("div");
+                bubble.className = "message user";
+                bubble.textContent = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+                chatArea.appendChild(bubble);
+            } else if (m.role === "assistant") {
+                const bubble = document.createElement("div");
+                bubble.className = m.content && m.content.startsWith("⚠️") ? "message error" : "message assistant";
+                bubble.textContent = m.content || "";
+                chatArea.appendChild(bubble);
             }
-            scrollToBottom();
-            await loadConversations();
-            conversationOverlay.classList.remove("active");
-        } else {
-            showToast("加载对话失败");
-        }
-    } catch (e) {
-        showToast("加载对话失败");
+        });
     }
+    scrollToBottom();
+    renderConversationList();
+    conversationOverlay.classList.remove("active");
 }
 
-async function saveCurrentConversation() {
+function saveCurrentConversation() {
     if (!currentConvId) return;
     if (messages.length === 0) return;
-    try {
-        await fetch(`/api/conversations/${currentConvId}/messages`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages }),
-        });
-    } catch (e) {
-        console.error("保存对话失败", e);
+    const conv = conversations.find(c => c.id === currentConvId);
+    if (!conv) return;
+    conv.messages = messages;
+    conv.updated_at = new Date().toISOString();
+    // 更新标题
+    for (const m of messages) {
+        if (m.role === "user" && typeof m.content === "string") {
+            conv.title = m.content.slice(0, 30);
+            break;
+        }
     }
+    saveConversations();
 }
 
 // 打开/关闭对话面板
@@ -928,19 +889,19 @@ conversationOverlay.addEventListener("click", (e) => {
 convNewBtn.addEventListener("click", createNewConversation);
 
 // 初始化：只加载对话列表，不自动创建/加载对话
-async function initConversation() {
+function initConversation() {
     currentConvId = null;
     messages = [];
     headerTitle.textContent = "AI 对话";
     chatArea.innerHTML = "";
     chatArea.appendChild(emptyState);
-    await loadConversations();
+    loadConversations();
 }
 
 // ================================================================
 //  添加账号
 // ================================================================
-addAccountBtn.addEventListener("click", async () => {
+addAccountBtn.addEventListener("click", () => {
     const name = accName.value.trim();
     const url = accUrl.value.trim();
     const key = accKey.value.trim();
@@ -951,28 +912,21 @@ addAccountBtn.addEventListener("click", async () => {
     if (!key) { setSettingsMsg("请输入 API Key", "fail"); return; }
     if (!model) { setSettingsMsg("请选择模型名称", "fail"); return; }
 
-    addAccountBtn.disabled = true;
-    addAccountBtn.textContent = "添加中...";
-    try {
-        const resp = await fetch("/api/accounts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, api_url: url, api_key: key, model }),
-        });
-        const result = await resp.json();
-        setSettingsMsg(result.message, result.ok ? "success" : "fail");
-        if (result.ok) {
-            // 清空表单
-            accName.value = ""; accUrl.value = ""; accKey.value = "";
-            accModel.innerHTML = '<option value="">— 刷新加载模型 —</option>';
-            await loadAccounts();
-        }
-    } catch (e) {
-        setSettingsMsg("添加请求失败", "fail");
-    } finally {
-        addAccountBtn.disabled = false;
-        addAccountBtn.textContent = "添加账号";
-    }
+    accounts.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2),
+        name,
+        api_url: url,
+        api_key: key,
+        model,
+        latency_ms: null,
+        last_speed_test: null,
+    });
+    saveAccounts();
+    // 清空表单
+    accName.value = ""; accUrl.value = ""; accKey.value = "";
+    accModel.innerHTML = '<option value="">— 刷新加载模型 —</option>';
+    loadAccounts();
+    setSettingsMsg(`账号「${name}」添加成功`, "success");
 });
 
 // ================================================================
@@ -1103,8 +1057,16 @@ async function sendMessage(userContent) {
     const timeoutId = setTimeout(() => controller.abort(), 60000);
 
     try {
+        // 选择最快或第一个可用账号
+        const valid = accounts.filter(a => a.latency_ms != null);
+        let selected = accounts[0];
+        if (valid.length > 0) {
+            selected = valid.reduce((a, b) => (a.latency_ms < b.latency_ms ? a : b));
+        }
         const requestBody = {
-            account_id: "auto",
+            api_url: selected.api_url,
+            api_key: selected.api_key,
+            model: selected.model,
             messages: [
                 { role: "system", content: "你是一个有帮助的AI助手。" },
                 ...messages.slice(0, -1),
@@ -1324,6 +1286,5 @@ initConversation();
 messageInput.focus();
 console.log("AI 对话应用已启动！");
 </script>
-{% endif %}
 </body>
 </html>
