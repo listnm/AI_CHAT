@@ -6,1312 +6,664 @@
     <title>AI 对话</title>
     <style>
         /* ===== 全局重置与基础样式 ===== */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: #e8ecf0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            color: #1c1e21;
+            background: #e8ecf0; display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; color: #1c1e21;
         }
-
-        /* ===== 手机容器 ===== */
         .app-container {
-            width: 100%;
-            max-width: 480px;
-            height: 100vh;
-            max-height: 900px;
-            background: #ffffff;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 0 40px rgba(0, 0, 0, 0.08);
-            border-radius: 0;
-            overflow: hidden;
-            position: relative;
+            width: 100%; max-width: 480px; height: 100vh; max-height: 900px;
+            background: #fff; display: flex; flex-direction: column;
+            box-shadow: 0 0 40px rgba(0,0,0,.08); overflow: hidden; position: relative;
         }
-
-        @media (min-width: 520px) {
-            .app-container {
-                border-radius: 24px;
-                height: 90vh;
-            }
-        }
+        @media (min-width:520px) { .app-container { border-radius: 24px; height: 90vh; } }
 
         /* ===== 顶部导航栏 ===== */
         .header {
-            background: #ffffff;
-            padding: 16px 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid #e9edf2;
-            flex-shrink: 0;
-            position: sticky;
-            top: 0;
-            z-index: 10;
+            background: #fff; padding: 16px 20px; display: flex; align-items: center;
+            justify-content: space-between; border-bottom: 1px solid #e9edf2; flex-shrink: 0;
+            position: sticky; top: 0; z-index: 10;
         }
-
-        .header-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1c1e21;
-        }
-
+        .header-title { font-size: 18px; font-weight: 600; color: #1c1e21; }
         .header-btn {
-            background: none;
-            border: none;
-            font-size: 22px;
-            cursor: pointer;
-            color: #5f6368;
-            padding: 4px 8px;
-            border-radius: 8px;
-            transition: background 0.2s;
+            background: none; border: none; font-size: 22px; cursor: pointer;
+            color: #5f6368; padding: 4px 8px; border-radius: 8px; transition: background .2s;
         }
-
-        .header-btn:hover {
-            background: #f0f2f5;
-        }
-        .header-btn:active {
-            background: #e4e6ea;
-        }
+        .header-btn:hover { background: #f0f2f5; }
+        .header-btn:active { background: #e4e6ea; }
 
         /* ===== 对话气泡区域 ===== */
         .chat-area {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px 16px 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            background: #f5f7fa;
-            scroll-behavior: smooth;
+            flex: 1; overflow-y: auto; padding: 16px 16px 8px; display: flex;
+            flex-direction: column; gap: 10px; background: #f5f7fa; scroll-behavior: smooth;
         }
-
-        /* 滚动条美化 */
-        .chat-area::-webkit-scrollbar {
-            width: 4px;
-        }
-        .chat-area::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .chat-area::-webkit-scrollbar-thumb {
-            background: #c4c9d0;
-            border-radius: 4px;
-        }
-
-        /* ===== 气泡样式 ===== */
+        .chat-area::-webkit-scrollbar { width: 4px; }
+        .chat-area::-webkit-scrollbar-track { background: transparent; }
+        .chat-area::-webkit-scrollbar-thumb { background: #c4c9d0; border-radius: 4px; }
         .message {
-            max-width: 85%;
-            padding: 10px 14px;
-            border-radius: 18px;
-            font-size: 15px;
-            line-height: 1.5;
-            word-wrap: break-word;
-            white-space: pre-wrap;
-            animation: messageIn 0.25s ease-out;
+            max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 15px;
+            line-height: 1.5; word-wrap: break-word; white-space: pre-wrap;
+            animation: messageIn .25s ease-out;
         }
-
         @keyframes messageIn {
-            from {
-                opacity: 0;
-                transform: translateY(8px) scale(0.97);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
+            from { opacity: 0; transform: translateY(8px) scale(.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
-        /* 用户消息 - 右对齐蓝底 */
-        .message.user {
-            align-self: flex-end;
-            background: #007aff;
-            color: #ffffff;
-            border-bottom-right-radius: 6px;
-        }
-
-        /* AI 消息 - 左对齐灰底 */
-        .message.assistant {
-            align-self: flex-start;
-            background: #ffffff;
-            color: #1c1e21;
-            border-bottom-left-radius: 6px;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-        }
-
-        /* 错误消息 */
-        .message.error {
-            align-self: flex-start;
-            background: #fff0f0;
-            color: #d93025;
-            border-bottom-left-radius: 6px;
-            font-size: 14px;
-        }
-
-        /* 消息中的代码块简单美化 */
-        .message code {
-            background: rgba(0, 0, 0, 0.06);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 13px;
-            font-family: "SF Mono", "Fira Code", monospace;
-        }
-        .message.user code {
-            background: rgba(255, 255, 255, 0.2);
-        }
-
-        /* 打字光标动画 */
-        .typing-cursor::after {
-            content: "▌";
-            animation: blink 0.8s step-end infinite;
-            color: #007aff;
-        }
-        .message.assistant .typing-cursor::after {
-            color: #007aff;
-        }
-
-        @keyframes blink {
-            50% {
-                opacity: 0;
-            }
-        }
+        .message.user { align-self: flex-end; background: #007aff; color: #fff; border-bottom-right-radius: 6px; }
+        .message.assistant { align-self: flex-start; background: #fff; color: #1c1e21; border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+        .message.error { align-self: flex-start; background: #fff0f0; color: #d93025; border-bottom-left-radius: 6px; font-size: 14px; }
+        .message code { background: rgba(0,0,0,.06); padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "SF Mono","Fira Code",monospace; }
+        .message.user code { background: rgba(255,255,255,.2); }
 
         /* ===== 底部输入区 ===== */
-        .input-area {
-            padding: 12px 16px 16px;
-            background: #ffffff;
-            border-top: 1px solid #e9edf2;
-            display: flex;
-            align-items: flex-end;
-            gap: 8px;
-            flex-shrink: 0;
-        }
-
-        .input-wrapper {
-            flex: 1;
-            display: flex;
-            align-items: flex-end;
-            background: #f5f7fa;
-            border-radius: 20px;
-            padding: 4px 4px 4px 16px;
-            border: 1px solid #e9edf2;
-            transition: border-color 0.2s;
-        }
-
-        .input-wrapper:focus-within {
-            border-color: #007aff;
-        }
-
-        .input-wrapper textarea {
-            flex: 1;
-            border: none;
-            background: transparent;
-            resize: none;
-            padding: 8px 0;
-            font-size: 15px;
-            font-family: inherit;
-            outline: none;
-            line-height: 1.4;
-            max-height: 120px;
-            color: #1c1e21;
-        }
-
-        .input-wrapper textarea::placeholder {
-            color: #8e9399;
-        }
-
-        .send-btn {
-            width: 36px;
-            height: 36px;
-            border: none;
-            border-radius: 50%;
-            background: #007aff;
-            color: #ffffff;
-            font-size: 16px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: background 0.2s, transform 0.1s;
-        }
-
-        .send-btn:hover {
-            background: #0062cc;
-        }
-        .send-btn:active {
-            transform: scale(0.92);
-        }
-        .send-btn:disabled {
-            background: #c4c9d0;
-            cursor: not-allowed;
-            transform: none;
-        }
+        .input-area { padding: 12px 16px 16px; background: #fff; border-top: 1px solid #e9edf2; display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+        .input-wrapper { flex: 1; display: flex; align-items: flex-end; background: #f5f7fa; border-radius: 20px; padding: 4px 4px 4px 16px; border: 1px solid #e9edf2; transition: border-color .2s; }
+        .input-wrapper:focus-within { border-color: #007aff; }
+        .input-wrapper textarea { flex: 1; border: none; background: transparent; resize: none; padding: 8px 0; font-size: 15px; font-family: inherit; outline: none; line-height: 1.4; max-height: 120px; color: #1c1e21; }
+        .input-wrapper textarea::placeholder { color: #8e9399; }
+        .send-btn { width: 36px; height: 36px; border: none; border-radius: 50%; background: #007aff; color: #fff; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s,transform .1s; }
+        .send-btn:hover { background: #0062cc; }
+        .send-btn:active { transform: scale(.92); }
+        .send-btn:disabled { background: #c4c9d0; cursor: not-allowed; transform: none; }
 
         /* ===== 设置面板遮罩 ===== */
-        .settings-overlay {
-            display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.35);
-            z-index: 100;
-            animation: fadeIn 0.2s ease-out;
-        }
-
-        .settings-overlay.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
+        .settings-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.35); z-index: 100; animation: fadeIn .2s ease-out; }
+        .settings-overlay.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         /* ===== 设置面板 ===== */
-        .settings-panel {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #ffffff;
-            border-radius: 20px;
-            padding: 28px 24px 24px;
-            width: calc(100% - 48px);
-            max-width: 400px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-            animation: panelIn 0.25s ease-out;
-        }
+        .settings-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #fff; border-radius: 20px; padding: 24px; width: calc(100% - 32px); max-width: 420px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.15); animation: panelIn .25s ease-out; }
+        @keyframes panelIn { from { opacity: 0; transform: translate(-50%,-50%) scale(.92); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+        .settings-panel h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1c1e21; }
 
-        @keyframes panelIn {
-            from {
-                opacity: 0;
-                transform: translate(-50%, -50%) scale(0.92);
-            }
-            to {
-                opacity: 1;
-                transform: translate(-50%, -50%) scale(1);
-            }
+        /* ===== 账号列表 ===== */
+        .account-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+        .account-card {
+            background: #f5f7fa; border-radius: 14px; padding: 14px; border: 1px solid #e9edf2;
+            transition: border-color .2s; position: relative;
         }
+        .account-card.fastest { border-color: #34c759; background: #f0fff4; }
+        .account-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+        .account-name { font-weight: 600; font-size: 14px; color: #1c1e21; }
+        .account-badge {
+            font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500;
+        }
+        .account-badge.fastest { background: #34c759; color: #fff; }
+        .account-badge.fail { background: #ff3b30; color: #fff; }
+        .account-badge.ok { background: #e8f5e9; color: #1b5e20; }
+        .account-meta { font-size: 12px; color: #8e9399; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+        .account-meta span { white-space: nowrap; }
+        .account-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .account-actions button {
+            padding: 4px 12px; border-radius: 8px; font-size: 12px; border: none; cursor: pointer; transition: background .2s;
+        }
+        .btn-account-test { background: #e8f2ff; color: #007aff; }
+        .btn-account-test:hover { background: #d0e5ff; }
+        .btn-account-delete { background: #fff0f0; color: #ff3b30; }
+        .btn-account-delete:hover { background: #ffe0e0; }
 
-        .settings-panel h2 {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #1c1e21;
-            text-align: center;
+        /* ===== 添加账号表单 ===== */
+        .add-account-form { border-top: 1px solid #e9edf2; padding-top: 16px; margin-bottom: 16px; }
+        .add-account-form h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #1c1e21; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-size: 12px; font-weight: 500; color: #5f6368; margin-bottom: 4px; }
+        .form-group input, .form-group select {
+            width: 100%; padding: 10px 14px; border: 1px solid #e9edf2; border-radius: 12px; font-size: 14px; background: #f5f7fa; outline: none; color: #1c1e21;
         }
+        .form-group input:focus, .form-group select:focus { border-color: #007aff; background: #fff; }
+        .form-row { display: flex; gap: 8px; align-items: flex-end; }
+        .form-row .form-group { flex: 1; }
 
-        .settings-group {
-            margin-bottom: 16px;
+        .btn-primary {
+            width: 100%; padding: 10px 0; border: none; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background .2s;
+            background: #007aff; color: #fff;
         }
+        .btn-primary:hover { background: #0062cc; }
+        .btn-primary:disabled { background: #c4c9d0; cursor: not-allowed; }
+        .btn-secondary {
+            width: 100%; padding: 10px 0; border: 1px solid #007aff; border-radius: 12px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background .2s,color .2s;
+            background: #fff; color: #007aff; margin-bottom: 8px;
+        }
+        .btn-secondary:hover { background: #e8f2ff; }
+        .btn-secondary:disabled { border-color: #c4c9d0; color: #c4c9d0; cursor: not-allowed; background: #f5f7fa; }
+        .btn-secondary.loading { color: transparent; position: relative; }
+        .btn-secondary.loading::after {
+            content: ""; position: absolute; width: 18px; height: 18px; top: 50%; left: 50%;
+            margin: -9px 0 0 -9px; border: 2px solid #007aff; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .settings-group label {
-            display: block;
-            font-size: 13px;
-            font-weight: 500;
-            color: #5f6368;
-            margin-bottom: 6px;
+        .btn-close-panel {
+            width: 100%; padding: 10px 0; border: none; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background .2s;
+            background: #f0f2f5; color: #5f6368;
         }
+        .btn-close-panel:hover { background: #e4e6ea; }
 
-        .settings-group input {
-            width: 100%;
-            padding: 10px 14px;
-            border: 1px solid #e9edf2;
-            border-radius: 12px;
-            font-size: 14px;
-            background: #f5f7fa;
-            outline: none;
-            transition: border-color 0.2s;
-            color: #1c1e21;
-        }
+        .settings-msg { font-size: 13px; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; display: none; line-height: 1.4; }
+        .settings-msg.success { display: block; background: #e8f5e9; color: #1b5e20; }
+        .settings-msg.fail { display: block; background: #fff0f0; color: #c62828; }
+        .settings-msg.info { display: block; background: #e8f2ff; color: #004999; }
 
-        .settings-group input:focus {
-            border-color: #007aff;
-            background: #ffffff;
-        }
+        /* ===== 空状态 & 加载 ===== */
+        .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8e9399; font-size: 15px; gap: 12px; user-select: none; }
+        .empty-state-icon { font-size: 48px; opacity: .5; }
+        .empty-state-text { text-align: center; line-height: 1.5; }
+        .empty-state-hint { font-size: 13px; opacity: .7; }
+        .loading-indicator { align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 12px 16px; background: #fff; border-radius: 18px; border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+        .loading-dot { width: 8px; height: 8px; background: #8e9399; border-radius: 50%; animation: dotBounce 1.2s ease-in-out infinite; }
+        .loading-dot:nth-child(2) { animation-delay: .2s; }
+        .loading-dot:nth-child(3) { animation-delay: .4s; }
+        @keyframes dotBounce { 0%,60%,100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-6px); opacity: 1; } }
 
-        .settings-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 24px;
-        }
-
-        .settings-actions button {
-            flex: 1;
-            padding: 10px 0;
-            border: none;
-            border-radius: 12px;
-            font-size: 15px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .btn-save {
-            background: #007aff;
-            color: #ffffff;
-        }
-        .btn-save:hover {
-            background: #0062cc;
-        }
-        .btn-save:active {
-            background: #004999;
-        }
-
-        .btn-close {
-            background: #f0f2f5;
-            color: #5f6368;
-        }
-        .btn-close:hover {
-            background: #e4e6ea;
-        }
-        .btn-close:active {
-            background: #d8dce3;
-        }
-
-        /* ===== 测试连接按钮 ===== */
-        .btn-test {
-            width: 100%;
-            padding: 10px 0;
-            border: 1px solid #007aff;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s, color 0.2s;
-            background: #ffffff;
-            color: #007aff;
-            margin-bottom: 4px;
-        }
-        .btn-test:hover {
-            background: #e8f2ff;
-        }
-        .btn-test:active {
-            background: #d0e5ff;
-        }
-        .btn-test:disabled {
-            border-color: #c4c9d0;
-            color: #c4c9d0;
-            cursor: not-allowed;
-            background: #f5f7fa;
-        }
-        .btn-test.loading {
-            color: transparent;
-            position: relative;
-        }
-        .btn-test.loading::after {
-            content: "";
-            position: absolute;
-            width: 18px;
-            height: 18px;
-            top: 50%;
-            left: 50%;
-            margin: -9px 0 0 -9px;
-            border: 2px solid #007aff;
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-        }
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* ===== 测试结果提示 ===== */
-        .test-result {
-            font-size: 13px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            display: none;
-            line-height: 1.4;
-        }
-        .test-result.success {
-            display: block;
-            background: #e8f5e9;
-            color: #1b5e20;
-        }
-        .test-result.fail {
-            display: block;
-            background: #fff0f0;
-            color: #c62828;
-        }
-
-        /* ===== 模型选择下拉 ===== */
-        .model-select-wrapper {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-        .model-select-wrapper select {
-            flex: 1;
-            padding: 10px 14px;
-            border: 1px solid #e9edf2;
-            border-radius: 12px;
-            font-size: 14px;
-            background: #f5f7fa;
-            outline: none;
-            color: #1c1e21;
-            cursor: pointer;
-            appearance: auto;
-        }
-        .model-select-wrapper select:focus {
-            border-color: #007aff;
-            background: #ffffff;
-        }
-        .model-select-wrapper select:disabled {
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-        .btn-refresh-models {
-            width: 40px;
-            height: 40px;
-            border: 1px solid #e9edf2;
-            border-radius: 12px;
-            background: #f5f7fa;
-            font-size: 18px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: background 0.2s;
-        }
-        .btn-refresh-models:hover {
-            background: #e4e6ea;
-        }
-        .btn-refresh-models:active {
-            background: #d8dce3;
-        }
-        .btn-refresh-models.loading {
-            animation: spin 0.7s linear infinite;
-        }
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-        .model-loading-text {
-            font-size: 12px;
-            color: #8e9399;
-            margin-top: 4px;
-        }
-
-        /* ===== 加载提示 ===== */
-        .loading-indicator {
-            align-self: flex-start;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 12px 16px;
-            background: #ffffff;
-            border-radius: 18px;
-            border-bottom-left-radius: 6px;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-        }
-
-        .loading-dot {
-            width: 8px;
-            height: 8px;
-            background: #8e9399;
-            border-radius: 50%;
-            animation: dotBounce 1.2s ease-in-out infinite;
-        }
-
-        .loading-dot:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-        .loading-dot:nth-child(3) {
-            animation-delay: 0.4s;
-        }
-
-        @keyframes dotBounce {
-            0%,
-            60%,
-            100% {
-                transform: translateY(0);
-                opacity: 0.4;
-            }
-            30% {
-                transform: translateY(-6px);
-                opacity: 1;
-            }
-        }
-
-        /* ===== 空状态提示 ===== */
-        .empty-state {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: #8e9399;
-            font-size: 15px;
-            gap: 12px;
-            user-select: none;
-        }
-
-        .empty-state-icon {
-            font-size: 48px;
-            opacity: 0.5;
-        }
-
-        .empty-state-text {
-            text-align: center;
-            line-height: 1.5;
-        }
-
-        .empty-state-hint {
-            font-size: 13px;
-            opacity: 0.7;
-        }
-
-        /* ===== 连接断开提示 ===== */
-        .toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #323232;
-            color: #ffffff;
-            padding: 10px 20px;
-            border-radius: 12px;
-            font-size: 14px;
-            z-index: 200;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-            pointer-events: none;
-            max-width: 400px;
-            text-align: center;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .toast.show {
-            opacity: 1;
-        }
+        /* ===== Toast ===== */
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 20px; border-radius: 12px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .3s ease; pointer-events: none; max-width: 400px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+        .toast.show { opacity: 1; }
     </style>
 </head>
 <body>
-
-    <!-- ===== 应用容器 ===== -->
-    <div class="app-container" id="app">
-
-        <!-- 顶部导航栏 -->
-        <div class="header">
-            <span class="header-title">AI 对话</span>
-            <button class="header-btn" id="settingsBtn" title="设置" aria-label="打开设置">⚙️</button>
+<div class="app-container" id="app">
+    <div class="header">
+        <span class="header-title">AI 对话</span>
+        <button class="header-btn" id="settingsBtn" title="账号管理" aria-label="打开设置">⚙️</button>
+    </div>
+    <div class="chat-area" id="chatArea">
+        <div class="empty-state" id="emptyState">
+            <div class="empty-state-icon">💬</div>
+            <div class="empty-state-text">开始一段新的对话</div>
+            <div class="empty-state-hint">点击右上角 ⚙️ 添加 API 账号后即可开始</div>
         </div>
-
-        <!-- 对话气泡区域 -->
-        <div class="chat-area" id="chatArea">
-            <!-- 空状态提示 -->
-            <div class="empty-state" id="emptyState">
-                <div class="empty-state-icon">💬</div>
-                <div class="empty-state-text">开始一段新的对话</div>
-                <div class="empty-state-hint">在下方输入你的问题</div>
-            </div>
-        </div>
-
-        <!-- 底部输入区 -->
-        <div class="input-area">
-            <div class="input-wrapper">
-                <textarea
-                id="messageInput"
-                rows="1"
-                placeholder="输入消息..."
-                aria-label="输入消息"
-                ></textarea>
-                <button class="send-btn" id="sendBtn" aria-label="发送">➤</button>
-            </div>
-        </div>
-
-        <!-- 设置面板遮罩 -->
-        <div class="settings-overlay" id="settingsOverlay">
-            <div class="settings-panel">
-                <h2>模型设置</h2>
-                <div class="settings-group">
-                    <label for="apiUrl">API 地址</label>
-                    <input
-                    type="url"
-                    id="apiUrl"
-                    placeholder="https://api.openai.com/v1/chat/completions"
-                    />
-                </div>
-                <div class="settings-group">
-                    <label for="apiKey">API Key</label>
-                    <input
-                    type="password"
-                    id="apiKey"
-                    placeholder="sk-..."
-                    />
-                </div>
-                <div class="settings-group">
-                    <label for="modelName">模型名称</label>
-                    <div class="model-select-wrapper">
-                        <select id="modelName">
-                            <option value="">— 点击右侧刷新按钮加载模型 —</option>
-                        </select>
-                        <button class="btn-refresh-models" id="refreshModelsBtn" title="刷新模型列表">↻</button>
-                    </div>
-                    <div class="model-loading-text" id="modelLoadingText"></div>
-                </div>
-                <div class="test-result" id="testResult"></div>
-                <button class="btn-test" id="testBtn">测试连接</button>
-                <div class="settings-actions">
-                    <button class="btn-close" id="settingsCancel">取消</button>
-                    <button class="btn-save" id="settingsSave">保存</button>
-                </div>
-            </div>
+    </div>
+    <div class="input-area">
+        <div class="input-wrapper">
+            <textarea id="messageInput" rows="1" placeholder="输入消息..." aria-label="输入消息"></textarea>
+            <button class="send-btn" id="sendBtn" aria-label="发送">➤</button>
         </div>
     </div>
 
-    <!-- ===== Toast 提示容器 ===== -->
-    <div class="toast" id="toast"></div>
+    <!-- 设置面板 -->
+    <div class="settings-overlay" id="settingsOverlay">
+        <div class="settings-panel" id="settingsPanel">
+            <h2>账号管理</h2>
+            <div id="settingsMsg" class="settings-msg"></div>
+            <!-- 账号列表 -->
+            <div id="accountList" class="account-list"></div>
+            <!-- 批量操作 -->
+            <button class="btn-secondary" id="speedTestBtn">🚀 全部测速</button>
+            <!-- 添加账号表单 -->
+            <div class="add-account-form">
+                <h3>添加新账号</h3>
+                <div class="form-group">
+                    <label for="accName">账号名称（自定义）</label>
+                    <input type="text" id="accName" placeholder="如：AIHub、OpenAI、中转1" />
+                </div>
+                <div class="form-group">
+                    <label for="accUrl">API 地址</label>
+                    <input type="url" id="accUrl" placeholder="https://aihub.top" />
+                </div>
+                <div class="form-group">
+                    <label for="accKey">API Key</label>
+                    <input type="password" id="accKey" placeholder="sk-..." />
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="accModel">模型名称</label>
+                        <select id="accModel"><option value="">— 先填上面信息再点右侧刷新 —</option></select>
+                    </div>
+                    <button class="btn-refresh-model" id="accRefreshModels" title="刷新模型列表" style="width:40px;height:40px;border:1px solid #e9edf2;border-radius:12px;background:#f5f7fa;font-size:18px;cursor:pointer;flex-shrink:0;margin-bottom:10px;">↻</button>
+                </div>
+                <button class="btn-primary" id="addAccountBtn">添加账号</button>
+            </div>
+            <button class="btn-close-panel" id="settingsCloseBtn">关闭</button>
+        </div>
+    </div>
+</div>
+<div class="toast" id="toast"></div>
 
-    <script>
-        // ================================================================
-        //  DOM 引用
-        // ================================================================
-        const chatArea = document.getElementById("chatArea");
-        const emptyState = document.getElementById("emptyState");
-        const messageInput = document.getElementById("messageInput");
-        const sendBtn = document.getElementById("sendBtn");
-        const settingsBtn = document.getElementById("settingsBtn");
-        const settingsOverlay = document.getElementById("settingsOverlay");
-        const settingsCancel = document.getElementById("settingsCancel");
-        const settingsSave = document.getElementById("settingsSave");
-        const apiUrlInput = document.getElementById("apiUrl");
-        const apiKeyInput = document.getElementById("apiKey");
-        const modelNameInput = document.getElementById("modelName");
-        const refreshModelsBtn = document.getElementById("refreshModelsBtn");
-        const modelLoadingText = document.getElementById("modelLoadingText");
-        const toastEl = document.getElementById("toast");
+<script>
+// ================================================================
+//  DOM 引用
+// ================================================================
+const chatArea = document.getElementById("chatArea");
+const emptyState = document.getElementById("emptyState");
+const messageInput = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsOverlay = document.getElementById("settingsOverlay");
+const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+const settingsMsg = document.getElementById("settingsMsg");
+const accountList = document.getElementById("accountList");
+const speedTestBtn = document.getElementById("speedTestBtn");
+const addAccountBtn = document.getElementById("addAccountBtn");
+const accName = document.getElementById("accName");
+const accUrl = document.getElementById("accUrl");
+const accKey = document.getElementById("accKey");
+const accModel = document.getElementById("accModel");
+const accRefreshModels = document.getElementById("accRefreshModels");
+const toastEl = document.getElementById("toast");
 
-        // ================================================================
-        //  状态管理
-        // ================================================================
+// ================================================================
+//  状态
+// ================================================================
+let messages = [];
+let isStreaming = false;
+let currentAbortController = null;
+let accounts = [];
 
-        /** 对话历史：{ role: "user"|"assistant", content: string }[] */
-        let messages = [];
+// ================================================================
+//  Toast
+// ================================================================
+let toastTimer = null;
+function showToast(text) {
+    toastEl.textContent = text; toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove("show"), 2500);
+}
 
-        /** 是否正在接收流式响应 */
-        let isStreaming = false;
+// ================================================================
+//  设置面板消息
+// ================================================================
+function setSettingsMsg(text, type = "info") {
+    settingsMsg.textContent = text;
+    settingsMsg.className = `settings-msg ${type}`;
+}
 
-        /** 当前正在进行的 AbortController，用于中断请求 */
-        let currentAbortController = null;
+// ================================================================
+//  账号管理
+// ================================================================
+async function loadAccounts() {
+    try {
+        const resp = await fetch("/api/accounts");
+        const data = await resp.json();
+        accounts = data.accounts || [];
+        renderAccountList();
+    } catch (e) {
+        console.error("加载账号失败", e);
+    }
+}
 
-        // ================================================================
-        //  设置管理（localStorage）
-        // ================================================================
+function renderAccountList() {
+    if (accounts.length === 0) {
+        accountList.innerHTML = '<div style="text-align:center;padding:16px;color:#8e9399;font-size:14px;">暂无账号，请添加一个</div>';
+        return;
+    }
+    // 找到延迟最低的
+    const valid = accounts.filter(a => a.latency_ms != null);
+    const fastestId = valid.length > 0 ? valid.reduce((a, b) => (a.latency_ms < b.latency_ms ? a : b)).id : null;
 
-        /** 从 localStorage 加载设置 */
-        function loadSettings() {
-            const saved = localStorage.getItem("ai-chat-settings");
-            if (saved) {
-                try {
-                    const s = JSON.parse(saved);
-                    apiUrlInput.value = s.apiUrl || "";
-                    apiKeyInput.value = s.apiKey || "";
-                    modelNameInput.value = s.model || "";
-                } catch (e) {
-                    // 忽略解析错误
-                }
-            }
-        }
+    accountList.innerHTML = accounts.map(acc => {
+        const isFastest = acc.id === fastestId;
+        let badge = "";
+        if (isFastest) badge = '<span class="account-badge fastest">最快</span>';
+        else if (acc.latency_ms != null) badge = '<span class="account-badge ok">可用</span>';
+        else badge = '<span class="account-badge fail">未测速</span>';
 
-        /** 保存设置到 localStorage */
-        function saveSettings() {
-            const settings = {
-                apiUrl: apiUrlInput.value.trim(),
-                apiKey: apiKeyInput.value.trim(),
-                model: modelNameInput.value.trim(),
-            };
-            localStorage.setItem("ai-chat-settings", JSON.stringify(settings));
-        }
+        const latency = acc.latency_ms != null ? `${acc.latency_ms}ms` : "—";
+        return `<div class="account-card ${isFastest ? 'fastest' : ''}">
+            <div class="account-card-header">
+                <span class="account-name">${escHtml(acc.name)}</span>
+                ${badge}
+            </div>
+            <div class="account-meta">
+                <span>📍 ${escHtml(acc.api_url)}</span>
+                <span>🤖 ${escHtml(acc.model)}</span>
+                <span>⚡ ${latency}</span>
+                <span>🔑 ${escHtml(acc.api_key_preview)}</span>
+            </div>
+            <div class="account-actions">
+                <button class="btn-account-test" onclick="testAccount('${acc.id}')">测试</button>
+                <button class="btn-account-delete" onclick="deleteAccount('${acc.id}')">删除</button>
+            </div>
+        </div>`;
+    }).join("");
+}
 
-        /** 获取当前设置对象 */
-        function getSettings() {
-            return {
-                apiUrl: apiUrlInput.value.trim(),
-                apiKey: apiKeyInput.value.trim(),
-                model: modelNameInput.value.trim(),
-            };
-        }
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c] || c); }
 
-        /** 检查设置是否完整 */
-        function isSettingsValid() {
-            const s = getSettings();
-            return s.apiUrl && s.apiKey && s.model;
-        }
+async function testAccount(id) {
+    setSettingsMsg("正在测试...", "info");
+    try {
+        const resp = await fetch("/api/check", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ account_id: id }),
+        });
+        const result = await resp.json();
+        setSettingsMsg(result.message, result.ok ? "success" : "fail");
+        await loadAccounts();
+    } catch (e) {
+        setSettingsMsg("测试请求失败", "fail");
+    }
+}
 
-        // ================================================================
-        //  Toast 提示
-        // ================================================================
+async function deleteAccount(id) {
+    if (!confirm("确定要删除这个账号吗？")) return;
+    try {
+        const resp = await fetch(`/api/accounts/${id}`, { method: "DELETE" });
+        const result = await resp.json();
+        setSettingsMsg(result.message, result.ok ? "success" : "fail");
+        await loadAccounts();
+    } catch (e) {
+        setSettingsMsg("删除失败", "fail");
+    }
+}
 
-        let toastTimer = null;
-
-        /** 显示一条 toast 提示，2.5 秒后自动消失 */
-        function showToast(text) {
-            toastEl.textContent = text;
-            toastEl.classList.add("show");
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => {
-                toastEl.classList.remove("show");
-            }, 2500);
-        }
-
-        // ================================================================
-        //  对话气泡渲染
-        // ================================================================
-
-        /** 渲染所有消息到聊天区域 */
-        function renderMessages() {
-            // 清空聊天区，保留空状态
-            chatArea.innerHTML = "";
-            if (messages.length === 0) {
-                chatArea.appendChild(emptyState);
-                return;
-            }
-
-            // 确保空状态不在 DOM 中
-            if (emptyState.parentNode) {
-                emptyState.remove();
-            }
-
-            for (const msg of messages) {
-                const bubble = createMessageBubble(msg.role, msg.content);
-                chatArea.appendChild(bubble);
-            }
-
-            // 滚动到底部
-            scrollToBottom();
-        }
-
-        /** 创建单个消息气泡 DOM 元素 */
-        function createMessageBubble(role, content) {
-            const div = document.createElement("div");
-            div.className = `message ${role}`;
-            // 对内容中的特殊字符做转义，防止 XSS
-            div.textContent = content;
-            return div;
-        }
-
-        /** 滚动聊天区域到底部 */
-        function scrollToBottom() {
-            requestAnimationFrame(() => {
-                chatArea.scrollTop = chatArea.scrollHeight;
-            });
-        }
-
-        // ================================================================
-        //  添加消息
-        // ================================================================
-
-        /** 添加用户消息并更新界面 */
-        function addUserMessage(content) {
-            messages.push({ role: "user", content });
-            // 清除空状态
-            if (emptyState.parentNode) {
-                emptyState.remove();
-            }
-            const bubble = createMessageBubble("user", content);
-            chatArea.appendChild(bubble);
-            scrollToBottom();
-        }
-
-        /** 添加 AI 消息气泡（初始为空），返回气泡元素用于后续更新 */
-        function addAssistantBubble() {
-            if (emptyState.parentNode) {
-                emptyState.remove();
-            }
-            const div = document.createElement("div");
-            div.className = "message assistant";
-            div.textContent = "";
-            chatArea.appendChild(div);
-            scrollToBottom();
-            return div;
-        }
-
-        // ================================================================
-        //  显示/隐藏加载动画
-        // ================================================================
-
-        let loadingIndicator = null;
-
-        function showLoading() {
-            if (loadingIndicator) return;
-            if (emptyState.parentNode) {
-                emptyState.remove();
-            }
-            loadingIndicator = document.createElement("div");
-            loadingIndicator.className = "loading-indicator";
-            loadingIndicator.innerHTML =
-                '<span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
-            chatArea.appendChild(loadingIndicator);
-            scrollToBottom();
-        }
-
-        function hideLoading() {
-            if (loadingIndicator && loadingIndicator.parentNode) {
-                loadingIndicator.parentNode.removeChild(loadingIndicator);
-            }
-            loadingIndicator = null;
-        }
-
-        // ================================================================
-        //  流式对话核心逻辑
-        // ================================================================
-
-        /**
-         * 发送消息到后端 /chat，处理流式响应
-         * @param {string} userContent - 用户输入内容
-         */
-        async function sendMessage(userContent) {
-            // 检查设置是否完整
-            if (!isSettingsValid()) {
-                showToast("请先点击右上角 ⚙️ 完成 API 设置");
-                return;
-            }
-
-            const settings = getSettings();
-
-            // 添加用户消息到界面和历史
-            addUserMessage(userContent);
-
-            // 创建 AI 回复气泡占位
-            const assistantBubble = addAssistantBubble();
-            let fullContent = "";
-
-            // 显示加载动画
-            showLoading();
-
-            // 禁用发送按钮，防止重复提交
-            setInputEnabled(false);
-            isStreaming = true;
-
-            // 创建 AbortController 用于超时控制
-            const controller = new AbortController();
-            currentAbortController = controller;
-
-            // 超时 60 秒
-            const timeoutId = setTimeout(() => {
-                controller.abort();
-            }, 60000);
-
-            try {
-                // 构造请求体：设置 + 完整对话历史 + 当前用户消息
-                const requestBody = {
-                    api_url: settings.apiUrl,
-                    api_key: settings.apiKey,
-                    model: settings.model,
-                    messages: [
-                        { role: "system", content: "你是一个有帮助的AI助手。" },
-                        ...messages.slice(0, -1), // 不包含当前用户消息的已有历史
-                        { role: "user", content: userContent },
-                    ],
-                };
-
-                const response = await fetch("/chat", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(requestBody),
-                    signal: controller.signal,
-                });
-
-                if (!response.ok) {
-                    throw new Error(`服务器返回状态码 ${response.status}`);
-                }
-
-                // 隐藏加载动画
-                hideLoading();
-
-                // 读取流式响应
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = "";
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-
-                    // 按行处理
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop() || ""; // 最后一个不完整的行留在 buffer 中
-
-                    for (const line of lines) {
-                        const trimmed = line.trim();
-                        if (!trimmed) continue;
-
-                        // 处理 data: 开头的行
-                        if (trimmed.startsWith("data: ")) {
-                            const dataContent = trimmed.slice(6);
-
-                            // 检查结束标记
-                            if (dataContent.trim() === "[DONE]") {
-                                break;
-                            }
-
-                            try {
-                                // 尝试解析 JSON
-                                const parsed = JSON.parse(dataContent);
-                                // 检查是否为错误信息
-                                if (parsed.error) {
-                                    const errText = typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
-                                    fullContent += errText;
-                                    assistantBubble.textContent = fullContent;
-                                    assistantBubble.className = "message error";
-                                    scrollToBottom();
-                                } else {
-                                    // 兼容 OpenAI 格式
-                                    const delta =
-                                        parsed.choices?.[0]?.delta?.content ||
-                                        parsed.choices?.[0]?.text ||
-                                        "";
-                                    if (delta) {
-                                        fullContent += delta;
-                                        assistantBubble.textContent = fullContent;
-                                        scrollToBottom();
-                                    }
-                                }
-                            } catch (e) {
-                                // 非 JSON 格式，直接追加文本
-                                if (dataContent.trim()) {
-                                    fullContent += dataContent;
-                                    assistantBubble.textContent = fullContent;
-                                    scrollToBottom();
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 处理 buffer 中剩余内容
-                if (buffer.trim()) {
-                    if (buffer.trim().startsWith("data: ")) {
-                        const dataContent = buffer.trim().slice(6);
-                        if (dataContent.trim() !== "[DONE]") {
-                            try {
-                                const parsed = JSON.parse(dataContent);
-                                // 检查是否为错误信息
-                                if (parsed.error) {
-                                    const errText = typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
-                                    fullContent += errText;
-                                    assistantBubble.className = "message error";
-                                } else {
-                                    const delta =
-                                        parsed.choices?.[0]?.delta?.content ||
-                                        parsed.choices?.[0]?.text ||
-                                        "";
-                                    if (delta) fullContent += delta;
-                                }
-                            } catch (e) {
-                                if (dataContent.trim()) fullContent += dataContent;
-                            }
-                        }
-                    }
-                }
-
-                // 更新最终气泡内容
-                assistantBubble.textContent = fullContent;
-
-                // 将完整回复保存到对话历史
-                if (fullContent.trim()) {
-                    messages.push({ role: "assistant", content: fullContent });
-                } else {
-                    // 如果没有任何内容，显示错误提示
-                    assistantBubble.textContent = "（未收到有效回复，请检查 API 设置）";
-                    assistantBubble.className = "message error";
-                    messages.push({
-                        role: "assistant",
-                        content: "（未收到有效回复，请检查 API 设置）",
-                    });
-                }
-
-                scrollToBottom();
-
-            } catch (err) {
-                // 隐藏加载动画
-                hideLoading();
-
-                // 移除空的 AI 气泡
-                if (assistantBubble.parentNode) {
-                    assistantBubble.parentNode.removeChild(assistantBubble);
-                }
-
-                // 显示错误信息
-                let errorMsg = "";
-                if (err.name === "AbortError") {
-                    errorMsg = "请求超时，请检查网络或 API 地址";
-                } else if (err.message) {
-                    errorMsg = err.message;
-                } else {
-                    errorMsg = "请求失败，请检查网络连接";
-                }
-
-                showToast(errorMsg);
-
-                // 在对话中添加错误消息
-                if (emptyState.parentNode) {
-                    emptyState.remove();
-                }
-                const errorBubble = document.createElement("div");
-                errorBubble.className = "message error";
-                errorBubble.textContent = "⚠️ " + errorMsg;
-                chatArea.appendChild(errorBubble);
-                scrollToBottom();
-
-                // 记录错误消息到历史（便于用户知道发生了什么）
-                messages.push({ role: "assistant", content: "⚠️ " + errorMsg });
-
-            } finally {
-                // 清理
-                clearTimeout(timeoutId);
-                isStreaming = false;
-                currentAbortController = null;
-                setInputEnabled(true);
-                messageInput.focus();
-            }
-        }
-
-        // ================================================================
-        //  输入控制
-        // ================================================================
-
-        /** 启用/禁用输入区域 */
-        function setInputEnabled(enabled) {
-            messageInput.disabled = !enabled;
-            sendBtn.disabled = !enabled;
-            if (enabled) {
-                sendBtn.textContent = "➤";
+// ================================================================
+//  全部测速
+// ================================================================
+speedTestBtn.addEventListener("click", async () => {
+    speedTestBtn.disabled = true;
+    speedTestBtn.classList.add("loading");
+    speedTestBtn.textContent = "测速中";
+    setSettingsMsg("正在测试所有账号...", "info");
+    try {
+        const resp = await fetch("/api/accounts/speedtest", { method: "POST" });
+        const result = await resp.json();
+        if (result.ok) {
+            // 找出最快的
+            const ok = result.accounts.filter(a => a.success);
+            if (ok.length > 0) {
+                const fastest = ok.reduce((a, b) => (a.latency_ms < b.latency_ms ? a : b));
+                setSettingsMsg(`测速完成！最快的是「${fastest.name}」(${fastest.latency_ms}ms)`, "success");
             } else {
-                sendBtn.textContent = "⋯";
+                setSettingsMsg("所有账号均不可用，请检查", "fail");
             }
+        } else {
+            setSettingsMsg(result.message, "fail");
         }
+        await loadAccounts();
+    } catch (e) {
+        setSettingsMsg("测速请求失败", "fail");
+    } finally {
+        speedTestBtn.disabled = false;
+        speedTestBtn.classList.remove("loading");
+        speedTestBtn.textContent = "🚀 全部测速";
+    }
+});
 
-        /** 自动调整输入框高度 */
-        function autoResizeTextarea() {
-            messageInput.style.height = "auto";
-            messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
+// ================================================================
+//  添加账号
+// ================================================================
+addAccountBtn.addEventListener("click", async () => {
+    const name = accName.value.trim();
+    const url = accUrl.value.trim();
+    const key = accKey.value.trim();
+    const model = accModel.value;
+
+    if (!name) { setSettingsMsg("请输入账号名称", "fail"); return; }
+    if (!url) { setSettingsMsg("请输入 API 地址", "fail"); return; }
+    if (!key) { setSettingsMsg("请输入 API Key", "fail"); return; }
+    if (!model) { setSettingsMsg("请选择模型名称", "fail"); return; }
+
+    addAccountBtn.disabled = true;
+    addAccountBtn.textContent = "添加中...";
+    try {
+        const resp = await fetch("/api/accounts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+        });
+        const result = await resp.json();
+        setSettingsMsg(result.message, result.ok ? "success" : "fail");
+        if (result.ok) {
+            // 清空表单
+            accName.value = ""; accUrl.value = ""; accKey.value = "";
+            accModel.innerHTML = '<option value="">— 刷新加载模型 —</option>';
+            await loadAccounts();
         }
+    } catch (e) {
+        setSettingsMsg("添加请求失败", "fail");
+    } finally {
+        addAccountBtn.disabled = false;
+        addAccountBtn.textContent = "添加账号";
+    }
+});
 
-        // ================================================================
-        //  事件绑定
-        // ================================================================
+// ================================================================
+//  刷新模型列表（添加表单中）
+// ================================================================
+accRefreshModels.addEventListener("click", async () => {
+    const url = accUrl.value.trim();
+    const key = accKey.value.trim();
+    if (!url || !key) { setSettingsMsg("请先填写 API 地址和 Key", "fail"); return; }
 
-        // 发送按钮点击
-        sendBtn.addEventListener("click", () => {
-            const text = messageInput.value.trim();
-            if (!text || isStreaming) return;
-            messageInput.value = "";
-            messageInput.style.height = "auto";
-            sendMessage(text);
+    accRefreshModels.disabled = true;
+    accRefreshModels.textContent = "⏳";
+    accModel.innerHTML = '<option value="">加载中...</option>';
+
+    try {
+        const resp = await fetch("/api/models", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_url: url, api_key: key }),
+        });
+        const result = await resp.json();
+        accModel.innerHTML = "";
+        if (result.ok && result.models.length > 0) {
+            result.models.forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m; opt.textContent = m;
+                accModel.appendChild(opt);
+            });
+            setSettingsMsg(`已加载 ${result.models.length} 个模型`, "success");
+        } else {
+            accModel.innerHTML = '<option value="">未获取到模型</option>';
+            setSettingsMsg(result.message || "未获取到模型", "fail");
+        }
+    } catch (e) {
+        accModel.innerHTML = '<option value="">加载失败</option>';
+        setSettingsMsg("网络错误", "fail");
+    } finally {
+        accRefreshModels.disabled = false;
+        accRefreshModels.textContent = "↻";
+    }
+});
+
+// ================================================================
+//  Chat 发送（使用最快账号）
+// ================================================================
+async function sendMessage(userContent) {
+    // 检查是否有可用账号
+    if (accounts.length === 0) {
+        showToast("请先点击右上角 ⚙️ 添加 API 账号");
+        return;
+    }
+
+    addUserMessage(userContent);
+    const assistantBubble = addAssistantBubble();
+    let fullContent = "";
+    showLoading();
+    setInputEnabled(false);
+    isStreaming = true;
+
+    const controller = new AbortController();
+    currentAbortController = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    try {
+        const requestBody = {
+            account_id: "auto",
+            messages: [
+                { role: "system", content: "你是一个有帮助的AI助手。" },
+                ...messages.slice(0, -1),
+                { role: "user", content: userContent },
+            ],
+        };
+
+        const response = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
         });
 
-        // Enter 发送（Shift+Enter 换行）
-        messageInput.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendBtn.click();
-            }
-        });
+        if (!response.ok) throw new Error(`服务器返回状态码 ${response.status}`);
 
-        // 输入框自动调整高度
-        messageInput.addEventListener("input", autoResizeTextarea);
+        hideLoading();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        // 设置面板：打开
-        settingsBtn.addEventListener("click", () => {
-            settingsOverlay.classList.add("active");
-        });
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
 
-        // 设置面板：取消
-        settingsCancel.addEventListener("click", () => {
-            settingsOverlay.classList.remove("active");
-        });
-
-        // 设置面板：点击遮罩关闭
-        settingsOverlay.addEventListener("click", (e) => {
-            if (e.target === settingsOverlay) {
-                settingsOverlay.classList.remove("active");
-            }
-        });
-
-        // 设置面板：保存
-        settingsSave.addEventListener("click", () => {
-            const apiUrl = apiUrlInput.value.trim();
-            const apiKey = apiKeyInput.value.trim();
-            const model = modelNameInput.value.trim();
-
-            if (!apiUrl) {
-                showToast("请输入 API 地址");
-                return;
-            }
-            if (!apiKey) {
-                showToast("请输入 API Key");
-                return;
-            }
-            if (!model) {
-                showToast("请输入模型名称");
-                return;
-            }
-
-            saveSettings();
-            settingsOverlay.classList.remove("active");
-            showToast("设置已保存");
-        });
-
-        // ================================================================
-        //  测试连接
-        // ================================================================
-
-        const testBtn = document.getElementById("testBtn");
-        const testResult = document.getElementById("testResult");
-
-        testBtn.addEventListener("click", async () => {
-            const apiUrl = apiUrlInput.value.trim();
-            const apiKey = apiKeyInput.value.trim();
-            const model = modelNameInput.value.trim();
-
-            if (!apiUrl || !apiKey || !model) {
-                testResult.textContent = "请先完整填写 API 地址、Key 和模型名称";
-                testResult.className = "test-result fail";
-                return;
-            }
-
-            // 进入测试状态
-            testBtn.disabled = true;
-            testBtn.classList.add("loading");
-            testBtn.textContent = "测试中";
-            testResult.className = "test-result";
-
-            try {
-                const resp = await fetch("/api/check", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ api_url: apiUrl, api_key: apiKey, model }),
-                });
-                const result = await resp.json();
-                testResult.textContent = result.message;
-                testResult.className = result.ok ? "test-result success" : "test-result fail";
-            } catch (e) {
-                testResult.textContent = "网络错误，无法连接到服务器";
-                testResult.className = "test-result fail";
-            } finally {
-                testBtn.disabled = false;
-                testBtn.classList.remove("loading");
-                testBtn.textContent = "测试连接";
-            }
-        });
-
-        // ================================================================
-        //  刷新模型列表
-        // ================================================================
-
-        /** 调用后端 /api/models 获取可用模型列表并填充下拉框 */
-        async function fetchModels() {
-            const apiUrl = apiUrlInput.value.trim();
-            const apiKey = apiKeyInput.value.trim();
-
-            if (!apiUrl || !apiKey) {
-                modelLoadingText.textContent = "请先填写 API 地址和 Key";
-                return;
-            }
-
-            // 记住当前选中的模型（用于加载后恢复）
-            const previousModel = modelNameInput.value;
-
-            // 进入加载状态
-            refreshModelsBtn.disabled = true;
-            refreshModelsBtn.classList.add("loading");
-            modelLoadingText.textContent = "正在加载模型列表...";
-
-            // 清空并显示加载中
-            modelNameInput.innerHTML = '<option value="">加载中...</option>';
-
-            try {
-                const resp = await fetch("/api/models", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ api_url: apiUrl, api_key: apiKey }),
-                });
-                const result = await resp.json();
-
-                // 清空下拉框
-                modelNameInput.innerHTML = "";
-
-                if (result.ok && result.models && result.models.length > 0) {
-                    // 填充模型列表
-                    for (const m of result.models) {
-                        const opt = document.createElement("option");
-                        opt.value = m;
-                        opt.textContent = m;
-                        modelNameInput.appendChild(opt);
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                if (trimmed.startsWith("data: ")) {
+                    const dataContent = trimmed.slice(6);
+                    if (dataContent.trim() === "[DONE]") break;
+                    try {
+                        const parsed = JSON.parse(dataContent);
+                        if (parsed.error) {
+                            const errText = typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
+                            fullContent += errText;
+                            assistantBubble.textContent = fullContent;
+                            assistantBubble.className = "message error";
+                            scrollToBottom();
+                        } else {
+                            const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.text || "";
+                            if (delta) { fullContent += delta; assistantBubble.textContent = fullContent; scrollToBottom(); }
+                        }
+                    } catch (e) {
+                        if (dataContent.trim()) { fullContent += dataContent; assistantBubble.textContent = fullContent; scrollToBottom(); }
                     }
-                    modelLoadingText.textContent = `共 ${result.models.length} 个模型可用`;
-                    // 尝试恢复之前选中的模型
-                    if (previousModel && result.models.includes(previousModel)) {
-                        modelNameInput.value = previousModel;
-                    }
-                } else {
-                    // 没有模型，提供一个手动输入选项
-                    modelNameInput.innerHTML = '<option value="">未获取到模型</option>';
-                    modelLoadingText.textContent = result.message || "未获取到模型列表，请检查 API 设置";
                 }
-            } catch (e) {
-                modelNameInput.innerHTML = '<option value="">加载失败</option>';
-                modelLoadingText.textContent = "网络错误，无法获取模型列表";
-            } finally {
-                refreshModelsBtn.disabled = false;
-                refreshModelsBtn.classList.remove("loading");
             }
         }
 
-        // 刷新按钮点击
-        refreshModelsBtn.addEventListener("click", fetchModels);
-
-        // 打开设置面板时，如果已有 API 地址和 Key，自动加载模型列表
-        settingsBtn.addEventListener("click", () => {
-            settingsOverlay.classList.add("active");
-            const apiUrl = apiUrlInput.value.trim();
-            const apiKey = apiKeyInput.value.trim();
-            // 如果已有 API 信息且下拉框只有默认选项，自动加载
-            if (apiUrl && apiKey && modelNameInput.options.length <= 1) {
-                fetchModels();
+        // buffer 剩余
+        if (buffer.trim() && buffer.trim().startsWith("data: ")) {
+            const dc = buffer.trim().slice(6);
+            if (dc.trim() !== "[DONE]") {
+                try {
+                    const parsed = JSON.parse(dc);
+                    if (parsed.error) {
+                        fullContent += typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
+                        assistantBubble.className = "message error";
+                    } else {
+                        const delta = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.text || "";
+                        if (delta) fullContent += delta;
+                    }
+                } catch (e) { if (dc.trim()) fullContent += dc; }
             }
-        });
+        }
 
-        // ================================================================
-        //  初始化
-        // ================================================================
-
-        // 加载已保存的设置
-        loadSettings();
-
-        // 渲染初始空状态
-        renderMessages();
-
-        // 聚焦输入框
+        assistantBubble.textContent = fullContent;
+        if (fullContent.trim()) {
+            messages.push({ role: "assistant", content: fullContent });
+        } else {
+            assistantBubble.textContent = "（未收到有效回复，请检查 API 设置）";
+            assistantBubble.className = "message error";
+            messages.push({ role: "assistant", content: "（未收到有效回复，请检查 API 设置）" });
+        }
+        scrollToBottom();
+    } catch (err) {
+        hideLoading();
+        if (assistantBubble.parentNode) assistantBubble.parentNode.removeChild(assistantBubble);
+        let errorMsg = err.name === "AbortError" ? "请求超时，请检查网络" : (err.message || "请求失败");
+        showToast(errorMsg);
+        if (emptyState.parentNode) emptyState.remove();
+        const eb = document.createElement("div");
+        eb.className = "message error";
+        eb.textContent = "⚠️ " + errorMsg;
+        chatArea.appendChild(eb);
+        scrollToBottom();
+        messages.push({ role: "assistant", content: "⚠️ " + errorMsg });
+    } finally {
+        clearTimeout(timeoutId);
+        isStreaming = false;
+        currentAbortController = null;
+        setInputEnabled(true);
         messageInput.focus();
+    }
+}
 
-        // 控制台提示
-        console.log("AI 对话应用已启动！");
-        console.log("提示：点击右上角 ⚙️ 配置 API 后即可开始对话。");
-    </script>
+// ================================================================
+//  辅助函数
+// ================================================================
+function setInputEnabled(enabled) {
+    messageInput.disabled = !enabled;
+    sendBtn.disabled = !enabled;
+    sendBtn.textContent = enabled ? "➤" : "⋯";
+}
+
+function autoResizeTextarea() {
+    messageInput.style.height = "auto";
+    messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
+}
+
+function addUserMessage(content) {
+    messages.push({ role: "user", content });
+    if (emptyState.parentNode) emptyState.remove();
+    const bubble = document.createElement("div");
+    bubble.className = "message user";
+    bubble.textContent = content;
+    chatArea.appendChild(bubble);
+    scrollToBottom();
+}
+
+function addAssistantBubble() {
+    if (emptyState.parentNode) emptyState.remove();
+    const div = document.createElement("div");
+    div.className = "message assistant";
+    div.textContent = "";
+    chatArea.appendChild(div);
+    scrollToBottom();
+    return div;
+}
+
+let loadingIndicator = null;
+function showLoading() {
+    if (loadingIndicator) return;
+    if (emptyState.parentNode) emptyState.remove();
+    loadingIndicator = document.createElement("div");
+    loadingIndicator.className = "loading-indicator";
+    loadingIndicator.innerHTML = '<span class="loading-dot"></span><span class="loading-dot"></span><span class="loading-dot"></span>';
+    chatArea.appendChild(loadingIndicator);
+    scrollToBottom();
+}
+function hideLoading() {
+    if (loadingIndicator && loadingIndicator.parentNode) loadingIndicator.parentNode.removeChild(loadingIndicator);
+    loadingIndicator = null;
+}
+
+function scrollToBottom() { requestAnimationFrame(() => { chatArea.scrollTop = chatArea.scrollHeight; }); }
+
+// ================================================================
+//  事件绑定
+// ================================================================
+sendBtn.addEventListener("click", () => {
+    const text = messageInput.value.trim();
+    if (!text || isStreaming) return;
+    messageInput.value = "";
+    messageInput.style.height = "auto";
+    sendMessage(text);
+});
+
+messageInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendBtn.click(); }
+});
+messageInput.addEventListener("input", autoResizeTextarea);
+
+// 设置面板
+settingsBtn.addEventListener("click", () => {
+    settingsOverlay.classList.add("active");
+    settingsMsg.className = "settings-msg";
+    loadAccounts();
+});
+settingsCloseBtn.addEventListener("click", () => settingsOverlay.classList.remove("active"));
+settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) settingsOverlay.classList.remove("active"); });
+
+// ================================================================
+//  初始化
+// ================================================================
+messageInput.focus();
+console.log("AI 对话应用已启动！");
+</script>
 </body>
 </html>
