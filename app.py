@@ -19,18 +19,65 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ai-chat-secret-key-change-in-production")
 
 # ================================================================
-#  数据库初始化
+#  数据库（支持 SQLite 本地开发 / PostgreSQL Render 生产）
 # ================================================================
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 _accounts_lock = threading.Lock()
+_USE_PG = bool(DATABASE_URL)
 
 
-def _get_db() -> sqlite3.Connection:
-    """获取数据库连接（每次调用新建，线程安全）"""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
+class _DBConnection:
+    """统一的数据库连接包装，兼容 SQLite 和 PostgreSQL"""
+
+    def __init__(self):
+        if _USE_PG:
+            import psycopg2
+            import psycopg2.extras
+            self._conn = psycopg2.connect(DATABASE_URL)
+            self._conn.autocommit = False
+            self._extras = psycopg2.extras
+        else:
+            self._conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+
+    def execute(self, sql, params=None):
+        if _USE_PG:
+            sql = sql.replace("?", "%s")
+            cur = self._conn.cursor(cursor_factory=self._extras.RealDictCursor)
+            if params is not None:
+                cur.execute(sql, params)
+            else:
+                cur.execute(sql)
+            return cur
+        else:
+            if params is not None:
+                return self._conn.execute(sql, params)
+            else:
+                return self._conn.execute(sql)
+
+    def executescript(self, sql):
+        if _USE_PG:
+            cur = self._conn.cursor()
+            for stmt in sql.split(";"):
+                stmt = stmt.strip()
+                if stmt:
+                    cur.execute(stmt)
+            cur.close()
+        else:
+            self._conn.executescript(sql)
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+
+def _get_db():
+    """获取数据库连接"""
+    return _DBConnection()
 
 
 def _init_db():
