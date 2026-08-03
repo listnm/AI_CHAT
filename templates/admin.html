@@ -27,6 +27,8 @@
         }
         .badge-green { background: #e8f5e9; color: #2e7d32; }
         .badge-gray { background: #f5f5f5; color: #757575; }
+        .badge-red { background: #fff0f0; color: #c62828; }
+        .badge-blue { background: #e8f2ff; color: #1b74e4; }
         .key-text { font-family: monospace; font-size: 11px; color: #757575; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
         .copy-btn, .btn-small {
             font-size: 11px; padding: 3px 10px; border: 1px solid #d0d5dd; border-radius: 4px;
@@ -37,6 +39,8 @@
         .btn-small.danger:hover { background: #fff0f0; }
         .btn-small.primary { color: #1b74e4; border-color: #1b74e4; }
         .btn-small.primary:hover { background: #e8f2ff; }
+        .btn-small.success { color: #2e7d32; border-color: #2e7d32; }
+        .btn-small.success:hover { background: #e8f5e9; }
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
         .login-form {
             max-width: 360px; margin: 80px auto; background: #fff; border-radius: 12px;
@@ -79,6 +83,14 @@
         }
         .proxy-box .label { color: #65676b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .proxy-box .value { color: #1b74e4; word-break: break-all; }
+        .fastest-row { background: #f0fff4 !important; }
+        .fastest-row td { border-bottom-color: #c8e6c9; }
+        .refresh-model-btn {
+            width: 36px; height: 36px; border: 1px solid #d0d5dd; border-radius: 6px;
+            background: #f5f7fa; font-size: 16px; cursor: pointer; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .refresh-model-btn:hover { background: #e4e6ea; }
         @media (max-width: 600px) {
             body { padding: 12px; }
             .card { padding: 12px; }
@@ -125,6 +137,13 @@
     <div class="card">
         <h2>📋 账号管理</h2>
         <div id="accountMsg" class="msg"></div>
+
+        <!-- 批量操作 -->
+        <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-small primary" onclick="adminSpeedTestAll()">🚀 全部测速</button>
+            <span id="fastestLabel" style="font-size:12px;color:#2e7d32;display:none;align-self:center;"></span>
+        </div>
+
         <!-- 添加账号 -->
         <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e9edf2;">
             <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#1c1e21;">添加新账号</div>
@@ -132,10 +151,14 @@
                 <input type="text" id="newName" placeholder="名称" />
                 <input type="url" id="newUrl" placeholder="API 地址 https://..." />
                 <input type="password" id="newKey" placeholder="API Key" />
-                <input type="text" id="newModel" placeholder="模型名" />
+            </div>
+            <div class="form-row">
+                <select id="newModel"><option value="">— 先填地址和 Key 再点右侧刷新 —</option></select>
+                <button class="refresh-model-btn" id="newRefreshModels" title="从 API 获取模型列表">↻</button>
                 <button class="btn-small primary" onclick="adminAddAccount()">添加</button>
             </div>
         </div>
+
         <!-- 账号列表 -->
         {% if accounts %}
         <table>
@@ -151,16 +174,21 @@
             </thead>
             <tbody>
                 {% for acc in accounts %}
-                <tr>
+                <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
                     <td>{{ acc.name }}</td>
-                    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ acc.api_url }}">{{ acc.api_url }}</td>
-                    <td>{{ acc.model }}</td>
+                    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ acc.api_url }}">{{ acc.api_url }}</td>
+                    <td>
+                        <select id="model-{{ acc.id }}" style="padding:3px 6px;border:1px solid #d0d5dd;border-radius:4px;font-size:12px;max-width:130px;">
+                            <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                        </select>
+                        <button class="refresh-model-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表" style="width:28px;height:28px;font-size:13px;display:inline-flex;vertical-align:middle;">↻</button>
+                    </td>
                     <td>
                         <span class="key-text" title="{{ acc.api_key }}">{{ acc.api_key_preview }}</span>
                         <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">复制</button>
                         <input type="hidden" id="key-{{ acc.id }}" value="{{ acc.api_key }}">
                     </td>
-                    <td>
+                    <td id="latency-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
                         <span class="badge badge-green">{{ acc.latency_ms }}ms</span>
                         {% else %}
@@ -168,6 +196,8 @@
                         {% endif %}
                     </td>
                     <td>
+                        <button class="btn-small success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
+                        <button class="btn-small primary" onclick="adminSaveModel('{{ acc.id }}')">保存</button>
                         <button class="btn-small danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
                     </td>
                 </tr>
@@ -244,13 +274,119 @@ function showAdminMsg(text, type) {
     el.className = 'msg ' + type;
 }
 
+// ================================================================
+//  刷新模型列表（添加表单）
+// ================================================================
+document.getElementById('newRefreshModels').addEventListener('click', async function() {
+    const url = document.getElementById('newUrl').value.trim();
+    const key = document.getElementById('newKey').value.trim();
+    if (!url || !key) {
+        showAdminMsg('请先填写 API 地址和 Key', 'fail');
+        return;
+    }
+    const btn = this;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+    const sel = document.getElementById('newModel');
+    sel.innerHTML = '<option value="">加载中...</option>';
+
+    try {
+        const resp = await fetch('/api/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_url: url, api_key: key }),
+        });
+        const result = await resp.json();
+        sel.innerHTML = '';
+        if (result.ok && result.models.length > 0) {
+            result.models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m; opt.textContent = m;
+                sel.appendChild(opt);
+            });
+            showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
+        } else {
+            sel.innerHTML = '<option value="">未获取到模型</option>';
+            showAdminMsg(result.message || '未获取到模型', 'fail');
+        }
+    } catch (e) {
+        sel.innerHTML = '<option value="">加载失败</option>';
+        showAdminMsg('网络错误', 'fail');
+    } finally {
+        btn.textContent = '↻';
+        btn.disabled = false;
+    }
+});
+
+// ================================================================
+//  刷新模型列表（已有账号）
+// ================================================================
+async function adminRefreshModels(id) {
+    const sel = document.getElementById('model-' + id);
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">加载中...</option>';
+
+    try {
+        const resp = await fetch('/api/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: id }),
+        });
+        const result = await resp.json();
+        sel.innerHTML = '';
+        if (result.ok && result.models.length > 0) {
+            result.models.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m; opt.textContent = m;
+                sel.appendChild(opt);
+            });
+            // 恢复选中的模型
+            if (currentVal && [...sel.options].some(o => o.value === currentVal)) {
+                sel.value = currentVal;
+            }
+            showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
+        } else {
+            sel.innerHTML = '<option value="">未获取到模型</option>';
+            showAdminMsg(result.message || '未获取到模型', 'fail');
+        }
+    } catch (e) {
+        sel.innerHTML = '<option value="">加载失败</option>';
+        showAdminMsg('网络错误', 'fail');
+    }
+}
+
+// ================================================================
+//  保存模型选择
+// ================================================================
+async function adminSaveModel(id) {
+    const model = document.getElementById('model-' + id).value;
+    if (!model) {
+        showAdminMsg('请先选择模型', 'fail');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/accounts/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: model }),
+        });
+        const result = await resp.json();
+        showAdminMsg(result.message, result.ok ? 'success' : 'fail');
+    } catch (e) {
+        showAdminMsg('保存失败', 'fail');
+    }
+}
+
+// ================================================================
+//  添加账号
+// ================================================================
 async function adminAddAccount() {
     const name = document.getElementById('newName').value.trim();
     const url = document.getElementById('newUrl').value.trim();
     const key = document.getElementById('newKey').value.trim();
-    const model = document.getElementById('newModel').value.trim();
+    const model = document.getElementById('newModel').value;
     if (!name || !url || !key || !model) {
-        showAdminMsg('请填写完整信息', 'fail');
+        showAdminMsg('请填写完整信息（名称、地址、Key、模型）', 'fail');
         return;
     }
     try {
@@ -261,11 +397,7 @@ async function adminAddAccount() {
         });
         const result = await resp.json();
         if (result.ok) {
-            showAdminMsg('添加成功', 'success');
-            document.getElementById('newName').value = '';
-            document.getElementById('newUrl').value = '';
-            document.getElementById('newKey').value = '';
-            document.getElementById('newModel').value = '';
+            showAdminMsg('添加成功，即将刷新', 'success');
             setTimeout(() => location.reload(), 800);
         } else {
             showAdminMsg(result.message, 'fail');
@@ -275,6 +407,9 @@ async function adminAddAccount() {
     }
 }
 
+// ================================================================
+//  删除账号
+// ================================================================
 async function adminDeleteAccount(id) {
     if (!confirm('确定要删除这个账号吗？')) return;
     try {
@@ -290,6 +425,110 @@ async function adminDeleteAccount(id) {
         showAdminMsg('网络错误', 'fail');
     }
 }
+
+// ================================================================
+//  单个账号测速
+// ================================================================
+async function adminTestAccount(id) {
+    const cell = document.getElementById('latency-' + id);
+    cell.innerHTML = '<span class="badge badge-blue">测速中...</span>';
+
+    try {
+        const start = Date.now();
+        const resp = await fetch('/api/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_id: id }),
+        });
+        const result = await resp.json();
+        const elapsed = Date.now() - start;
+
+        // 更新后端延迟数据
+        await fetch('/api/accounts/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ latency_ms: result.ok ? elapsed : null, last_speed_test: new Date().toISOString() }),
+        });
+
+        if (result.ok) {
+            cell.innerHTML = '<span class="badge badge-green">' + elapsed + 'ms</span>';
+            showAdminMsg('「' + (document.querySelector('#row-' + id + ' td:first-child')?.textContent || '') + '」' + elapsed + 'ms 可用', 'success');
+        } else {
+            cell.innerHTML = '<span class="badge badge-red">不可用</span>';
+            showAdminMsg(result.message, 'fail');
+        }
+        // 更新最快标记
+        updateFastestLabel();
+    } catch (e) {
+        cell.innerHTML = '<span class="badge badge-red">错误</span>';
+        showAdminMsg('测速请求失败', 'fail');
+    }
+}
+
+// ================================================================
+//  全部测速
+// ================================================================
+async function adminSpeedTestAll() {
+    showAdminMsg('正在测试所有账号...', 'info');
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '⏳ 测速中...';
+
+    // 找到所有账号 ID
+    const rows = document.querySelectorAll('tbody tr');
+    for (const row of rows) {
+        const id = row.id.replace('row-', '');
+        if (!id) continue;
+        await adminTestAccount(id);
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🚀 全部测速';
+
+    // 找出最快账号
+    updateFastestLabel();
+}
+
+// ================================================================
+//  更新最快标记
+// ================================================================
+function updateFastestLabel() {
+    let fastest = null;
+    let fastestId = null;
+
+    document.querySelectorAll('tbody tr').forEach(row => {
+        const id = row.id.replace('row-', '');
+        const cell = document.getElementById('latency-' + id);
+        const badge = cell?.querySelector('.badge-green');
+        if (!badge) return;
+        const ms = parseInt(badge.textContent);
+        if (ms && (!fastest || ms < fastest)) {
+            fastest = ms;
+            fastestId = id;
+        }
+    });
+
+    // 更新行样式
+    document.querySelectorAll('tbody tr').forEach(row => {
+        row.classList.remove('fastest-row');
+    });
+    if (fastestId) {
+        const row = document.getElementById('row-' + fastestId);
+        if (row) row.classList.add('fastest-row');
+    }
+
+    const label = document.getElementById('fastestLabel');
+    if (fastestId) {
+        const name = document.querySelector('#row-' + fastestId + ' td:first-child')?.textContent || '';
+        label.textContent = '✅ 当前最快：' + name + ' (' + fastest + 'ms)';
+        label.style.display = 'inline';
+    } else {
+        label.style.display = 'none';
+    }
+}
+
+// 页面加载完成后更新最快标记
+document.addEventListener('DOMContentLoaded', updateFastestLabel);
 </script>
 </body>
 </html>

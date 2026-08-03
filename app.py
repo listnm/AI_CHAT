@@ -306,6 +306,13 @@ def admin():
             "updated_at": c.get("updated_at", ""),
         })
 
+    # 找出最快延迟
+    fastest_latency = None
+    for acc in safe_accounts:
+        if acc.get("latency_ms") is not None:
+            if fastest_latency is None or acc["latency_ms"] < fastest_latency:
+                fastest_latency = acc["latency_ms"]
+
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
 
@@ -317,6 +324,7 @@ def admin():
         base_url=base_url,
         proxy_url=proxy_url,
         proxy_api_key=PROXY_API_KEY,
+        fastest_latency=fastest_latency,
     )
 
 
@@ -428,9 +436,15 @@ def api_accounts_update(account_id):
                 acc["api_key"] = data["api_key"].strip()
             if "model" in data:
                 acc["model"] = data["model"].strip()
-            # 修改后清除延迟记录，需要重新测速
-            acc["latency_ms"] = None
-            acc["last_speed_test"] = None
+            # 仅在修改核心信息（名称/地址/Key）时清除延迟记录
+            if "name" in data or "api_url" in data or ("api_key" in data and data.get("api_key","").strip()):
+                acc["latency_ms"] = None
+                acc["last_speed_test"] = None
+            # 允许单独更新延迟数据（来自测速）
+            if "latency_ms" in data:
+                acc["latency_ms"] = data["latency_ms"]
+            if "last_speed_test" in data:
+                acc["last_speed_test"] = data["last_speed_test"]
             _save_accounts(accounts)
             return {"ok": True, "message": "账号已更新"}
     return {"ok": False, "message": "账号不存在"}
