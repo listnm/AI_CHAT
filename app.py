@@ -9,6 +9,7 @@ import json
 import time
 import uuid
 import base64
+import sqlite3
 import threading
 import requests
 from datetime import datetime, timedelta
@@ -17,37 +18,144 @@ from flask import Flask, render_template, request, Response, stream_with_context
 app = Flask(__name__)
 
 # ================================================================
-#  账号存储（JSON 文件，无需数据库）
+#  数据库初始化
 # ================================================================
 
-ACCOUNTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "accounts.json")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data.db")
 _accounts_lock = threading.Lock()
 
 
+def _get_db() -> sqlite3.Connection:
+    """获取数据库连接（每次调用新建，线程安全）"""
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _init_db():
+    """初始化数据库表结构"""
+    conn = _get_db()
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS accounts (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            api_url TEXT NOT NULL,
+            api_key_encrypted TEXT NOT NULL,
+            model TEXT NOT NULL,
+            latency_ms INTEGER,
+            last_speed_test TEXT
+        );
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '新对话',
+            messages TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+
+# ================================================================
+#  API Key 加密 / 解密
+# ================================================================
+
+try:
+    from cryptography.fernet import Fernet as _Fernet
+
+    def _get_encryption_key() -> bytes:
+        """获取加密密钥：优先从环境变量，否则从文件读取或生成"""
+        env_key = os.environ.get("ENCRYPTION_KEY")
+        if env_key:
+            return env_key.encode()
+        key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".encryption_key")
+        if os.path.exists(key_file):
+            with open(key_file, "rb") as f:
+                return f.read()
+        key = _Fernet.generate_key()
+        with open(key_file, "wb") as f:
+            f.write(key)
+        return key
+
+    _cipher = _Fernet(_get_encryption_key())
+
+    def _encrypt(text: str) -> str:
+        return _cipher.encrypt(text.encode()).decode()
+
+    def _decrypt(text: str) -> str:
+        return _cipher.decrypt(text.encode()).decode()
+
+except ImportError:
+    # 没有 cryptography 库时，使用 base64 简单编码（不加密，但至少有层编码）
+    import base64 as _base64
+
+    def _encrypt(text: str) -> str:
+        return _base64.b64encode(text.encode()).decode()
+
+    def _decrypt(text: str) -> str:
+        return _base64.b64decode(text.encode()).decode()
+
+
+# ================================================================
+#  账号存储（SQLite + 加密）
+# ================================================================
+
+
 def _load_accounts() -> list:
-    """从 JSON 文件加载所有账号"""
-    if not os.path.exists(ACCOUNTS_FILE):
-        return []
+    """从数据库加载所有账号"""
+    conn = _get_db()
     try:
-        with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else []
-    except (json.JSONDecodeError, IOError):
-        return []
+        rows = conn.execute("SELECT * FROM accounts").fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                "id": row["id"],
+                "name": row["name"],
+                "api_url": row["api_url"],
+                "api_key": _decrypt(row["api_key_encrypted"]),
+                "model": row["model"],
+                "latency_ms": row["latency_ms"],
+                "last_speed_test": row["last_speed_test"],
+            })
+        return result
+    finally:
+        conn.close()
 
 
 def _save_accounts(accounts: list):
-    """保存账号列表到 JSON 文件"""
-    with open(ACCOUNTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(accounts, f, ensure_ascii=False, indent=2)
+    """全量保存账号列表到数据库"""
+    conn = _get_db()
+    try:
+        conn.execute("DELETE FROM accounts")
+        for acc in accounts:
+            conn.execute(
+                "INSERT INTO accounts (id, name, api_url, api_key_encrypted, model, latency_ms, last_speed_test) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (acc["id"], acc["name"], acc["api_url"], _encrypt(acc["api_key"]), acc["model"], acc.get("latency_ms"), acc.get("last_speed_test"))
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _find_account(account_id: str) -> dict | None:
-    """按 ID 查找账号"""
-    for acc in _load_accounts():
-        if acc["id"] == account_id:
-            return acc
-    return None
+    """按 ID 查找账号（直接查数据库，更高效）"""
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT * FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "api_url": row["api_url"],
+            "api_key": _decrypt(row["api_key_encrypted"]),
+            "model": row["model"],
+            "latency_ms": row["latency_ms"],
+            "last_speed_test": row["last_speed_test"],
+        }
+    finally:
+        conn.close()
 
 
 # ================================================================
@@ -412,41 +520,54 @@ def api_upload():
 
 
 # ================================================================
-#  对话管理（服务端存储，每日自动清理旧对话）
+#  对话管理（SQLite 存储，每日自动清理旧对话）
 # ================================================================
-
-CONVERSATIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conversations.json")
 
 
 def _load_conversations() -> list:
-    if not os.path.exists(CONVERSATIONS_FILE):
-        return []
+    """从数据库加载所有对话"""
+    conn = _get_db()
     try:
-        with open(CONVERSATIONS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return []
+        rows = conn.execute("SELECT * FROM conversations ORDER BY updated_at DESC").fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                "id": row["id"],
+                "title": row["title"],
+                "messages": json.loads(row["messages"]),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            })
+        return result
+    finally:
+        conn.close()
 
 
 def _save_conversations(convs: list):
-    with open(CONVERSATIONS_FILE, "w", encoding="utf-8") as f:
-        json.dump(convs, f, ensure_ascii=False, indent=2)
+    """全量保存对话列表到数据库"""
+    conn = _get_db()
+    try:
+        conn.execute("DELETE FROM conversations")
+        for c in convs:
+            conn.execute(
+                "INSERT INTO conversations (id, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (c["id"], c.get("title", "新对话"), json.dumps(c.get("messages", [])), c.get("created_at", ""), c.get("updated_at", ""))
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _cleanup_old_conversations():
     """删除超过 24 小时的对话"""
-    convs = _load_conversations()
     now = datetime.now()
-    keep = []
-    for c in convs:
-        try:
-            updated = datetime.fromisoformat(c.get("updated_at", ""))
-            if now - updated < timedelta(hours=24):
-                keep.append(c)
-        except (ValueError, TypeError):
-            keep.append(c)
-    if len(keep) != len(convs):
-        _save_conversations(keep)
+    cutoff = (now - timedelta(hours=24)).isoformat()
+    conn = _get_db()
+    try:
+        conn.execute("DELETE FROM conversations WHERE updated_at < ?", (cutoff,))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 @app.route("/api/conversations", methods=["GET"])
@@ -657,6 +778,43 @@ def chat():
     )
 
 
+def _migrate_old_data():
+    """从旧 JSON 文件迁移数据到数据库（兼容升级）"""
+    old_accounts_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "accounts.json")
+    old_conversations_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conversations.json")
+
+    # 迁移账号
+    if os.path.exists(old_accounts_file):
+        try:
+            with open(old_accounts_file, "r", encoding="utf-8") as f:
+                old_accounts = json.load(f)
+            if isinstance(old_accounts, list) and old_accounts:
+                existing = _load_accounts()
+                if not existing:
+                    _save_accounts(old_accounts)
+                    print(f"已迁移 {len(old_accounts)} 个账号从 accounts.json 到数据库")
+            os.rename(old_accounts_file, old_accounts_file + ".bak")
+        except Exception as e:
+            print(f"迁移 accounts.json 失败: {e}")
+
+    # 迁移对话
+    if os.path.exists(old_conversations_file):
+        try:
+            with open(old_conversations_file, "r", encoding="utf-8") as f:
+                old_convs = json.load(f)
+            if isinstance(old_convs, list) and old_convs:
+                existing = _load_conversations()
+                if not existing:
+                    _save_conversations(old_convs)
+                    print(f"已迁移 {len(old_convs)} 个对话从 conversations.json 到数据库")
+            os.rename(old_conversations_file, old_conversations_file + ".bak")
+        except Exception as e:
+            print(f"迁移 conversations.json 失败: {e}")
+
+
 if __name__ == "__main__":
+    _init_db()
+    # 迁移旧数据（如果存在 accounts.json 则导入到数据库）
+    _migrate_old_data()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)

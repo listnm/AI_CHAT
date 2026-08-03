@@ -1,0 +1,17 @@
+# 运行时数据（SQLite 数据库 + 加密密钥）
+data.db
+.encryption_key
+
+# 旧 JSON 存储文件（已迁移到 SQLite）
+accounts.json
+accounts.json.bak
+conversations.json
+conversations.json.bak
+
+# 上传文件
+uploads/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
