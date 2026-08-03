@@ -159,12 +159,107 @@
         /* ===== Toast ===== */
         .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 20px; border-radius: 12px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .3s ease; pointer-events: none; max-width: 400px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
         .toast.show { opacity: 1; }
+
+        /* ===== 文件上传按钮 ===== */
+        .file-upload-btn {
+            width: 36px; height: 36px; border: none; border-radius: 50%; background: transparent;
+            color: #5f6368; font-size: 18px; cursor: pointer; display: flex; align-items: center;
+            justify-content: center; flex-shrink: 0; transition: background .2s;
+        }
+        .file-upload-btn:hover { background: #f0f2f5; }
+        .file-upload-btn:active { background: #e4e6ea; }
+        .file-input-hidden { display: none; }
+
+        /* ===== 图片预览条 ===== */
+        .preview-bar {
+            display: none; align-items: center; gap: 8px; padding: 4px 16px 0 16px;
+            background: #fff; flex-shrink: 0; overflow-x: auto;
+        }
+        .preview-bar.active { display: flex; }
+        .preview-item {
+            position: relative; width: 48px; height: 48px; border-radius: 8px; overflow: hidden;
+            flex-shrink: 0; border: 1px solid #e9edf2;
+        }
+        .preview-item img { width: 100%; height: 100%; object-fit: cover; }
+        .preview-item .preview-remove {
+            position: absolute; top: -4px; right: -4px; width: 18px; height: 18px;
+            border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; border: none;
+            font-size: 11px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .preview-item .preview-name {
+            font-size: 10px; color: #fff; background: rgba(0,0,0,.5);
+            position: absolute; bottom: 0; left: 0; right: 0; text-align: center;
+            padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* ===== 消息中的图片 ===== */
+        .message .msg-image { max-width: 100%; border-radius: 8px; margin-top: 6px; display: block; }
+        .message .msg-file {
+            display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px;
+            background: rgba(0,0,0,.06); border-radius: 8px; font-size: 13px; margin-top: 4px;
+        }
+        .message.user .msg-file { background: rgba(255,255,255,.15); }
+
+        /* ===== 对话管理面板 ===== */
+        .conversation-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.35); z-index: 100; animation: fadeIn .2s ease-out; }
+        .conversation-overlay.active { display: block; }
+        .conversation-panel {
+            position: absolute; top: 0; left: 0; bottom: 0; width: 300px; max-width: 80%;
+            background: #fff; display: flex; flex-direction: column; animation: slideIn .25s ease-out;
+            box-shadow: 2px 0 20px rgba(0,0,0,.1);
+        }
+        @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+        .conversation-header {
+            padding: 16px 16px 12px; border-bottom: 1px solid #e9edf2; display: flex;
+            align-items: center; justify-content: space-between; flex-shrink: 0;
+        }
+        .conversation-header h2 { font-size: 17px; font-weight: 600; color: #1c1e21; margin: 0; }
+        .conversation-actions { display: flex; gap: 6px; }
+        .conversation-actions button {
+            padding: 6px 12px; border-radius: 8px; border: none; font-size: 13px; cursor: pointer;
+            transition: background .2s;
+        }
+        .btn-conv-new { background: #007aff; color: #fff; }
+        .btn-conv-new:hover { background: #0062cc; }
+        .btn-conv-close { background: #f0f2f5; color: #5f6368; }
+        .btn-conv-close:hover { background: #e4e6ea; }
+        .conversation-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .conversation-item {
+            display: flex; align-items: center; padding: 10px 12px; border-radius: 10px;
+            cursor: pointer; transition: background .2s; margin-bottom: 2px; gap: 8px;
+        }
+        .conversation-item:hover { background: #f5f7fa; }
+        .conversation-item.active { background: #e8f2ff; }
+        .conversation-item .conv-title { flex: 1; font-size: 14px; color: #1c1e21; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .conversation-item .conv-time { font-size: 11px; color: #8e9399; white-space: nowrap; }
+        .conversation-item .conv-delete {
+            width: 24px; height: 24px; border: none; border-radius: 50%; background: transparent;
+            color: #8e9399; font-size: 14px; cursor: pointer; display: none; align-items: center;
+            justify-content: center; flex-shrink: 0;
+        }
+        .conversation-item:hover .conv-delete { display: flex; }
+        .conversation-item .conv-delete:hover { background: #fff0f0; color: #ff3b30; }
+        .conv-auto-cleanup {
+            font-size: 11px; color: #8e9399; padding: 8px 16px; border-top: 1px solid #e9edf2; flex-shrink: 0; text-align: center;
+        }
+
+        /* ===== 编辑账号弹窗 ===== */
+        .edit-modal { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.35); z-index: 110; animation: fadeIn .2s ease-out; }
+        .edit-modal.active { display: block; }
+        .edit-modal-content {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+            background: #fff; border-radius: 20px; padding: 24px; width: calc(100% - 32px);
+            max-width: 420px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.15);
+            animation: panelIn .25s ease-out;
+        }
+        .edit-modal-content h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1c1e21; }
     </style>
 </head>
 <body>
 <div class="app-container" id="app">
     <div class="header">
-        <span class="header-title">AI 对话</span>
+        <button class="header-btn" id="conversationBtn" title="对话列表" aria-label="对话列表">☰</button>
+        <span class="header-title" id="headerTitle">AI 对话</span>
         <button class="header-btn" id="settingsBtn" title="账号管理" aria-label="打开设置">⚙️</button>
     </div>
     <div class="chat-area" id="chatArea">
@@ -174,7 +269,10 @@
             <div class="empty-state-hint">点击右上角 ⚙️ 添加 API 账号后即可开始</div>
         </div>
     </div>
+    <div class="preview-bar" id="previewBar"></div>
     <div class="input-area">
+        <button class="file-upload-btn" id="fileUploadBtn" title="上传文件" aria-label="上传文件">📎</button>
+        <input type="file" id="fileInput" class="file-input-hidden" multiple />
         <div class="input-wrapper">
             <textarea id="messageInput" rows="1" placeholder="输入消息..." aria-label="输入消息"></textarea>
             <button class="send-btn" id="sendBtn" aria-label="发送">➤</button>
@@ -218,6 +316,49 @@
         </div>
     </div>
 </div>
+    <!-- 对话管理面板 -->
+    <div class="conversation-overlay" id="conversationOverlay">
+        <div class="conversation-panel" id="conversationPanel">
+            <div class="conversation-header">
+                <h2>对话列表</h2>
+                <div class="conversation-actions">
+                    <button class="btn-conv-new" id="convNewBtn">＋ 新建</button>
+                    <button class="btn-conv-close" id="convCloseBtn">关闭</button>
+                </div>
+            </div>
+            <div class="conversation-list" id="conversationList"></div>
+            <div class="conv-auto-cleanup">⏰ 超过 24 小时的对话将自动删除</div>
+        </div>
+    </div>
+
+    <!-- 编辑账号弹窗 -->
+    <div class="edit-modal" id="editModal">
+        <div class="edit-modal-content">
+            <h2>编辑账号</h2>
+            <div id="editMsg" class="settings-msg"></div>
+            <div class="form-group">
+                <label for="editName">账号名称</label>
+                <input type="text" id="editName" placeholder="如：AIHub、OpenAI" />
+            </div>
+            <div class="form-group">
+                <label for="editUrl">API 地址</label>
+                <input type="url" id="editUrl" placeholder="https://aihub.top" />
+            </div>
+            <div class="form-group">
+                <label for="editKey">API Key（留空不修改）</label>
+                <input type="password" id="editKey" placeholder="留空则不修改" />
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="editModel">模型名称</label>
+                    <select id="editModel"><option value="">— 先填信息再刷新 —</option></select>
+                </div>
+                <button class="btn-refresh-model" id="editRefreshModels" title="刷新模型列表" style="width:40px;height:40px;border:1px solid #e9edf2;border-radius:12px;background:#f5f7fa;font-size:18px;cursor:pointer;flex-shrink:0;margin-bottom:10px;">↻</button>
+            </div>
+            <button class="btn-primary" id="editSaveBtn">保存修改</button>
+            <button class="btn-close-panel" id="editCancelBtn" style="margin-top:8px;">取消</button>
+        </div>
+    </div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -242,6 +383,26 @@ const accModel = document.getElementById("accModel");
 const accRefreshModels = document.getElementById("accRefreshModels");
 const toastEl = document.getElementById("toast");
 
+// 新功能 DOM 引用
+const fileUploadBtn = document.getElementById("fileUploadBtn");
+const fileInput = document.getElementById("fileInput");
+const previewBar = document.getElementById("previewBar");
+const conversationBtn = document.getElementById("conversationBtn");
+const conversationOverlay = document.getElementById("conversationOverlay");
+const conversationList = document.getElementById("conversationList");
+const convNewBtn = document.getElementById("convNewBtn");
+const convCloseBtn = document.getElementById("convCloseBtn");
+const headerTitle = document.getElementById("headerTitle");
+const editModal = document.getElementById("editModal");
+const editName = document.getElementById("editName");
+const editUrl = document.getElementById("editUrl");
+const editKey = document.getElementById("editKey");
+const editModel = document.getElementById("editModel");
+const editRefreshModels = document.getElementById("editRefreshModels");
+const editSaveBtn = document.getElementById("editSaveBtn");
+const editCancelBtn = document.getElementById("editCancelBtn");
+const editMsg = document.getElementById("editMsg");
+
 // ================================================================
 //  状态
 // ================================================================
@@ -249,6 +410,9 @@ let messages = [];
 let isStreaming = false;
 let currentAbortController = null;
 let accounts = [];
+let uploadedFiles = []; // {file, type, filename, mime, data}
+let conversations = [];
+let currentConvId = null;
 
 // ================================================================
 //  Toast
@@ -312,6 +476,7 @@ function renderAccountList() {
             </div>
             <div class="account-actions">
                 <button class="btn-account-test" onclick="testAccount('${acc.id}')">测试</button>
+                <button class="btn-account-edit" onclick="editAccount('${acc.id}')" style="padding:4px 12px;border-radius:8px;font-size:12px;border:none;cursor:pointer;background:#f0f2f5;color:#5f6368;transition:background .2s;">编辑</button>
                 <button class="btn-account-delete" onclick="deleteAccount('${acc.id}')">删除</button>
             </div>
         </div>`;
@@ -349,6 +514,121 @@ async function deleteAccount(id) {
 }
 
 // ================================================================
+//  编辑账号
+// ================================================================
+let editingAccountId = null;
+
+async function editAccount(id) {
+    editingAccountId = id;
+    const acc = accounts.find(a => a.id === id);
+    if (!acc) return;
+    editName.value = acc.name || "";
+    editUrl.value = acc.api_url || "";
+    editKey.value = "";
+    editModel.innerHTML = `<option value="${escHtml(acc.model)}">${escHtml(acc.model)}</option>`;
+    editModel.value = acc.model;
+    editMsg.className = "settings-msg";
+    editModal.classList.add("active");
+}
+
+editCancelBtn.addEventListener("click", () => {
+    editModal.classList.remove("active");
+    editingAccountId = null;
+});
+
+editModal.addEventListener("click", (e) => {
+    if (e.target === editModal) {
+        editModal.classList.remove("active");
+        editingAccountId = null;
+    }
+});
+
+editRefreshModels.addEventListener("click", async () => {
+    const url = editUrl.value.trim();
+    const key = editKey.value.trim() || null;
+    // 如果 key 为空，尝试从已保存的账号获取
+    let apiKey = key;
+    if (!apiKey && editingAccountId) {
+        const acc = accounts.find(a => a.id === editingAccountId);
+        if (acc) apiKey = acc.api_key_preview; // 只有预览，所以需要先获取完整key
+    }
+    if (!url) { editMsg.textContent = "请填写 API 地址"; editMsg.className = "settings-msg fail"; return; }
+    // 通过后端获取完整key
+    editRefreshModels.disabled = true;
+    editRefreshModels.textContent = "⏳";
+    editModel.innerHTML = '<option value="">加载中...</option>';
+
+    try {
+        const resp = await fetch("/api/models", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_url: url, api_key: apiKey || "" }),
+        });
+        const result = await resp.json();
+        editModel.innerHTML = "";
+        if (result.ok && result.models.length > 0) {
+            result.models.forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m; opt.textContent = m;
+                editModel.appendChild(opt);
+            });
+            editMsg.textContent = `已加载 ${result.models.length} 个模型`;
+            editMsg.className = "settings-msg success";
+        } else {
+            editModel.innerHTML = '<option value="">未获取到模型</option>';
+            editMsg.textContent = result.message || "未获取到模型";
+            editMsg.className = "settings-msg fail";
+        }
+    } catch (e) {
+        editModel.innerHTML = '<option value="">加载失败</option>';
+        editMsg.textContent = "网络错误";
+        editMsg.className = "settings-msg fail";
+    } finally {
+        editRefreshModels.disabled = false;
+        editRefreshModels.textContent = "↻";
+    }
+});
+
+editSaveBtn.addEventListener("click", async () => {
+    const name = editName.value.trim();
+    const url = editUrl.value.trim();
+    const key = editKey.value.trim();
+    const model = editModel.value;
+
+    if (!name) { editMsg.textContent = "请输入账号名称"; editMsg.className = "settings-msg fail"; return; }
+    if (!url) { editMsg.textContent = "请输入 API 地址"; editMsg.className = "settings-msg fail"; return; }
+    if (!model) { editMsg.textContent = "请选择模型"; editMsg.className = "settings-msg fail"; return; }
+
+    editSaveBtn.disabled = true;
+    editSaveBtn.textContent = "保存中...";
+    try {
+        const body = { name, api_url: url, model };
+        if (key) body.api_key = key;
+        const resp = await fetch(`/api/accounts/${editingAccountId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
+        const result = await resp.json();
+        if (result.ok) {
+            editModal.classList.remove("active");
+            editingAccountId = null;
+            setSettingsMsg(result.message, "success");
+            await loadAccounts();
+        } else {
+            editMsg.textContent = result.message;
+            editMsg.className = "settings-msg fail";
+        }
+    } catch (e) {
+        editMsg.textContent = "保存失败";
+        editMsg.className = "settings-msg fail";
+    } finally {
+        editSaveBtn.disabled = false;
+        editSaveBtn.textContent = "保存修改";
+    }
+});
+
+// ================================================================
 //  全部测速
 // ================================================================
 speedTestBtn.addEventListener("click", async () => {
@@ -380,6 +660,251 @@ speedTestBtn.addEventListener("click", async () => {
         speedTestBtn.textContent = "🚀 全部测速";
     }
 });
+
+// ================================================================
+//  文件上传
+// ================================================================
+fileUploadBtn.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    for (const file of files) {
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const resp = await fetch("/api/upload", { method: "POST", body: formData });
+            const result = await resp.json();
+            if (result.ok) {
+                uploadedFiles.push({
+                    file: file,
+                    type: result.type,
+                    filename: result.filename,
+                    mime: result.mime,
+                    data: result.data,
+                });
+                addPreviewItem(result);
+            } else {
+                showToast(result.message || "上传失败");
+            }
+        } catch (err) {
+            showToast("上传失败: " + (err.message || "网络错误"));
+        }
+    }
+    fileInput.value = "";
+});
+
+function addPreviewItem(result) {
+    previewBar.classList.add("active");
+    const div = document.createElement("div");
+    div.className = "preview-item";
+    const idx = uploadedFiles.length - 1;
+    if (result.type === "image") {
+        div.innerHTML = `<img src="data:${result.mime};base64,${result.data}" alt="${escHtml(result.filename)}" />
+            <button class="preview-remove" data-idx="${idx}">✕</button>`;
+    } else {
+        div.innerHTML = `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#f5f7fa;font-size:20px;">📄</div>
+            <div class="preview-name">${escHtml(result.filename)}</div>
+            <button class="preview-remove" data-idx="${idx}">✕</button>`;
+    }
+    div.querySelector(".preview-remove").addEventListener("click", () => {
+        uploadedFiles.splice(idx, 1);
+        div.remove();
+        if (uploadedFiles.length === 0) previewBar.classList.remove("active");
+    });
+    previewBar.appendChild(div);
+}
+
+// ================================================================
+//  对话管理
+// ================================================================
+async function loadConversations() {
+    try {
+        const resp = await fetch("/api/conversations");
+        const data = await resp.json();
+        conversations = data.conversations || [];
+        renderConversationList();
+    } catch (e) {
+        console.error("加载对话列表失败", e);
+    }
+}
+
+function renderConversationList() {
+    if (conversations.length === 0) {
+        conversationList.innerHTML = '<div style="text-align:center;padding:20px;color:#8e9399;font-size:14px;">暂无对话，点击「新建」开始</div>';
+        return;
+    }
+    conversationList.innerHTML = conversations.map(c => {
+        const isActive = c.id === currentConvId;
+        let timeLabel = "";
+        if (c.updated_at) {
+            const d = new Date(c.updated_at);
+            const now = new Date();
+            const isToday = d.toDateString() === now.toDateString();
+            timeLabel = isToday ? d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
+        }
+        return `<div class="conversation-item ${isActive ? 'active' : ''}" data-id="${c.id}">
+            <span class="conv-title">${escHtml(c.title || "新对话")}</span>
+            <span class="conv-time">${timeLabel}</span>
+            <button class="conv-delete" data-id="${c.id}" title="删除">✕</button>
+        </div>`;
+    }).join("");
+
+    // 点击切换对话
+    conversationList.querySelectorAll(".conversation-item").forEach(el => {
+        el.addEventListener("click", (e) => {
+            if (e.target.closest(".conv-delete")) return;
+            switchConversation(el.dataset.id);
+        });
+    });
+
+    // 删除对话
+    conversationList.querySelectorAll(".conv-delete").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (!confirm("确定要删除这个对话吗？")) return;
+            const id = btn.dataset.id;
+            try {
+                const resp = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+                const result = await resp.json();
+                if (result.ok) {
+                    if (currentConvId === id) {
+                        currentConvId = null;
+                        messages = [];
+                        chatArea.innerHTML = "";
+                        chatArea.appendChild(emptyState);
+                        headerTitle.textContent = "AI 对话";
+                    }
+                    await loadConversations();
+                    showToast("对话已删除");
+                }
+            } catch (e) {
+                showToast("删除失败");
+            }
+        });
+    });
+}
+
+async function createNewConversation() {
+    try {
+        const resp = await fetch("/api/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: "新对话" }),
+        });
+        const result = await resp.json();
+        if (result.ok) {
+            currentConvId = result.conversation.id;
+            messages = [];
+            chatArea.innerHTML = "";
+            chatArea.appendChild(emptyState);
+            headerTitle.textContent = "新对话";
+            await loadConversations();
+            conversationOverlay.classList.remove("active");
+            showToast("已创建新对话");
+        }
+    } catch (e) {
+        showToast("创建对话失败");
+    }
+}
+
+async function switchConversation(convId) {
+    try {
+        const resp = await fetch(`/api/conversations/${convId}`);
+        const result = await resp.json();
+        if (result.ok) {
+            currentConvId = convId;
+            messages = result.conversation.messages || [];
+            headerTitle.textContent = result.conversation.title || "AI 对话";
+            // 重新渲染对话区域
+            chatArea.innerHTML = "";
+            if (messages.length === 0) {
+                chatArea.appendChild(emptyState);
+            } else {
+                messages.forEach(m => {
+                    if (m.role === "user") {
+                        const bubble = document.createElement("div");
+                        bubble.className = "message user";
+                        bubble.textContent = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+                        chatArea.appendChild(bubble);
+                    } else if (m.role === "assistant") {
+                        const bubble = document.createElement("div");
+                        bubble.className = m.content && m.content.startsWith("⚠️") ? "message error" : "message assistant";
+                        bubble.textContent = m.content || "";
+                        chatArea.appendChild(bubble);
+                    }
+                });
+            }
+            scrollToBottom();
+            await loadConversations();
+            conversationOverlay.classList.remove("active");
+        } else {
+            showToast("加载对话失败");
+        }
+    } catch (e) {
+        showToast("加载对话失败");
+    }
+}
+
+async function saveCurrentConversation() {
+    if (!currentConvId) return;
+    if (messages.length === 0) return;
+    try {
+        await fetch(`/api/conversations/${currentConvId}/messages`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages }),
+        });
+    } catch (e) {
+        console.error("保存对话失败", e);
+    }
+}
+
+// 打开/关闭对话面板
+conversationBtn.addEventListener("click", () => {
+    conversationOverlay.classList.add("active");
+    loadConversations();
+});
+convCloseBtn.addEventListener("click", () => conversationOverlay.classList.remove("active"));
+conversationOverlay.addEventListener("click", (e) => {
+    if (e.target === conversationOverlay) conversationOverlay.classList.remove("active");
+});
+convNewBtn.addEventListener("click", createNewConversation);
+
+// 初始化：获取或创建对话
+async function initConversation() {
+    await loadConversations();
+    if (conversations.length > 0) {
+        // 自动加载最新的对话
+        const latest = conversations[0];
+        currentConvId = latest.id;
+        headerTitle.textContent = latest.title || "AI 对话";
+        const resp = await fetch(`/api/conversations/${latest.id}`);
+        const result = await resp.json();
+        if (result.ok) {
+            messages = result.conversation.messages || [];
+            if (messages.length > 0) {
+                chatArea.innerHTML = "";
+                messages.forEach(m => {
+                    if (m.role === "user") {
+                        const bubble = document.createElement("div");
+                        bubble.className = "message user";
+                        bubble.textContent = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+                        chatArea.appendChild(bubble);
+                    } else if (m.role === "assistant") {
+                        const bubble = document.createElement("div");
+                        bubble.className = m.content && m.content.startsWith("⚠️") ? "message error" : "message assistant";
+                        bubble.textContent = m.content || "";
+                        chatArea.appendChild(bubble);
+                    }
+                });
+                scrollToBottom();
+            }
+        }
+    } else {
+        // 自动创建第一个对话
+        await createNewConversation();
+    }
+}
 
 // ================================================================
 //  添加账号
@@ -460,7 +985,7 @@ accRefreshModels.addEventListener("click", async () => {
 });
 
 // ================================================================
-//  Chat 发送（使用最快账号）
+//  Chat 发送（使用最快账号，支持文件上传）
 // ================================================================
 async function sendMessage(userContent) {
     // 检查是否有可用账号
@@ -469,7 +994,49 @@ async function sendMessage(userContent) {
         return;
     }
 
-    addUserMessage(userContent);
+    // 构建消息内容（支持多模态）
+    const hasFiles = uploadedFiles.length > 0;
+    let userMsgContent;
+    if (hasFiles) {
+        // 多模态消息：content 为数组
+        const contentArray = [];
+        if (userContent) contentArray.push({ type: "text", text: userContent });
+        uploadedFiles.forEach(f => {
+            if (f.type === "image") {
+                contentArray.push({ type: "image_url", image_url: { url: `data:${f.mime};base64,${f.data}` } });
+            } else {
+                contentArray.push({ type: "text", text: `[文件: ${f.filename}]\n\`\`\`\n${f.data}\n\`\`\`` });
+            }
+        });
+        userMsgContent = contentArray;
+    } else {
+        userMsgContent = userContent;
+    }
+
+    // 显示用户消息（带文件预览）
+    addUserMessage(userContent, hasFiles ? uploadedFiles.slice() : []);
+
+    // 如果有文件附件，在消息气泡中显示文件信息
+    if (hasFiles) {
+        const lastBubble = chatArea.querySelector(".message.user:last-child");
+        if (lastBubble) {
+            uploadedFiles.forEach(f => {
+                if (f.type === "image") {
+                    const img = document.createElement("img");
+                    img.className = "msg-image";
+                    img.src = `data:${f.mime};base64,${f.data}`;
+                    img.alt = f.filename;
+                    lastBubble.appendChild(img);
+                } else {
+                    const fileDiv = document.createElement("div");
+                    fileDiv.className = "msg-file";
+                    fileDiv.textContent = `📄 ${f.filename}`;
+                    lastBubble.appendChild(fileDiv);
+                }
+            });
+        }
+    }
+
     const assistantBubble = addAssistantBubble();
     let fullContent = "";
     showLoading();
@@ -486,9 +1053,14 @@ async function sendMessage(userContent) {
             messages: [
                 { role: "system", content: "你是一个有帮助的AI助手。" },
                 ...messages.slice(0, -1),
-                { role: "user", content: userContent },
+                { role: "user", content: userMsgContent },
             ],
         };
+
+        // 发送后清除文件预览
+        uploadedFiles = [];
+        previewBar.classList.remove("active");
+        previewBar.innerHTML = "";
 
         const response = await fetch("/chat", {
             method: "POST",
@@ -562,6 +1134,18 @@ async function sendMessage(userContent) {
             messages.push({ role: "assistant", content: "（未收到有效回复，请检查 API 设置）" });
         }
         scrollToBottom();
+
+        // 保存对话到服务器
+        if (currentConvId) {
+            // 更新标题
+            for (const m of messages) {
+                if (m.role === "user" && typeof m.content === "string") {
+                    headerTitle.textContent = m.content.slice(0, 30);
+                    break;
+                }
+            }
+            await saveCurrentConversation();
+        }
     } catch (err) {
         hideLoading();
         if (assistantBubble.parentNode) assistantBubble.parentNode.removeChild(assistantBubble);
@@ -597,12 +1181,30 @@ function autoResizeTextarea() {
     messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + "px";
 }
 
-function addUserMessage(content) {
-    messages.push({ role: "user", content });
+function addUserMessage(content, files) {
+    // 对于多模态消息，content 可能是数组，取文本部分
+    const textContent = typeof content === "string" ? content : (content.find(c => c.type === "text")?.text || "");
+    messages.push({ role: "user", content: typeof content === "string" ? content : content });
     if (emptyState.parentNode) emptyState.remove();
     const bubble = document.createElement("div");
     bubble.className = "message user";
-    bubble.textContent = content;
+    bubble.textContent = textContent;
+    if (files && files.length > 0) {
+        files.forEach(f => {
+            if (f.type === "image") {
+                const img = document.createElement("img");
+                img.className = "msg-image";
+                img.src = `data:${f.mime};base64,${f.data}`;
+                img.alt = f.filename;
+                bubble.appendChild(img);
+            } else {
+                const fileDiv = document.createElement("div");
+                fileDiv.className = "msg-file";
+                fileDiv.textContent = `📄 ${f.filename}`;
+                bubble.appendChild(fileDiv);
+            }
+        });
+    }
     chatArea.appendChild(bubble);
     scrollToBottom();
 }
@@ -662,6 +1264,8 @@ settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOver
 // ================================================================
 //  初始化
 // ================================================================
+loadAccounts();
+initConversation();
 messageInput.focus();
 console.log("AI 对话应用已启动！");
 </script>

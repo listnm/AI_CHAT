@@ -8,8 +8,10 @@ import os
 import json
 import time
 import uuid
+import base64
 import threading
 import requests
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, Response, stream_with_context
 
 app = Flask(__name__)
@@ -143,6 +145,29 @@ def api_accounts_delete(account_id):
         return {"ok": False, "message": "账号不存在"}
     _save_accounts(new_list)
     return {"ok": True, "message": "账号已删除"}
+
+
+@app.route("/api/accounts/<account_id>", methods=["PUT"])
+def api_accounts_update(account_id):
+    """修改指定账号（名称、URL、Key、模型）"""
+    accounts = _load_accounts()
+    for acc in accounts:
+        if acc["id"] == account_id:
+            data = request.get_json(force=True)
+            if "name" in data:
+                acc["name"] = data["name"].strip()
+            if "api_url" in data:
+                acc["api_url"] = data["api_url"].strip()
+            if "api_key" in data and data["api_key"].strip():
+                acc["api_key"] = data["api_key"].strip()
+            if "model" in data:
+                acc["model"] = data["model"].strip()
+            # 修改后清除延迟记录，需要重新测速
+            acc["latency_ms"] = None
+            acc["last_speed_test"] = None
+            _save_accounts(accounts)
+            return {"ok": True, "message": "账号已更新"}
+    return {"ok": False, "message": "账号不存在"}
 
 
 @app.route("/api/accounts/speedtest", methods=["POST"])
@@ -316,6 +341,183 @@ def api_models():
         return {"ok": True, "models": model_list}
     except Exception as e:
         return {"ok": False, "models": [], "message": f"获取模型列表失败：{str(e)}"}
+
+
+# ================================================================
+#  文件上传
+# ================================================================
+
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+ALLOWED_EXTENSIONS = {
+    "jpg", "jpeg", "png", "gif", "webp",  # 图片
+    "txt", "py", "js", "ts", "jsx", "tsx", "html", "css", "json", "xml", "yaml", "yml", "md", "csv",  # 文本
+    "pdf", "doc", "docx",  # 文档
+}
+
+MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+
+
+def allowed_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route("/api/upload", methods=["POST"])
+def api_upload():
+    """
+    上传文件接口
+    返回文件类型、内容（base64 图片或纯文本），供前端构造消息
+    """
+    if "file" not in request.files:
+        return {"ok": False, "message": "未选择文件"}
+
+    file = request.files["file"]
+    if file.filename == "" or not allowed_file(file.filename):
+        return {"ok": False, "message": "不支持的文件类型"}
+
+    # 检查文件大小
+    file.seek(0, os.SEEK_END)
+    size = file.tell()
+    file.seek(0)
+    if size > MAX_FILE_SIZE:
+        return {"ok": False, "message": "文件超过 20MB 限制"}
+
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    file_bytes = file.read()
+
+    # 图片类型：返回 base64
+    if ext in ("jpg", "jpeg", "png", "gif", "webp"):
+        b64 = base64.b64encode(file_bytes).decode("utf-8")
+        mime = f"image/{'jpeg' if ext == 'jpg' else ext}"
+        return {
+            "ok": True,
+            "type": "image",
+            "filename": file.filename,
+            "mime": mime,
+            "data": b64,
+        }
+
+    # 文本类型：返回纯文本内容
+    try:
+        text = file_bytes.decode("utf-8")
+        return {
+            "ok": True,
+            "type": "text",
+            "filename": file.filename,
+            "data": text[:50000],  # 限制 50000 字符
+        }
+    except UnicodeDecodeError:
+        return {"ok": False, "message": "无法解析文件内容，请使用纯文本文件"}
+
+
+# ================================================================
+#  对话管理（服务端存储，每日自动清理旧对话）
+# ================================================================
+
+CONVERSATIONS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conversations.json")
+
+
+def _load_conversations() -> list:
+    if not os.path.exists(CONVERSATIONS_FILE):
+        return []
+    try:
+        with open(CONVERSATIONS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def _save_conversations(convs: list):
+    with open(CONVERSATIONS_FILE, "w", encoding="utf-8") as f:
+        json.dump(convs, f, ensure_ascii=False, indent=2)
+
+
+def _cleanup_old_conversations():
+    """删除超过 24 小时的对话"""
+    convs = _load_conversations()
+    now = datetime.now()
+    keep = []
+    for c in convs:
+        try:
+            updated = datetime.fromisoformat(c.get("updated_at", ""))
+            if now - updated < timedelta(hours=24):
+                keep.append(c)
+        except (ValueError, TypeError):
+            keep.append(c)
+    if len(keep) != len(convs):
+        _save_conversations(keep)
+
+
+@app.route("/api/conversations", methods=["GET"])
+def api_conversations_list():
+    """获取所有对话列表（不含消息内容，仅元信息）"""
+    _cleanup_old_conversations()
+    convs = _load_conversations()
+    # 按更新时间倒序
+    convs.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
+    summary = [{"id": c["id"], "title": c.get("title", "新对话"), "created_at": c.get("created_at"), "updated_at": c.get("updated_at")} for c in convs]
+    return {"ok": True, "conversations": summary}
+
+
+@app.route("/api/conversations", methods=["POST"])
+def api_conversations_create():
+    """创建新对话"""
+    data = request.get_json(force=True) or {}
+    title = data.get("title", "新对话")
+    now = datetime.now().isoformat()
+    conv = {
+        "id": str(uuid.uuid4()),
+        "title": title,
+        "messages": [],
+        "created_at": now,
+        "updated_at": now,
+    }
+    convs = _load_conversations()
+    convs.append(conv)
+    _save_conversations(convs)
+    return {"ok": True, "conversation": conv}
+
+
+@app.route("/api/conversations/<conv_id>", methods=["GET"])
+def api_conversations_get(conv_id):
+    """获取单个对话的完整消息"""
+    convs = _load_conversations()
+    for c in convs:
+        if c["id"] == conv_id:
+            return {"ok": True, "conversation": c}
+    return {"ok": False, "message": "对话不存在"}
+
+
+@app.route("/api/conversations/<conv_id>", methods=["DELETE"])
+def api_conversations_delete(conv_id):
+    """删除指定对话"""
+    convs = _load_conversations()
+    new_list = [c for c in convs if c["id"] != conv_id]
+    if len(new_list) == len(convs):
+        return {"ok": False, "message": "对话不存在"}
+    _save_conversations(new_list)
+    return {"ok": True, "message": "对话已删除"}
+
+
+@app.route("/api/conversations/<conv_id>/messages", methods=["PUT"])
+def api_conversations_save_messages(conv_id):
+    """保存对话的消息列表"""
+    data = request.get_json(force=True)
+    messages = data.get("messages", [])
+    convs = _load_conversations()
+    for c in convs:
+        if c["id"] == conv_id:
+            c["messages"] = messages
+            c["updated_at"] = datetime.now().isoformat()
+            # 自动生成标题（取第一条用户消息的前 30 个字符）
+            for m in messages:
+                if m.get("role") == "user" and isinstance(m.get("content"), str):
+                    c["title"] = m["content"][:30]
+                    break
+            _save_conversations(convs)
+            return {"ok": True, "message": "已保存"}
+    return {"ok": False, "message": "对话不存在"}
 
 
 # ================================================================
