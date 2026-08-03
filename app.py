@@ -864,9 +864,10 @@ def _migrate_old_data():
             print(f"迁移 conversations.json 失败: {e}")
 
 
+# 在模块加载时初始化数据库（支持 gunicorn）
+_init_db()
+_migrate_old_data()
+
 if __name__ == "__main__":
-    _init_db()
-    # 迁移旧数据（如果存在 accounts.json 则导入到数据库）
-    _migrate_old_data()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
