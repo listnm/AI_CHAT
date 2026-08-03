@@ -452,6 +452,66 @@
             color: #c62828;
         }
 
+        /* ===== 模型选择下拉 ===== */
+        .model-select-wrapper {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .model-select-wrapper select {
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #e9edf2;
+            border-radius: 12px;
+            font-size: 14px;
+            background: #f5f7fa;
+            outline: none;
+            color: #1c1e21;
+            cursor: pointer;
+            appearance: auto;
+        }
+        .model-select-wrapper select:focus {
+            border-color: #007aff;
+            background: #ffffff;
+        }
+        .model-select-wrapper select:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .btn-refresh-models {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #e9edf2;
+            border-radius: 12px;
+            background: #f5f7fa;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.2s;
+        }
+        .btn-refresh-models:hover {
+            background: #e4e6ea;
+        }
+        .btn-refresh-models:active {
+            background: #d8dce3;
+        }
+        .btn-refresh-models.loading {
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .model-loading-text {
+            font-size: 12px;
+            color: #8e9399;
+            margin-top: 4px;
+        }
+
         /* ===== 加载提示 ===== */
         .loading-indicator {
             align-self: flex-start;
@@ -602,11 +662,13 @@
                 </div>
                 <div class="settings-group">
                     <label for="modelName">模型名称</label>
-                    <input
-                    type="text"
-                    id="modelName"
-                    placeholder="gpt-3.5-turbo / claude-3-opus-20240229"
-                    />
+                    <div class="model-select-wrapper">
+                        <select id="modelName">
+                            <option value="">— 点击右侧刷新按钮加载模型 —</option>
+                        </select>
+                        <button class="btn-refresh-models" id="refreshModelsBtn" title="刷新模型列表">↻</button>
+                    </div>
+                    <div class="model-loading-text" id="modelLoadingText"></div>
                 </div>
                 <div class="test-result" id="testResult"></div>
                 <button class="btn-test" id="testBtn">测试连接</button>
@@ -636,6 +698,8 @@
         const apiUrlInput = document.getElementById("apiUrl");
         const apiKeyInput = document.getElementById("apiKey");
         const modelNameInput = document.getElementById("modelName");
+        const refreshModelsBtn = document.getElementById("refreshModelsBtn");
+        const modelLoadingText = document.getElementById("modelLoadingText");
         const toastEl = document.getElementById("toast");
 
         // ================================================================
@@ -1152,6 +1216,83 @@
                 testBtn.disabled = false;
                 testBtn.classList.remove("loading");
                 testBtn.textContent = "测试连接";
+            }
+        });
+
+        // ================================================================
+        //  刷新模型列表
+        // ================================================================
+
+        /** 调用后端 /api/models 获取可用模型列表并填充下拉框 */
+        async function fetchModels() {
+            const apiUrl = apiUrlInput.value.trim();
+            const apiKey = apiKeyInput.value.trim();
+
+            if (!apiUrl || !apiKey) {
+                modelLoadingText.textContent = "请先填写 API 地址和 Key";
+                return;
+            }
+
+            // 记住当前选中的模型（用于加载后恢复）
+            const previousModel = modelNameInput.value;
+
+            // 进入加载状态
+            refreshModelsBtn.disabled = true;
+            refreshModelsBtn.classList.add("loading");
+            modelLoadingText.textContent = "正在加载模型列表...";
+
+            // 清空并显示加载中
+            modelNameInput.innerHTML = '<option value="">加载中...</option>';
+
+            try {
+                const resp = await fetch("/api/models", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ api_url: apiUrl, api_key: apiKey }),
+                });
+                const result = await resp.json();
+
+                // 清空下拉框
+                modelNameInput.innerHTML = "";
+
+                if (result.ok && result.models && result.models.length > 0) {
+                    // 填充模型列表
+                    for (const m of result.models) {
+                        const opt = document.createElement("option");
+                        opt.value = m;
+                        opt.textContent = m;
+                        modelNameInput.appendChild(opt);
+                    }
+                    modelLoadingText.textContent = `共 ${result.models.length} 个模型可用`;
+                    // 尝试恢复之前选中的模型
+                    if (previousModel && result.models.includes(previousModel)) {
+                        modelNameInput.value = previousModel;
+                    }
+                } else {
+                    // 没有模型，提供一个手动输入选项
+                    modelNameInput.innerHTML = '<option value="">未获取到模型</option>';
+                    modelLoadingText.textContent = result.message || "未获取到模型列表，请检查 API 设置";
+                }
+            } catch (e) {
+                modelNameInput.innerHTML = '<option value="">加载失败</option>';
+                modelLoadingText.textContent = "网络错误，无法获取模型列表";
+            } finally {
+                refreshModelsBtn.disabled = false;
+                refreshModelsBtn.classList.remove("loading");
+            }
+        }
+
+        // 刷新按钮点击
+        refreshModelsBtn.addEventListener("click", fetchModels);
+
+        // 打开设置面板时，如果已有 API 地址和 Key，自动加载模型列表
+        settingsBtn.addEventListener("click", () => {
+            settingsOverlay.classList.add("active");
+            const apiUrl = apiUrlInput.value.trim();
+            const apiKey = apiKeyInput.value.trim();
+            // 如果已有 API 信息且下拉框只有默认选项，自动加载
+            if (apiUrl && apiKey && modelNameInput.options.length <= 1) {
+                fetchModels();
             }
         });
 

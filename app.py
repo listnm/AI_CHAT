@@ -85,6 +85,37 @@ def api_check():
         return {"ok": False, "message": f"测试失败：{str(e)}"}
 
 
+@app.route("/api/models", methods=["POST"])
+def api_models():
+    """
+    获取可用模型列表
+    向用户指定 API 的 /v1/models 接口查询可用模型并返回
+    """
+    data = request.get_json(force=True)
+    api_url = data.get("api_url", "")
+    api_key = data.get("api_key", "")
+
+    if not api_url or not api_key:
+        return {"ok": False, "models": [], "message": "请先填写 API 地址和 Key"}
+
+    # 从 base URL 构造 models 接口地址
+    models_url = normalize_api_url(api_url).replace("/chat/completions", "/models")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        resp = requests.get(models_url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        model_list = [m["id"] for m in data.get("data", []) if "id" in m]
+        return {"ok": True, "models": model_list}
+    except Exception as e:
+        return {"ok": False, "models": [], "message": f"获取模型列表失败：{str(e)}"}
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     """
@@ -138,6 +169,8 @@ def chat():
             timeout=60,
         )
         upstream_response.raise_for_status()  # 检查 HTTP 状态码
+        # 强制使用 UTF-8 解码，避免中文乱码
+        upstream_response.encoding = "utf-8"
     except requests.exceptions.Timeout:
         def timeout_gen():
             yield f"data: {json.dumps({'error': '请求上游 API 超时，请检查网络或 API 地址'})}\n\n"
