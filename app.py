@@ -316,6 +316,7 @@ def admin():
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
     proxy_models_url = base_url + "/v1/models"
+    proxy_accounts_url = base_url + "/v1/accounts"
 
     return render_template(
         "admin.html",
@@ -325,6 +326,7 @@ def admin():
         base_url=base_url,
         proxy_url=proxy_url,
         proxy_models_url=proxy_models_url,
+        proxy_accounts_url=proxy_accounts_url,
         proxy_api_key=PROXY_API_KEY,
         fastest_latency=fastest_latency,
     )
@@ -970,23 +972,31 @@ def chat():
 # ================================================================
 
 
-def _select_account_for_model(model: str) -> dict | None:
+def _select_account(model: str = "", account_name: str = "") -> dict | None:
     """
-    根据模型名称查找匹配的账号。
-    如果 model 为空，返回最快的可用账号。
+    选择账号，支持三种模式：
+    1. 指定 account_name → 按名称精确匹配
+    2. 指定 model → 按模型匹配
+    3. 都不指定 → 选延迟最低的
     返回账号 dict 或 None。
     """
     accounts = _load_accounts()
     if not accounts:
         return None
 
-    # 如果指定了模型，优先找匹配的账号
+    # 1. 按账号名称精确匹配
+    if account_name:
+        for a in accounts:
+            if a.get("name", "").strip() == account_name.strip():
+                return a
+
+    # 2. 按模型匹配
     if model:
         for a in accounts:
             if a.get("model", "").strip() == model.strip():
                 return a
 
-    # 回退：按延迟排序选最快的
+    # 3. 回退：按延迟排序选最快的
     valid = [a for a in accounts if a.get("latency_ms") is not None]
     if valid:
         valid.sort(key=lambda a: a["latency_ms"])
@@ -1039,13 +1049,56 @@ def proxy_list_models():
     )
 
 
+@app.route("/v1/accounts", methods=["GET"])
+def proxy_list_accounts():
+    """
+    列出所有可用账号及信息（含名称、模型、延迟等）
+    供客户端选择使用哪个中转站
+    """
+    auth = request.headers.get("Authorization", "")
+    expected = "Bearer " + PROXY_API_KEY
+    if auth != expected:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
+
+    accounts = _load_accounts()
+    result = []
+    for acc in accounts:
+        result.append({
+            "id": acc["id"],
+            "name": acc.get("name", ""),
+            "api_url": acc.get("api_url", ""),
+            "model": acc.get("model", ""),
+            "latency_ms": acc.get("latency_ms"),
+            "last_speed_test": acc.get("last_speed_test"),
+        })
+
+    # 按延迟排序（有延迟的排前面，快的排前面）
+    result.sort(key=lambda a: (
+        0 if a["latency_ms"] is not None else 1,
+        a["latency_ms"] if a["latency_ms"] is not None else 99999,
+    ))
+
+    return app.response_class(
+        response=json.dumps({"object": "list", "data": result}, ensure_ascii=False),
+        mimetype="application/json; charset=utf-8",
+    )
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
     OpenAI 兼容的 API 转发端点
     认证方式：Authorization: Bearer {PROXY_API_KEY}
-    - 指定 model 参数 → 自动匹配到拥有该模型的账号
-    - 不指定 model → 自动选择最快的账号
+
+    两种选择策略（通过 strategy 参数控制）：
+    - strategy="auto" 或省略 → 自动选择延迟最低的账号（默认）
+    - strategy="manual" → 手动指定账号，需搭配 account 参数
+
+    请求参数：
+    - model: 模型名称（匹配拥有该模型的账号）
+    - account: 账号名称（精确指定使用哪个中转站，需 strategy="manual"）
+    - strategy: "auto" | "manual"（默认 auto）
+
     响应中会包含 _provider 字段说明实际使用的账号
     支持 stream 和普通模式
     """
@@ -1057,6 +1110,8 @@ def proxy_chat_completions():
 
     data = request.get_json(force=True) or {}
     model = data.get("model", "")
+    account_name = data.get("account", "")
+    strategy = data.get("strategy", "auto")
     messages = data.get("messages", [])
     stream = data.get("stream", False)
     temperature = data.get("temperature", 0.7)
@@ -1065,10 +1120,17 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 按模型选择账号，未指定模型则自动选最快的
-    account = _select_account_for_model(model)
-    if not account:
-        return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
+    # 选择账号
+    if strategy == "manual" and account_name:
+        # 手动模式：按名称精确匹配
+        account = _select_account(account_name=account_name)
+        if not account:
+            return {"error": {"message": f"Account '{account_name}' not found", "type": "not_found"}, "ok": False}, 404
+    else:
+        # 自动模式：按模型匹配或选最快的
+        account = _select_account(model=model)
+        if not account:
+            return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
     api_url = normalize_api_url(account["api_url"])
     api_key = account["api_key"]
