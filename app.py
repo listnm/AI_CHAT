@@ -249,10 +249,30 @@ def normalize_api_url(url: str) -> str:
 #  页面路由
 # ================================================================
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def index():
-    """渲染主页面"""
-    return render_template("index.html")
+    """渲染主页面（需登录）"""
+    from flask import session as flask_session
+
+    if request.method == "POST":
+        pwd = request.form.get("password", "")
+        if pwd == ADMIN_PASSWORD:
+            flask_session["user_logged_in"] = True
+        else:
+            return render_template("index.html", logged_in=False, error="密码错误")
+
+    if not flask_session.get("user_logged_in"):
+        return render_template("index.html", logged_in=False, error="")
+
+    return render_template("index.html", logged_in=True)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    """退出登录（主页面）"""
+    from flask import session as flask_session, redirect
+    flask_session.clear()
+    return redirect("/")
 
 
 # ================================================================
@@ -332,9 +352,19 @@ def admin_logout():
 #  账号管理 API
 # ================================================================
 
+def _require_login():
+    """检查用户是否已登录（主页面或后台）"""
+    from flask import session as flask_session
+    if not flask_session.get("user_logged_in") and not flask_session.get("admin_logged_in"):
+        return False
+    return True
+
+
 @app.route("/api/accounts", methods=["GET"])
 def api_accounts_list():
     """获取所有账号列表（不返回 API Key 完整内容，仅显示前 8 位）"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     accounts = _load_accounts()
     # 脱敏返回，安全第一
     safe_list = []
@@ -355,6 +385,8 @@ def api_accounts_list():
 @app.route("/api/accounts", methods=["POST"])
 def api_accounts_add():
     """添加一个新账号"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     data = request.get_json(force=True)
     name = data.get("name", "").strip()
     api_url = data.get("api_url", "").strip()
@@ -389,6 +421,8 @@ def api_accounts_add():
 @app.route("/api/accounts/<account_id>", methods=["DELETE"])
 def api_accounts_delete(account_id):
     """删除指定账号"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     accounts = _load_accounts()
     new_list = [a for a in accounts if a["id"] != account_id]
     if len(new_list) == len(accounts):
@@ -400,6 +434,8 @@ def api_accounts_delete(account_id):
 @app.route("/api/accounts/<account_id>", methods=["PUT"])
 def api_accounts_update(account_id):
     """修改指定账号（名称、URL、Key、模型）"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     accounts = _load_accounts()
     for acc in accounts:
         if acc["id"] == account_id:
@@ -426,6 +462,8 @@ def api_accounts_speedtest():
     对所有账号进行测速（并行请求），返回按延迟排序的结果
     每个账号发送一个简短的 Chat 请求，记录响应时间
     """
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     accounts = _load_accounts()
     if not accounts:
         return {"ok": False, "accounts": [], "message": "没有可测试的账号，请先添加"}
@@ -497,6 +535,8 @@ def api_check():
     API 连通性测试接口
     支持 account_id（使用已保存账号）或直接传入 api_url / api_key / model
     """
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     data = request.get_json(force=True)
     account_id = data.get("account_id")
 
@@ -561,6 +601,8 @@ def api_models():
     获取可用模型列表
     支持 account_id 或直接传入 api_url / api_key
     """
+    if not _require_login():
+        return {"ok": False, "models": [], "message": "请先登录"}, 401
     data = request.get_json(force=True)
     account_id = data.get("account_id")
 
@@ -619,6 +661,8 @@ def api_upload():
     上传文件接口
     返回文件类型、内容（base64 图片或纯文本），供前端构造消息
     """
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     if "file" not in request.files:
         return {"ok": False, "message": "未选择文件"}
 
@@ -715,6 +759,8 @@ def _cleanup_old_conversations():
 @app.route("/api/conversations", methods=["GET"])
 def api_conversations_list():
     """获取所有对话列表（不含消息内容，仅元信息）"""
+    if not _require_login():
+        return {"ok": False, "conversations": [], "message": "请先登录"}, 401
     _cleanup_old_conversations()
     convs = _load_conversations()
     # 按更新时间倒序
@@ -726,6 +772,8 @@ def api_conversations_list():
 @app.route("/api/conversations", methods=["POST"])
 def api_conversations_create():
     """创建新对话"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     data = request.get_json(force=True) or {}
     title = data.get("title", "新对话")
     now = datetime.now().isoformat()
@@ -745,6 +793,8 @@ def api_conversations_create():
 @app.route("/api/conversations/<conv_id>", methods=["GET"])
 def api_conversations_get(conv_id):
     """获取单个对话的完整消息"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     convs = _load_conversations()
     for c in convs:
         if c["id"] == conv_id:
@@ -755,6 +805,8 @@ def api_conversations_get(conv_id):
 @app.route("/api/conversations/<conv_id>", methods=["DELETE"])
 def api_conversations_delete(conv_id):
     """删除指定对话"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     convs = _load_conversations()
     new_list = [c for c in convs if c["id"] != conv_id]
     if len(new_list) == len(convs):
@@ -766,6 +818,8 @@ def api_conversations_delete(conv_id):
 @app.route("/api/conversations/<conv_id>/messages", methods=["PUT"])
 def api_conversations_save_messages(conv_id):
     """保存对话的消息列表"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
     data = request.get_json(force=True)
     messages = data.get("messages", [])
     convs = _load_conversations()
@@ -794,6 +848,9 @@ def chat():
     支持 account_id（使用已保存账号）或直接传入 api_url / api_key / model
     自动使用最快的可用账号（如果传入了 account_id="auto"）
     """
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
+
     data = request.get_json(force=True)
 
     account_id = data.get("account_id")
