@@ -6,46 +6,50 @@
     <title>AI 对话</title>
     <style>
         /* ===== 全局重置与基础样式 ===== */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background: #e8ecf0; display: flex; justify-content: center; align-items: center;
-            min-height: 100vh; color: #1c1e21;
+            min-height: 100vh; min-height: 100dvh; color: #1c1e21;
         }
         .app-container {
-            width: 100%; max-width: 480px; height: 100vh; max-height: 900px;
+            width: 100%; max-width: 480px; height: 100vh; height: 100dvh;
             background: #fff; display: flex; flex-direction: column;
             box-shadow: 0 0 40px rgba(0,0,0,.08); overflow: hidden; position: relative;
         }
-        @media (min-width:520px) { .app-container { border-radius: 24px; height: 90vh; } }
+        @media (min-width:520px) { .app-container { border-radius: 24px; height: 90vh; height: 90dvh; } }
 
         /* ===== 顶部导航栏 ===== */
         .header {
             background: #fff; padding: 16px 20px; display: flex; align-items: center;
             justify-content: space-between; border-bottom: 1px solid #e9edf2; flex-shrink: 0;
             position: sticky; top: 0; z-index: 10;
+            padding-top: max(16px, env(safe-area-inset-top, 16px));
         }
-        .header-title { font-size: 18px; font-weight: 600; color: #1c1e21; }
+        .header-title { font-size: 17px; font-weight: 600; color: #1c1e21; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
         .header-btn {
             background: none; border: none; font-size: 22px; cursor: pointer;
-            color: #5f6368; padding: 4px 8px; border-radius: 8px; transition: background .2s;
+            color: #5f6368; padding: 8px 10px; border-radius: 10px; transition: background .2s; min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center;
         }
         .header-btn:hover { background: #f0f2f5; }
         .header-btn:active { background: #e4e6ea; }
 
         /* ===== 对话气泡区域 ===== */
         .chat-area {
-            flex: 1; overflow-y: auto; padding: 16px 16px 8px; display: flex;
+            flex: 1; overflow-y: auto; overflow-y: overlay; padding: 12px 12px 8px; display: flex;
             flex-direction: column; gap: 10px; background: #f5f7fa; scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
         }
-        .chat-area::-webkit-scrollbar { width: 4px; }
+        @media (min-width:520px) { .chat-area { padding: 16px 16px 8px; } }
+        .chat-area::-webkit-scrollbar { width: 3px; }
         .chat-area::-webkit-scrollbar-track { background: transparent; }
         .chat-area::-webkit-scrollbar-thumb { background: #c4c9d0; border-radius: 4px; }
         .message {
-            max-width: 85%; padding: 10px 14px; border-radius: 18px; font-size: 15px;
-            line-height: 1.5; word-wrap: break-word; white-space: pre-wrap;
+            max-width: 88%; padding: 10px 14px; border-radius: 18px; font-size: 15px;
+            line-height: 1.5; word-wrap: break-word; white-space: pre-wrap; word-break: break-word;
             animation: messageIn .25s ease-out;
         }
+        @media (max-width:380px) { .message { max-width: 92%; font-size: 14px; padding: 8px 12px; } }
         @keyframes messageIn {
             from { opacity: 0; transform: translateY(8px) scale(.97); }
             to { opacity: 1; transform: translateY(0) scale(1); }
@@ -53,16 +57,17 @@
         .message.user { align-self: flex-end; background: #007aff; color: #fff; border-bottom-right-radius: 6px; }
         .message.assistant { align-self: flex-start; background: #fff; color: #1c1e21; border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
         .message.error { align-self: flex-start; background: #fff0f0; color: #d93025; border-bottom-left-radius: 6px; font-size: 14px; }
-        .message code { background: rgba(0,0,0,.06); padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "SF Mono","Fira Code",monospace; }
+        .message code { background: rgba(0,0,0,.06); padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: "SF Mono","Fira Code",monospace; word-break: break-all; }
         .message.user code { background: rgba(255,255,255,.2); }
 
         /* ===== 底部输入区 ===== */
-        .input-area { padding: 12px 16px 16px; background: #fff; border-top: 1px solid #e9edf2; display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0; }
-        .input-wrapper { flex: 1; display: flex; align-items: flex-end; background: #f5f7fa; border-radius: 20px; padding: 4px 4px 4px 16px; border: 1px solid #e9edf2; transition: border-color .2s; }
+        .input-area { padding: 8px 12px max(8px, env(safe-area-inset-bottom, 8px)) 12px; background: #fff; border-top: 1px solid #e9edf2; display: flex; align-items: flex-end; gap: 6px; flex-shrink: 0; }
+        @media (min-width:520px) { .input-area { padding: 12px 16px 16px; } }
+        .input-wrapper { flex: 1; display: flex; align-items: flex-end; background: #f5f7fa; border-radius: 20px; padding: 4px 4px 4px 14px; border: 1px solid #e9edf2; transition: border-color .2s; }
         .input-wrapper:focus-within { border-color: #007aff; }
-        .input-wrapper textarea { flex: 1; border: none; background: transparent; resize: none; padding: 8px 0; font-size: 15px; font-family: inherit; outline: none; line-height: 1.4; max-height: 120px; color: #1c1e21; }
+        .input-wrapper textarea { flex: 1; border: none; background: transparent; resize: none; padding: 8px 0; font-size: 16px; font-family: inherit; outline: none; line-height: 1.4; max-height: 100px; color: #1c1e21; }
         .input-wrapper textarea::placeholder { color: #8e9399; }
-        .send-btn { width: 36px; height: 36px; border: none; border-radius: 50%; background: #007aff; color: #fff; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s,transform .1s; }
+        .send-btn { width: 36px; min-width: 36px; height: 36px; min-height: 36px; border: none; border-radius: 50%; background: #007aff; color: #fff; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s,transform .1s; }
         .send-btn:hover { background: #0062cc; }
         .send-btn:active { transform: scale(.92); }
         .send-btn:disabled { background: #c4c9d0; cursor: not-allowed; transform: none; }
@@ -73,7 +78,8 @@
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         /* ===== 设置面板 ===== */
-        .settings-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #fff; border-radius: 20px; padding: 24px; width: calc(100% - 32px); max-width: 420px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.15); animation: panelIn .25s ease-out; }
+        .settings-panel { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: #fff; border-radius: 20px; padding: 24px; width: calc(100% - 32px); max-width: 420px; max-height: 85vh; max-height: 85dvh; overflow-y: auto; overflow-y: overlay; -webkit-overflow-scrolling: touch; box-shadow: 0 20px 60px rgba(0,0,0,.15); animation: panelIn .25s ease-out; }
+        @media (max-width:380px) { .settings-panel { width: calc(100% - 16px); padding: 20px 16px; max-height: 90vh; max-height: 90dvh; border-radius: 16px; } }
         @keyframes panelIn { from { opacity: 0; transform: translate(-50%,-50%) scale(.92); } to { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
         .settings-panel h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1c1e21; }
 
@@ -84,16 +90,17 @@
             transition: border-color .2s; position: relative;
         }
         .account-card.fastest { border-color: #34c759; background: #f0fff4; }
-        .account-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-        .account-name { font-weight: 600; font-size: 14px; color: #1c1e21; }
+        .account-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; }
+        .account-name { font-weight: 600; font-size: 14px; color: #1c1e21; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
         .account-badge {
-            font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500;
+            font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 500; flex-shrink: 0;
         }
         .account-badge.fastest { background: #34c759; color: #fff; }
         .account-badge.fail { background: #ff3b30; color: #fff; }
         .account-badge.ok { background: #e8f5e9; color: #1b5e20; }
-        .account-meta { font-size: 12px; color: #8e9399; display: flex; flex-wrap: wrap; gap: 4px 12px; }
-        .account-meta span { white-space: nowrap; }
+        .account-meta { font-size: 12px; color: #8e9399; display: flex; flex-wrap: wrap; gap: 4px 8px; }
+        .account-meta span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+        .account-meta span:last-child { min-width: 0; }
         .account-actions { display: flex; gap: 6px; margin-top: 8px; }
         .account-actions button {
             padding: 4px 12px; border-radius: 8px; font-size: 12px; border: none; cursor: pointer; transition: background .2s;
@@ -146,10 +153,10 @@
         .settings-msg.info { display: block; background: #e8f2ff; color: #004999; }
 
         /* ===== 空状态 & 加载 ===== */
-        .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8e9399; font-size: 15px; gap: 12px; user-select: none; }
+        .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8e9399; font-size: 15px; gap: 12px; user-select: none; padding: 20px; }
         .empty-state-icon { font-size: 48px; opacity: .5; }
         .empty-state-text { text-align: center; line-height: 1.5; }
-        .empty-state-hint { font-size: 13px; opacity: .7; }
+        .empty-state-hint { font-size: 13px; opacity: .7; text-align: center; }
         .loading-indicator { align-self: flex-start; display: flex; align-items: center; gap: 6px; padding: 12px 16px; background: #fff; border-radius: 18px; border-bottom-left-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
         .loading-dot { width: 8px; height: 8px; background: #8e9399; border-radius: 50%; animation: dotBounce 1.2s ease-in-out infinite; }
         .loading-dot:nth-child(2) { animation-delay: .2s; }
@@ -157,12 +164,12 @@
         @keyframes dotBounce { 0%,60%,100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-6px); opacity: 1; } }
 
         /* ===== Toast ===== */
-        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 20px; border-radius: 12px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .3s ease; pointer-events: none; max-width: 400px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 10px 20px; border-radius: 12px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .3s ease; pointer-events: none; max-width: calc(100% - 40px); text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,.15); }
         .toast.show { opacity: 1; }
 
         /* ===== 文件上传按钮 ===== */
         .file-upload-btn {
-            width: 36px; height: 36px; border: none; border-radius: 50%; background: transparent;
+            width: 36px; min-width: 36px; height: 36px; min-height: 36px; border: none; border-radius: 50%; background: transparent;
             color: #5f6368; font-size: 18px; cursor: pointer; display: flex; align-items: center;
             justify-content: center; flex-shrink: 0; transition: background .2s;
         }
@@ -172,9 +179,10 @@
 
         /* ===== 图片预览条 ===== */
         .preview-bar {
-            display: none; align-items: center; gap: 8px; padding: 4px 16px 0 16px;
-            background: #fff; flex-shrink: 0; overflow-x: auto;
+            display: none; align-items: center; gap: 8px; padding: 4px 12px 0 12px;
+            background: #fff; flex-shrink: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
         }
+        @media (min-width:520px) { .preview-bar { padding: 4px 16px 0 16px; } }
         .preview-bar.active { display: flex; }
         .preview-item {
             position: relative; width: 48px; height: 48px; border-radius: 8px; overflow: hidden;
@@ -204,29 +212,30 @@
         .conversation-overlay { display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.35); z-index: 100; animation: fadeIn .2s ease-out; }
         .conversation-overlay.active { display: block; }
         .conversation-panel {
-            position: absolute; top: 0; left: 0; bottom: 0; width: 300px; max-width: 80%;
+            position: absolute; top: 0; left: 0; bottom: 0; width: 300px; max-width: 85%;
             background: #fff; display: flex; flex-direction: column; animation: slideIn .25s ease-out;
-            box-shadow: 2px 0 20px rgba(0,0,0,.1);
+            box-shadow: 2px 0 20px rgba(0,0,0,.1); -webkit-overflow-scrolling: touch;
         }
+        @media (max-width:380px) { .conversation-panel { max-width: 88%; } }
         @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
         .conversation-header {
-            padding: 16px 16px 12px; border-bottom: 1px solid #e9edf2; display: flex;
-            align-items: center; justify-content: space-between; flex-shrink: 0;
+            padding: max(16px, env(safe-area-inset-top, 16px)) 16px 12px; border-bottom: 1px solid #e9edf2; display: flex;
+            align-items: center; justify-content: space-between; flex-shrink: 0; gap: 8px;
         }
-        .conversation-header h2 { font-size: 17px; font-weight: 600; color: #1c1e21; margin: 0; }
-        .conversation-actions { display: flex; gap: 6px; }
+        .conversation-header h2 { font-size: 17px; font-weight: 600; color: #1c1e21; margin: 0; flex-shrink: 0; }
+        .conversation-actions { display: flex; gap: 6px; flex-shrink: 0; }
         .conversation-actions button {
             padding: 6px 12px; border-radius: 8px; border: none; font-size: 13px; cursor: pointer;
-            transition: background .2s;
+            transition: background .2s; min-height: 36px;
         }
-        .btn-conv-new { background: #007aff; color: #fff; }
+        .btn-conv-new { background: #007aff; color: #fff; white-space: nowrap; }
         .btn-conv-new:hover { background: #0062cc; }
         .btn-conv-close { background: #f0f2f5; color: #5f6368; }
         .btn-conv-close:hover { background: #e4e6ea; }
-        .conversation-list { flex: 1; overflow-y: auto; padding: 8px; }
+        .conversation-list { flex: 1; overflow-y: auto; overflow-y: overlay; -webkit-overflow-scrolling: touch; padding: 8px; }
         .conversation-item {
-            display: flex; align-items: center; padding: 10px 12px; border-radius: 10px;
-            cursor: pointer; transition: background .2s; margin-bottom: 2px; gap: 8px;
+            display: flex; align-items: center; padding: 12px 12px; border-radius: 10px;
+            cursor: pointer; transition: background .2s; margin-bottom: 2px; gap: 8px; min-height: 44px;
         }
         .conversation-item:hover { background: #f5f7fa; }
         .conversation-item.active { background: #e8f2ff; }
@@ -249,9 +258,10 @@
         .edit-modal-content {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
             background: #fff; border-radius: 20px; padding: 24px; width: calc(100% - 32px);
-            max-width: 420px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.15);
+            max-width: 420px; max-height: 85vh; max-height: 85dvh; overflow-y: auto; overflow-y: overlay; -webkit-overflow-scrolling: touch; box-shadow: 0 20px 60px rgba(0,0,0,.15);
             animation: panelIn .25s ease-out;
         }
+        @media (max-width:380px) { .edit-modal-content { width: calc(100% - 16px); padding: 20px 16px; } }
         .edit-modal-content h2 { font-size: 18px; font-weight: 600; margin-bottom: 16px; color: #1c1e21; }
     </style>
 </head>
