@@ -80,8 +80,9 @@ def chat():
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     except requests.exceptions.RequestException as e:
+        err_msg = f"请求失败: {str(e)}"
         def error_gen():
-            yield f"data: {json.dumps({'error': f'请求失败: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'error': err_msg})}\n\n"
             yield "data: [DONE]\n\n"
         return Response(
             stream_with_context(error_gen()),
