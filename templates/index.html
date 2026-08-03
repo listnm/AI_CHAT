@@ -383,6 +383,75 @@
             background: #d8dce3;
         }
 
+        /* ===== 测试连接按钮 ===== */
+        .btn-test {
+            width: 100%;
+            padding: 10px 0;
+            border: 1px solid #007aff;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            background: #ffffff;
+            color: #007aff;
+            margin-bottom: 4px;
+        }
+        .btn-test:hover {
+            background: #e8f2ff;
+        }
+        .btn-test:active {
+            background: #d0e5ff;
+        }
+        .btn-test:disabled {
+            border-color: #c4c9d0;
+            color: #c4c9d0;
+            cursor: not-allowed;
+            background: #f5f7fa;
+        }
+        .btn-test.loading {
+            color: transparent;
+            position: relative;
+        }
+        .btn-test.loading::after {
+            content: "";
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            top: 50%;
+            left: 50%;
+            margin: -9px 0 0 -9px;
+            border: 2px solid #007aff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ===== 测试结果提示 ===== */
+        .test-result {
+            font-size: 13px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: none;
+            line-height: 1.4;
+        }
+        .test-result.success {
+            display: block;
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+        .test-result.fail {
+            display: block;
+            background: #fff0f0;
+            color: #c62828;
+        }
+
         /* ===== 加载提示 ===== */
         .loading-indicator {
             align-self: flex-start;
@@ -539,6 +608,8 @@
                     placeholder="gpt-3.5-turbo / claude-3-opus-20240229"
                     />
                 </div>
+                <div class="test-result" id="testResult"></div>
+                <button class="btn-test" id="testBtn">测试连接</button>
                 <div class="settings-actions">
                     <button class="btn-close" id="settingsCancel">取消</button>
                     <button class="btn-save" id="settingsSave">保存</button>
@@ -1039,6 +1110,49 @@
             saveSettings();
             settingsOverlay.classList.remove("active");
             showToast("设置已保存");
+        });
+
+        // ================================================================
+        //  测试连接
+        // ================================================================
+
+        const testBtn = document.getElementById("testBtn");
+        const testResult = document.getElementById("testResult");
+
+        testBtn.addEventListener("click", async () => {
+            const apiUrl = apiUrlInput.value.trim();
+            const apiKey = apiKeyInput.value.trim();
+            const model = modelNameInput.value.trim();
+
+            if (!apiUrl || !apiKey || !model) {
+                testResult.textContent = "请先完整填写 API 地址、Key 和模型名称";
+                testResult.className = "test-result fail";
+                return;
+            }
+
+            // 进入测试状态
+            testBtn.disabled = true;
+            testBtn.classList.add("loading");
+            testBtn.textContent = "测试中";
+            testResult.className = "test-result";
+
+            try {
+                const resp = await fetch("/api/check", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ api_url: apiUrl, api_key: apiKey, model }),
+                });
+                const result = await resp.json();
+                testResult.textContent = result.message;
+                testResult.className = result.ok ? "test-result success" : "test-result fail";
+            } catch (e) {
+                testResult.textContent = "网络错误，无法连接到服务器";
+                testResult.className = "test-result fail";
+            } finally {
+                testBtn.disabled = false;
+                testBtn.classList.remove("loading");
+                testBtn.textContent = "测试连接";
+            }
         });
 
         // ================================================================

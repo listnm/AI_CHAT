@@ -17,6 +17,57 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/api/check", methods=["POST"])
+def api_check():
+    """
+    API 连通性测试接口
+    向用户指定的 API 发送一个简单请求，验证地址、Key、模型是否可用
+    """
+    data = request.get_json(force=True)
+    api_url = data.get("api_url", "")
+    api_key = data.get("api_key", "")
+    model = data.get("model", "")
+
+    if not api_url or not api_key or not model:
+        return {"ok": False, "message": "请先完整填写 API 地址、Key 和模型名称"}
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 5,
+        "stream": False,
+    }
+
+    try:
+        resp = requests.post(api_url, headers=headers, json=payload, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        # 检查是否包含预期字段
+        if "choices" in data and len(data["choices"]) > 0:
+            return {"ok": True, "message": "连接成功，API 可用"}
+        else:
+            return {"ok": False, "message": f"响应格式异常：{json.dumps(data)[:200]}"}
+    except requests.exceptions.Timeout:
+        return {"ok": False, "message": "连接超时，请检查 API 地址或网络"}
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code
+        if status == 401:
+            return {"ok": False, "message": "认证失败（401），请检查 API Key 是否正确"}
+        elif status == 404:
+            return {"ok": False, "message": "API 地址不存在（404），请检查地址是否正确"}
+        else:
+            body = e.response.text[:200]
+            return {"ok": False, "message": f"HTTP {status}：{body}"}
+    except requests.exceptions.ConnectionError:
+        return {"ok": False, "message": "无法连接到服务器，请检查 API 地址或网络"}
+    except Exception as e:
+        return {"ok": False, "message": f"测试失败：{str(e)}"}
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     """
