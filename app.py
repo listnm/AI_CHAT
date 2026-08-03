@@ -32,18 +32,27 @@ class _DBConnection:
     """统一的数据库连接包装，兼容 SQLite 和 PostgreSQL"""
 
     def __init__(self):
+        self._using_pg = False
         if _USE_PG:
-            import psycopg2
-            import psycopg2.extras
-            self._conn = psycopg2.connect(DATABASE_URL)
-            self._conn.autocommit = False
-            self._extras = psycopg2.extras
+            try:
+                import psycopg2
+                import psycopg2.extras
+                self._conn = psycopg2.connect(DATABASE_URL)
+                self._conn.autocommit = False
+                self._extras = psycopg2.extras
+                self._using_pg = True
+            except Exception as e:
+                print(f"[WARN] PostgreSQL 连接失败 ({e})，回退到 SQLite")
+                self._fallback_to_sqlite()
         else:
-            self._conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-            self._conn.row_factory = sqlite3.Row
+            self._fallback_to_sqlite()
+
+    def _fallback_to_sqlite(self):
+        self._conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row
 
     def execute(self, sql, params=None):
-        if _USE_PG:
+        if self._using_pg:
             sql = sql.replace("?", "%s")
             cur = self._conn.cursor(cursor_factory=self._extras.RealDictCursor)
             if params is not None:
@@ -58,7 +67,7 @@ class _DBConnection:
                 return self._conn.execute(sql)
 
     def executescript(self, sql):
-        if _USE_PG:
+        if self._using_pg:
             cur = self._conn.cursor()
             for stmt in sql.split(";"):
                 stmt = stmt.strip()
@@ -134,8 +143,9 @@ try:
     def _decrypt(text: str) -> str:
         return _cipher.decrypt(text.encode()).decode()
 
-except ImportError:
-    # 没有 cryptography 库时，使用 base64 简单编码（不加密，但至少有层编码）
+except Exception as _e:
+    # 加密初始化失败（如 ENCRYPTION_KEY 格式不对），降级为 base64
+    print(f"[WARN] 加密初始化失败 ({_e})，降级为 base64 编码")
     import base64 as _base64
 
     def _encrypt(text: str) -> str:
@@ -912,8 +922,11 @@ def _migrate_old_data():
 
 
 # 在模块加载时初始化数据库（支持 gunicorn）
-_init_db()
-_migrate_old_data()
+try:
+    _init_db()
+    _migrate_old_data()
+except Exception as _e:
+    print(f"[ERROR] 数据库初始化失败: {_e}")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
