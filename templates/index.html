@@ -276,7 +276,7 @@
         <div class="empty-state" id="emptyState">
             <div class="empty-state-icon">💬</div>
             <div class="empty-state-text">开始一段新的对话</div>
-            <div class="empty-state-hint">点击右上角 ⚙️ 添加 API 账号后即可开始</div>
+            <div class="empty-state-hint">点击左上角 ☰ 新建对话，然后添加 API 账号即可开始</div>
         </div>
     </div>
     <div class="preview-bar" id="previewBar"></div>
@@ -451,6 +451,15 @@ async function loadAccounts() {
         const data = await resp.json();
         accounts = data.accounts || [];
         renderAccountList();
+        // 更新空状态提示
+        const hint = emptyState.querySelector(".empty-state-hint");
+        if (hint) {
+            if (accounts.length > 0) {
+                hint.textContent = "点击左上角 ☰ 新建对话即可开始";
+            } else {
+                hint.textContent = "点击右上角 ⚙️ 添加 API 账号，然后新建对话";
+            }
+        }
     } catch (e) {
         console.error("加载账号失败", e);
     }
@@ -807,9 +816,11 @@ async function createNewConversation() {
             await loadConversations();
             conversationOverlay.classList.remove("active");
             showToast("已创建新对话");
+        } else {
+            showToast(result.message || "创建对话失败");
         }
     } catch (e) {
-        showToast("创建对话失败");
+        showToast("网络错误，创建对话失败");
     }
 }
 
@@ -876,40 +887,14 @@ conversationOverlay.addEventListener("click", (e) => {
 });
 convNewBtn.addEventListener("click", createNewConversation);
 
-// 初始化：获取或创建对话
+// 初始化：只加载对话列表，不自动创建/加载对话
 async function initConversation() {
+    currentConvId = null;
+    messages = [];
+    headerTitle.textContent = "AI 对话";
+    chatArea.innerHTML = "";
+    chatArea.appendChild(emptyState);
     await loadConversations();
-    if (conversations.length > 0) {
-        // 自动加载最新的对话
-        const latest = conversations[0];
-        currentConvId = latest.id;
-        headerTitle.textContent = latest.title || "AI 对话";
-        const resp = await fetch(`/api/conversations/${latest.id}`);
-        const result = await resp.json();
-        if (result.ok) {
-            messages = result.conversation.messages || [];
-            if (messages.length > 0) {
-                chatArea.innerHTML = "";
-                messages.forEach(m => {
-                    if (m.role === "user") {
-                        const bubble = document.createElement("div");
-                        bubble.className = "message user";
-                        bubble.textContent = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
-                        chatArea.appendChild(bubble);
-                    } else if (m.role === "assistant") {
-                        const bubble = document.createElement("div");
-                        bubble.className = m.content && m.content.startsWith("⚠️") ? "message error" : "message assistant";
-                        bubble.textContent = m.content || "";
-                        chatArea.appendChild(bubble);
-                    }
-                });
-                scrollToBottom();
-            }
-        }
-    } else {
-        // 自动创建第一个对话
-        await createNewConversation();
-    }
 }
 
 // ================================================================
@@ -998,6 +983,30 @@ async function sendMessage(userContent) {
     if (accounts.length === 0) {
         showToast("请先点击右上角 ⚙️ 添加 API 账号");
         return;
+    }
+
+    // 如果没有当前对话，先自动创建一个
+    if (!currentConvId) {
+        try {
+            const resp = await fetch("/api/conversations", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: "新对话" }),
+            });
+            const result = await resp.json();
+            if (!result.ok) {
+                showToast("创建对话失败，请重试");
+                return;
+            }
+            currentConvId = result.conversation.id;
+            messages = [];
+            headerTitle.textContent = "新对话";
+            chatArea.innerHTML = "";
+            await loadConversations();
+        } catch (e) {
+            showToast("创建对话失败，请重试");
+            return;
+        }
     }
 
     // 构建消息内容（支持多模态）
