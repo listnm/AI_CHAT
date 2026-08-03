@@ -836,15 +836,24 @@
                             try {
                                 // 尝试解析 JSON
                                 const parsed = JSON.parse(dataContent);
-                                // 兼容 OpenAI 格式
-                                const delta =
-                                    parsed.choices?.[0]?.delta?.content ||
-                                    parsed.choices?.[0]?.text ||
-                                    "";
-                                if (delta) {
-                                    fullContent += delta;
+                                // 检查是否为错误信息
+                                if (parsed.error) {
+                                    const errText = typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
+                                    fullContent += errText;
                                     assistantBubble.textContent = fullContent;
+                                    assistantBubble.className = "message error";
                                     scrollToBottom();
+                                } else {
+                                    // 兼容 OpenAI 格式
+                                    const delta =
+                                        parsed.choices?.[0]?.delta?.content ||
+                                        parsed.choices?.[0]?.text ||
+                                        "";
+                                    if (delta) {
+                                        fullContent += delta;
+                                        assistantBubble.textContent = fullContent;
+                                        scrollToBottom();
+                                    }
                                 }
                             } catch (e) {
                                 // 非 JSON 格式，直接追加文本
@@ -865,11 +874,18 @@
                         if (dataContent.trim() !== "[DONE]") {
                             try {
                                 const parsed = JSON.parse(dataContent);
-                                const delta =
-                                    parsed.choices?.[0]?.delta?.content ||
-                                    parsed.choices?.[0]?.text ||
-                                    "";
-                                if (delta) fullContent += delta;
+                                // 检查是否为错误信息
+                                if (parsed.error) {
+                                    const errText = typeof parsed.error === "string" ? parsed.error : (parsed.error.message || JSON.stringify(parsed.error));
+                                    fullContent += errText;
+                                    assistantBubble.className = "message error";
+                                } else {
+                                    const delta =
+                                        parsed.choices?.[0]?.delta?.content ||
+                                        parsed.choices?.[0]?.text ||
+                                        "";
+                                    if (delta) fullContent += delta;
+                                }
                             } catch (e) {
                                 if (dataContent.trim()) fullContent += dataContent;
                             }
