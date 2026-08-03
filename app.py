@@ -315,8 +315,6 @@ def admin():
 
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
-    proxy_models_url = base_url + "/v1/models"
-    proxy_accounts_url = base_url + "/v1/accounts"
 
     return render_template(
         "admin.html",
@@ -325,8 +323,7 @@ def admin():
         conversations=conv_summary,
         base_url=base_url,
         proxy_url=proxy_url,
-        proxy_models_url=proxy_models_url,
-        proxy_accounts_url=proxy_accounts_url,
+        proxy_models_url=proxy_url,
         proxy_api_key=PROXY_API_KEY,
         fastest_latency=fastest_latency,
     )
@@ -972,36 +969,26 @@ def chat():
 # ================================================================
 
 
-def _select_account(model: str = "", account_name: str = "") -> dict | None:
+def _select_account(account_name: str = "") -> dict | None:
     """
-    选择账号，支持三种模式：
-    1. 指定 account_name → 按名称精确匹配
-    2. 指定 model → 按模型匹配
-    3. 都不指定 → 选延迟最低的
-    返回账号 dict 或 None。
+    选择账号：
+    - 指定 account_name → 按名称匹配
+    - 不指定 → 选延迟最低的
     """
     accounts = _load_accounts()
     if not accounts:
         return None
 
-    # 1. 按账号名称精确匹配
     if account_name:
         for a in accounts:
             if a.get("name", "").strip() == account_name.strip():
                 return a
 
-    # 2. 按模型匹配
-    if model:
-        for a in accounts:
-            if a.get("model", "").strip() == model.strip():
-                return a
-
-    # 3. 回退：按延迟排序选最快的
+    # 按延迟排序选最快的
     valid = [a for a in accounts if a.get("latency_ms") is not None]
     if valid:
         valid.sort(key=lambda a: a["latency_ms"])
         return valid[0]
-    # 没有延迟数据就返回第一个
     return accounts[0]
 
 
@@ -1015,92 +1002,17 @@ def _make_provider_info(account: dict) -> dict:
     }
 
 
-@app.route("/v1/models", methods=["GET"])
-def proxy_list_models():
-    """
-    聚合模型列表接口（OpenAI 兼容格式）
-    列出所有账号中可用的模型，每个模型附带来源账号信息
-    """
-    auth = request.headers.get("Authorization", "")
-    expected = "Bearer " + PROXY_API_KEY
-    if auth != expected:
-        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
-
-    accounts = _load_accounts()
-    models_data = []
-    seen = set()
-
-    for acc in accounts:
-        mid = acc.get("model", "").strip()
-        if not mid or mid in seen:
-            continue
-        seen.add(mid)
-        models_data.append({
-            "id": mid,
-            "object": "model",
-            "created": int(time.time()),
-            "owned_by": acc.get("name", "unknown"),
-            "_provider": _make_provider_info(acc),
-        })
-
-    return app.response_class(
-        response=json.dumps({"object": "list", "data": models_data}, ensure_ascii=False),
-        mimetype="application/json; charset=utf-8",
-    )
-
-
-@app.route("/v1/accounts", methods=["GET"])
-def proxy_list_accounts():
-    """
-    列出所有可用账号及信息（含名称、模型、延迟等）
-    供客户端选择使用哪个中转站
-    """
-    auth = request.headers.get("Authorization", "")
-    expected = "Bearer " + PROXY_API_KEY
-    if auth != expected:
-        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
-
-    accounts = _load_accounts()
-    result = []
-    for acc in accounts:
-        result.append({
-            "id": acc["id"],
-            "name": acc.get("name", ""),
-            "api_url": acc.get("api_url", ""),
-            "model": acc.get("model", ""),
-            "latency_ms": acc.get("latency_ms"),
-            "last_speed_test": acc.get("last_speed_test"),
-        })
-
-    # 按延迟排序（有延迟的排前面，快的排前面）
-    result.sort(key=lambda a: (
-        0 if a["latency_ms"] is not None else 1,
-        a["latency_ms"] if a["latency_ms"] is not None else 99999,
-    ))
-
-    return app.response_class(
-        response=json.dumps({"object": "list", "data": result}, ensure_ascii=False),
-        mimetype="application/json; charset=utf-8",
-    )
-
-
 @app.route("/v1/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
     OpenAI 兼容的 API 转发端点
     认证方式：Authorization: Bearer {PROXY_API_KEY}
 
-    两种选择策略（通过 strategy 参数控制）：
-    - strategy="auto" 或省略 → 自动选择延迟最低的账号（默认）
-    - strategy="manual" → 手动指定账号，需搭配 account 参数
-
     请求参数：
-    - model: 模型名称（匹配拥有该模型的账号）
-    - account: 账号名称（精确指定使用哪个中转站，需 strategy="manual"）
-    - strategy: "auto" | "manual"（默认 auto）
+    - account: 账号名称（可选）。指定后用该账号，不指定则自动选最快
+    - 其他参数与 OpenAI API 一致（model, messages, stream 等）
 
     响应中会包含 _provider 字段说明实际使用的账号
-    支持 stream 和普通模式
     """
     # 认证
     auth = request.headers.get("Authorization", "")
@@ -1109,9 +1021,8 @@ def proxy_chat_completions():
         return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
 
     data = request.get_json(force=True) or {}
-    model = data.get("model", "")
     account_name = data.get("account", "")
-    strategy = data.get("strategy", "auto")
+    model = data.get("model", "")
     messages = data.get("messages", [])
     stream = data.get("stream", False)
     temperature = data.get("temperature", 0.7)
@@ -1120,21 +1031,13 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 选择账号
-    if strategy == "manual" and account_name:
-        # 手动模式：按名称精确匹配
-        account = _select_account(account_name=account_name)
-        if not account:
-            return {"error": {"message": f"Account '{account_name}' not found", "type": "not_found"}, "ok": False}, 404
-    else:
-        # 自动模式：按模型匹配或选最快的
-        account = _select_account(model=model)
-        if not account:
-            return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
+    # 选择账号：指定 account 则用该账号，否则自动选最快
+    account = _select_account(account_name)
+    if not account:
+        return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
     api_url = normalize_api_url(account["api_url"])
     api_key = account["api_key"]
-    # 如果请求指定了模型就用请求的，否则用账号配置的
     effective_model = model or account["model"]
     provider_info = _make_provider_info(account)
     provider_info["effective_model"] = effective_model

@@ -91,6 +91,11 @@
             display: flex; align-items: center; justify-content: center;
         }
         .refresh-model-btn:hover { background: #e4e6ea; }
+        .edit-input {
+            padding: 4px 6px; border: 1px solid #d0d5dd; border-radius: 4px;
+            font-size: 12px; outline: none; width: 100%; min-width: 60px;
+        }
+        .edit-input:focus { border-color: #1b74e4; }
         @media (max-width: 600px) {
             body { padding: 12px; }
             .card { padding: 12px; }
@@ -125,21 +130,13 @@
     <div class="card">
         <h2>🔗 OpenAI 兼容转发 API</h2>
         <div class="proxy-box">
-            <div><span class="label">对话接口：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="copy-btn" onclick="copyText('proxyUrl')">复制</button></div>
-            <div><span class="label">模型列表：</span><span class="value" id="proxyModelsUrl">{{ proxy_models_url }}</span> <button class="copy-btn" onclick="copyText('proxyModelsUrl')">复制</button></div>
-            <div><span class="label">账号列表：</span><span class="value" id="proxyAccountsUrl">{{ proxy_accounts_url }}</span> <button class="copy-btn" onclick="copyText('proxyAccountsUrl')">复制</button></div>
+            <div><span class="label">API 地址：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="copy-btn" onclick="copyText('proxyUrl')">复制</button></div>
             <div><span class="label">API Key：</span><span class="value" id="proxyKey">{{ proxy_api_key }}</span> <button class="copy-btn" onclick="copyText('proxyKey')">复制</button></div>
             <div style="margin-top:8px;font-family:system-ui;font-size:12px;color:#8e9399;line-height:1.7;">
-                <strong>两种选择策略：</strong><br>
-                <strong>🔄 自动模式（默认）</strong> — 不传 <code>strategy</code> 或传 <code>"strategy": "auto"</code><br>
-                &nbsp;&nbsp;• 指定 <code>model</code> → 自动匹配拥有该模型的账号<br>
-                &nbsp;&nbsp;• 不指定 <code>model</code> → 自动选择延迟最低的账号<br><br>
-                <strong>👆 手动模式</strong> — 传 <code>"strategy": "manual", "account": "账号名称"</code><br>
-                &nbsp;&nbsp;• 精确指定使用哪个中转站，不依赖自动匹配<br>
-                &nbsp;&nbsp;• 可先通过 <code>GET /v1/accounts</code> 查看所有可用账号名称<br><br>
-                <strong>响应说明：</strong><br>
-                &nbsp;&nbsp;• 非流式响应包含 <code>_provider</code> 字段 → 实际调用的账号、地址、延迟<br>
-                &nbsp;&nbsp;• 流式响应先发 <code>event: provider</code> 事件，后跟正常数据
+                <strong>使用方式：</strong><br>
+                • 不传 <code>account</code> 参数 → 自动选择延迟最低的账号<br>
+                • 传 <code>"account": "账号名称"</code> → 手动指定使用哪个中转站<br>
+                • 响应中会包含 <code>_provider</code> 字段说明实际调用的账号
             </div>
         </div>
     </div>
@@ -186,8 +183,8 @@
             <tbody>
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
-                    <td>{{ acc.name }}</td>
-                    <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ acc.api_url }}">{{ acc.api_url }}</td>
+                    <td><input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="edit-input" /></td>
+                    <td><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="edit-input" style="max-width:160px;" /></td>
                     <td>
                         <select id="model-{{ acc.id }}" style="padding:3px 6px;border:1px solid #d0d5dd;border-radius:4px;font-size:12px;max-width:130px;">
                             <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
@@ -195,9 +192,8 @@
                         <button class="refresh-model-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表" style="width:28px;height:28px;font-size:13px;display:inline-flex;vertical-align:middle;">↻</button>
                     </td>
                     <td>
-                        <span class="key-text" title="{{ acc.api_key }}">{{ acc.api_key_preview }}</span>
+                        <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="edit-input" style="max-width:120px;font-family:monospace;font-size:11px;" />
                         <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">复制</button>
-                        <input type="hidden" id="key-{{ acc.id }}" value="{{ acc.api_key }}">
                     </td>
                     <td id="latency-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
@@ -208,7 +204,7 @@
                     </td>
                     <td>
                         <button class="btn-small success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
-                        <button class="btn-small primary" onclick="adminSaveModel('{{ acc.id }}')">保存</button>
+                        <button class="btn-small primary" onclick="adminSaveAccount('{{ acc.id }}')">保存</button>
                         <button class="btn-small danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
                     </td>
                 </tr>
@@ -260,12 +256,7 @@ function copyKey(id) {
         const orig = btn.textContent;
         btn.textContent = '已复制';
         setTimeout(() => btn.textContent = orig, 1500);
-    }).catch(() => {
-        input.type = 'text';
-        input.select();
-        document.execCommand('copy');
-        input.type = 'hidden';
-    });
+    }).catch(() => {});
 }
 
 function copyText(elementId) {
@@ -283,6 +274,43 @@ function showAdminMsg(text, type) {
     const el = document.getElementById('accountMsg');
     el.textContent = text;
     el.className = 'msg ' + type;
+}
+
+// ================================================================
+//  保存账号全部字段（名称、地址、Key、模型）
+// ================================================================
+async function adminSaveAccount(id) {
+    const name = document.getElementById('name-' + id).value.trim();
+    const url = document.getElementById('url-' + id).value.trim();
+    const key = document.getElementById('key-' + id).value.trim();
+    const model = document.getElementById('model-' + id).value;
+
+    if (!name || !url) {
+        showAdminMsg('名称和 API 地址不能为空', 'fail');
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/accounts/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: name,
+                api_url: url,
+                api_key: key,
+                model: model,
+            }),
+        });
+        const result = await resp.json();
+        if (result.ok) {
+            showAdminMsg('已保存', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showAdminMsg(result.message, 'fail');
+        }
+    } catch (e) {
+        showAdminMsg('保存失败', 'fail');
+    }
 }
 
 // ================================================================
@@ -337,11 +365,15 @@ async function adminRefreshModels(id) {
     const currentVal = sel.value;
     sel.innerHTML = '<option value="">加载中...</option>';
 
+    // 使用输入框中的最新值
+    const url = document.getElementById('url-' + id).value.trim();
+    const key = document.getElementById('key-' + id).value.trim();
+
     try {
         const resp = await fetch('/api/models', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account_id: id }),
+            body: JSON.stringify({ api_url: url, api_key: key }),
         });
         const result = await resp.json();
         sel.innerHTML = '';
@@ -363,28 +395,6 @@ async function adminRefreshModels(id) {
     } catch (e) {
         sel.innerHTML = '<option value="">加载失败</option>';
         showAdminMsg('网络错误', 'fail');
-    }
-}
-
-// ================================================================
-//  保存模型选择
-// ================================================================
-async function adminSaveModel(id) {
-    const model = document.getElementById('model-' + id).value;
-    if (!model) {
-        showAdminMsg('请先选择模型', 'fail');
-        return;
-    }
-    try {
-        const resp = await fetch('/api/accounts/' + id, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model: model }),
-        });
-        const result = await resp.json();
-        showAdminMsg(result.message, result.ok ? 'success' : 'fail');
-    } catch (e) {
-        showAdminMsg('保存失败', 'fail');
     }
 }
 
@@ -444,12 +454,17 @@ async function adminTestAccount(id) {
     const cell = document.getElementById('latency-' + id);
     cell.innerHTML = '<span class="badge badge-blue">测速中...</span>';
 
+    // 使用输入框中的最新值
+    const url = document.getElementById('url-' + id).value.trim();
+    const key = document.getElementById('key-' + id).value.trim();
+    const model = document.getElementById('model-' + id).value;
+
     try {
         const start = Date.now();
         const resp = await fetch('/api/check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account_id: id }),
+            body: JSON.stringify({ api_url: url, api_key: key, model: model }),
         });
         const result = await resp.json();
         const elapsed = Date.now() - start;
@@ -463,7 +478,7 @@ async function adminTestAccount(id) {
 
         if (result.ok) {
             cell.innerHTML = '<span class="badge badge-green">' + elapsed + 'ms</span>';
-            showAdminMsg('「' + (document.querySelector('#row-' + id + ' td:first-child')?.textContent || '') + '」' + elapsed + 'ms 可用', 'success');
+            showAdminMsg('「' + (document.getElementById('name-' + id)?.value || '') + '」' + elapsed + 'ms 可用', 'success');
         } else {
             cell.innerHTML = '<span class="badge badge-red">不可用</span>';
             showAdminMsg(result.message, 'fail');
@@ -530,7 +545,7 @@ function updateFastestLabel() {
 
     const label = document.getElementById('fastestLabel');
     if (fastestId) {
-        const name = document.querySelector('#row-' + fastestId + ' td:first-child')?.textContent || '';
+        const name = document.getElementById('name-' + fastestId)?.value || '';
         label.textContent = '✅ 当前最快：' + name + ' (' + fastest + 'ms)';
         label.style.display = 'inline';
     } else {
