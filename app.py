@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, Response, stream_with_context
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ai-chat-secret-key-change-in-production")
 
 # ================================================================
 #  数据库初始化
@@ -184,6 +185,57 @@ def normalize_api_url(url: str) -> str:
 def index():
     """渲染主页面"""
     return render_template("index.html")
+
+
+# ================================================================
+#  管理后台
+# ================================================================
+
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    """管理后台：查看数据库中的账号和对话数据"""
+    from flask import session as flask_session
+
+    if request.method == "POST":
+        pwd = request.form.get("password", "")
+        if pwd == ADMIN_PASSWORD:
+            flask_session["admin_logged_in"] = True
+        else:
+            return render_template("admin.html", logged_in=False, error="密码错误")
+
+    if not flask_session.get("admin_logged_in"):
+        return render_template("admin.html", logged_in=False, error="")
+
+    # 加载数据
+    accounts = _load_accounts()
+    safe_accounts = []
+    for acc in accounts:
+        safe_accounts.append({
+            "id": acc["id"],
+            "name": acc.get("name", ""),
+            "api_url": acc.get("api_url", ""),
+            "model": acc.get("model", ""),
+            "api_key": acc.get("api_key", ""),
+            "api_key_preview": acc["api_key"][:12] + "..." if acc.get("api_key") else "",
+            "latency_ms": acc.get("latency_ms"),
+            "last_speed_test": acc.get("last_speed_test"),
+        })
+
+    convs = _load_conversations()
+    conv_summary = []
+    for c in convs:
+        conv_summary.append({
+            "id": c["id"],
+            "title": c.get("title", "新对话"),
+            "msg_count": len(c.get("messages", [])),
+            "created_at": c.get("created_at", ""),
+            "updated_at": c.get("updated_at", ""),
+        })
+
+    return render_template("admin.html", logged_in=True, accounts=safe_accounts, conversations=conv_summary)
 
 
 # ================================================================

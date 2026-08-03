@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 - AI 对话</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5; color: #1c1e21; padding: 20px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        h1 { font-size: 22px; margin-bottom: 20px; color: #1c1e21; }
+        .card {
+            background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-x: auto;
+        }
+        .card h2 { font-size: 16px; margin-bottom: 12px; color: #65676b; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9edf2; word-break: break-all; }
+        th { color: #65676b; font-weight: 600; white-space: nowrap; }
+        tr:hover { background: #f7f8fa; }
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 600;
+        }
+        .badge-green { background: #e8f5e9; color: #2e7d32; }
+        .badge-gray { background: #f5f5f5; color: #757575; }
+        .key-text { font-family: monospace; font-size: 11px; color: #757575; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+        .copy-btn {
+            font-size: 11px; padding: 2px 8px; border: 1px solid #d0d5dd; border-radius: 4px;
+            background: #fff; cursor: pointer; color: #444; margin-left: 4px;
+        }
+        .copy-btn:hover { background: #f0f2f5; }
+        .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
+        .login-form {
+            max-width: 360px; margin: 80px auto; background: #fff; border-radius: 12px;
+            padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+        }
+        .login-form h1 { text-align: center; margin-bottom: 24px; }
+        .login-form input {
+            width: 100%; padding: 10px 14px; border: 1px solid #d0d5dd; border-radius: 8px;
+            font-size: 14px; outline: none; margin-bottom: 12px;
+        }
+        .login-form input:focus { border-color: #1b74e4; }
+        .login-form button {
+            width: 100%; padding: 10px; background: #1b74e4; color: #fff; border: none;
+            border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
+        }
+        .login-form button:hover { background: #1665c1; }
+        .error { color: #e53935; font-size: 13px; text-align: center; margin-top: 8px; }
+        .nav { margin-bottom: 16px; }
+        .nav a { color: #1b74e4; text-decoration: none; font-size: 14px; }
+        .nav a:hover { text-decoration: underline; }
+        .msg-count { font-size: 11px; color: #999; }
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .card { padding: 12px; }
+            table { font-size: 12px; }
+            th, td { padding: 6px 6px; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    {% if not logged_in %}
+    <div class="login-form">
+        <h1>管理后台</h1>
+        <form method="post">
+            <input type="password" name="password" placeholder="请输入管理员密码" required autofocus>
+            <button type="submit">登录</button>
+            {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        </form>
+    </div>
+    {% else %}
+    <div class="nav">
+        <a href="/">&larr; 返回首页</a>
+    </div>
+    <h1>管理后台</h1>
+
+    <div class="card">
+        <h2>账号列表 ({{ accounts|length }})</h2>
+        {% if accounts %}
+        <table>
+            <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>API 地址</th>
+                    <th>模型</th>
+                    <th>API Key</th>
+                    <th>延迟</th>
+                    <th>测速时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for acc in accounts %}
+                <tr>
+                    <td>{{ acc.name }}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ acc.api_url }}">{{ acc.api_url }}</td>
+                    <td>{{ acc.model }}</td>
+                    <td>
+                        <span class="key-text" title="{{ acc.api_key }}">{{ acc.api_key_preview }}</span>
+                        <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">复制</button>
+                        <input type="hidden" id="key-{{ acc.id }}" value="{{ acc.api_key }}">
+                    </td>
+                    <td>
+                        {% if acc.latency_ms is not none %}
+                        <span class="badge badge-green">{{ acc.latency_ms }}ms</span>
+                        {% else %}
+                        <span class="badge badge-gray">未测速</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ acc.last_speed_test or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无账号数据</div>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>对话列表 ({{ conversations|length }})</h2>
+        {% if conversations %}
+        <table>
+            <thead>
+                <tr>
+                    <th>标题</th>
+                    <th>消息数</th>
+                    <th>创建时间</th>
+                    <th>更新时间</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in conversations %}
+                <tr>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.title }}">{{ c.title }}</td>
+                    <td><span class="msg-count">{{ c.msg_count }} 条</span></td>
+                    <td>{{ c.created_at[:19] }}</td>
+                    <td>{{ c.updated_at[:19] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="empty">暂无对话数据</div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function copyKey(id) {
+    const input = document.getElementById('key-' + id);
+    if (!input) return;
+    navigator.clipboard.writeText(input.value).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(() => btn.textContent = orig, 1500);
+    }).catch(() => {
+        // fallback
+        input.type = 'text';
+        input.select();
+        document.execCommand('copy');
+        input.type = 'hidden';
+    });
+}
+</script>
+</body>
+</html>
