@@ -894,6 +894,7 @@ def chat():
             api_url, headers=headers, json=payload, stream=True, timeout=60,
         )
         upstream_response.raise_for_status()
+        # 强制 UTF-8 编码，防止上游 SSE 未指定 charset 导致中文乱码
         upstream_response.encoding = "utf-8"
     except requests.exceptions.Timeout:
         def timeout_gen():
@@ -953,7 +954,7 @@ def chat():
 
     return Response(
         stream_with_context(generate()),
-        mimetype="text/event-stream",
+        mimetype="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
@@ -1023,6 +1024,8 @@ def proxy_chat_completions():
             api_url, headers=headers, json=payload, stream=stream, timeout=120,
         )
         upstream.raise_for_status()
+        # 强制 UTF-8 编码，防止上游 SSE 未指定 charset 导致中文乱码
+        upstream.encoding = "utf-8"
     except requests.exceptions.Timeout:
         return {"error": {"message": "Upstream API timeout", "type": "timeout"}, "ok": False}, 504
     except requests.exceptions.HTTPError as e:
@@ -1070,7 +1073,7 @@ def proxy_chat_completions():
 
         return Response(
             stream_with_context(generate()),
-            mimetype="text/event-stream",
+            mimetype="text/event-stream; charset=utf-8",
             headers={
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
@@ -1081,7 +1084,11 @@ def proxy_chat_completions():
         # 非流式响应
         try:
             resp_data = upstream.json()
-            return resp_data
+            # 确保非流式响应也使用 UTF-8
+            return app.response_class(
+                response=json.dumps(resp_data, ensure_ascii=False),
+                mimetype="application/json; charset=utf-8",
+            )
         except Exception as e:
             return {"error": {"message": f"Failed to parse upstream response: {str(e)}", "type": "parse_error"}, "ok": False}, 502
 
