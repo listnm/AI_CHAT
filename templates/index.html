@@ -554,16 +554,8 @@ editModal.addEventListener("click", (e) => {
 });
 
 editRefreshModels.addEventListener("click", async () => {
-    const url = editUrl.value.trim();
-    const key = editKey.value.trim() || null;
-    // 如果 key 为空，尝试从已保存的账号获取
-    let apiKey = key;
-    if (!apiKey && editingAccountId) {
-        const acc = accounts.find(a => a.id === editingAccountId);
-        if (acc) apiKey = acc.api_key_preview; // 只有预览，所以需要先获取完整key
-    }
-    if (!url) { editMsg.textContent = "请填写 API 地址"; editMsg.className = "settings-msg fail"; return; }
-    // 通过后端获取完整key
+    if (!editingAccountId) return;
+    const currentModel = editModel.value;
     editRefreshModels.disabled = true;
     editRefreshModels.textContent = "⏳";
     editModel.innerHTML = '<option value="">加载中...</option>';
@@ -572,7 +564,7 @@ editRefreshModels.addEventListener("click", async () => {
         const resp = await fetch("/api/models", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ api_url: url, api_key: apiKey || "" }),
+            body: JSON.stringify({ account_id: editingAccountId }),
         });
         const result = await resp.json();
         editModel.innerHTML = "";
@@ -582,6 +574,10 @@ editRefreshModels.addEventListener("click", async () => {
                 opt.value = m; opt.textContent = m;
                 editModel.appendChild(opt);
             });
+            // 尝试恢复当前选中的模型
+            if (currentModel && [...editModel.options].some(o => o.value === currentModel)) {
+                editModel.value = currentModel;
+            }
             editMsg.textContent = `已加载 ${result.models.length} 个模型`;
             editMsg.className = "settings-msg success";
         } else {
