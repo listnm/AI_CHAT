@@ -315,6 +315,7 @@ def admin():
 
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
+    proxy_models_url = base_url + "/v1/models"
 
     return render_template(
         "admin.html",
@@ -323,6 +324,7 @@ def admin():
         conversations=conv_summary,
         base_url=base_url,
         proxy_url=proxy_url,
+        proxy_models_url=proxy_models_url,
         proxy_api_key=PROXY_API_KEY,
         fastest_latency=fastest_latency,
     )
@@ -967,12 +969,84 @@ def chat():
 #  OpenAI 兼容转发 API（可用在 ChatGPT、Cursor 等工具中）
 # ================================================================
 
+
+def _select_account_for_model(model: str) -> dict | None:
+    """
+    根据模型名称查找匹配的账号。
+    如果 model 为空，返回最快的可用账号。
+    返回账号 dict 或 None。
+    """
+    accounts = _load_accounts()
+    if not accounts:
+        return None
+
+    # 如果指定了模型，优先找匹配的账号
+    if model:
+        for a in accounts:
+            if a.get("model", "").strip() == model.strip():
+                return a
+
+    # 回退：按延迟排序选最快的
+    valid = [a for a in accounts if a.get("latency_ms") is not None]
+    if valid:
+        valid.sort(key=lambda a: a["latency_ms"])
+        return valid[0]
+    # 没有延迟数据就返回第一个
+    return accounts[0]
+
+
+def _make_provider_info(account: dict) -> dict:
+    """生成账号信息描述"""
+    return {
+        "name": account.get("name", ""),
+        "api_url": account.get("api_url", ""),
+        "model": account.get("model", ""),
+        "latency_ms": account.get("latency_ms"),
+    }
+
+
+@app.route("/v1/models", methods=["GET"])
+def proxy_list_models():
+    """
+    聚合模型列表接口（OpenAI 兼容格式）
+    列出所有账号中可用的模型，每个模型附带来源账号信息
+    """
+    auth = request.headers.get("Authorization", "")
+    expected = "Bearer " + PROXY_API_KEY
+    if auth != expected:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
+
+    accounts = _load_accounts()
+    models_data = []
+    seen = set()
+
+    for acc in accounts:
+        mid = acc.get("model", "").strip()
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
+        models_data.append({
+            "id": mid,
+            "object": "model",
+            "created": int(time.time()),
+            "owned_by": acc.get("name", "unknown"),
+            "_provider": _make_provider_info(acc),
+        })
+
+    return app.response_class(
+        response=json.dumps({"object": "list", "data": models_data}, ensure_ascii=False),
+        mimetype="application/json; charset=utf-8",
+    )
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
     OpenAI 兼容的 API 转发端点
     认证方式：Authorization: Bearer {PROXY_API_KEY}
-    自动转发到账号池中延迟最低的账号
+    - 指定 model 参数 → 自动匹配到拥有该模型的账号
+    - 不指定 model → 自动选择最快的账号
+    响应中会包含 _provider 字段说明实际使用的账号
     支持 stream 和普通模式
     """
     # 认证
@@ -991,21 +1065,17 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 自动选择最快的可用账号
-    accounts = _load_accounts()
-    valid = [a for a in accounts if a.get("latency_ms") is not None]
-    if valid:
-        valid.sort(key=lambda a: a["latency_ms"])
-        account = valid[0]
-    elif accounts:
-        account = accounts[0]
-    else:
+    # 按模型选择账号，未指定模型则自动选最快的
+    account = _select_account_for_model(model)
+    if not account:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
     api_url = normalize_api_url(account["api_url"])
     api_key = account["api_key"]
     # 如果请求指定了模型就用请求的，否则用账号配置的
     effective_model = model or account["model"]
+    provider_info = _make_provider_info(account)
+    provider_info["effective_model"] = effective_model
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -1042,6 +1112,9 @@ def proxy_chat_completions():
     if stream:
         # 流式响应
         def generate():
+            # 先发送账号信息事件
+            yield f"event: provider\ndata: {json.dumps(provider_info, ensure_ascii=False)}\n\n"
+            # 再转发上游的 SSE 数据
             buffer = ""
             for chunk in upstream.iter_content(chunk_size=None, decode_unicode=True):
                 if not chunk:
@@ -1084,6 +1157,8 @@ def proxy_chat_completions():
         # 非流式响应
         try:
             resp_data = upstream.json()
+            # 注入 _provider 信息
+            resp_data["_provider"] = provider_info
             # 确保非流式响应也使用 UTF-8
             return app.response_class(
                 response=json.dumps(resp_data, ensure_ascii=False),
