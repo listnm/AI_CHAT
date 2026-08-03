@@ -9,6 +9,7 @@ import json
 import time
 import uuid
 import base64
+import hashlib
 import sqlite3
 import threading
 import requests
@@ -249,6 +250,8 @@ def index():
 # ================================================================
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+# 转发 API 的 Key，用于 OpenAI 兼容端点认证
+PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "sk-proxy-" + hashlib.md5(ADMIN_PASSWORD.encode()).hexdigest()[:16])
 
 
 @app.route("/admin", methods=["GET", "POST"])
@@ -292,7 +295,26 @@ def admin():
             "updated_at": c.get("updated_at", ""),
         })
 
-    return render_template("admin.html", logged_in=True, accounts=safe_accounts, conversations=conv_summary)
+    base_url = request.host_url.rstrip("/")
+    proxy_url = base_url + "/v1/chat/completions"
+
+    return render_template(
+        "admin.html",
+        logged_in=True,
+        accounts=safe_accounts,
+        conversations=conv_summary,
+        base_url=base_url,
+        proxy_url=proxy_url,
+        proxy_api_key=PROXY_API_KEY,
+    )
+
+
+@app.route("/admin/logout", methods=["POST"])
+def admin_logout():
+    """退出登录"""
+    from flask import session as flask_session
+    flask_session.clear()
+    return render_template("admin.html", logged_in=False, error="")
 
 
 # ================================================================
@@ -885,6 +907,130 @@ def chat():
             "Connection": "keep-alive",
         }
     )
+
+
+# ================================================================
+#  OpenAI 兼容转发 API（可用在 ChatGPT、Cursor 等工具中）
+# ================================================================
+
+@app.route("/v1/chat/completions", methods=["POST"])
+def proxy_chat_completions():
+    """
+    OpenAI 兼容的 API 转发端点
+    认证方式：Authorization: Bearer {PROXY_API_KEY}
+    自动转发到账号池中延迟最低的账号
+    支持 stream 和普通模式
+    """
+    # 认证
+    auth = request.headers.get("Authorization", "")
+    expected = "Bearer " + PROXY_API_KEY
+    if auth != expected:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
+
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "")
+    messages = data.get("messages", [])
+    stream = data.get("stream", False)
+    temperature = data.get("temperature", 0.7)
+    max_tokens = data.get("max_tokens", 4096)
+
+    if not messages:
+        return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
+
+    # 自动选择最快的可用账号
+    accounts = _load_accounts()
+    valid = [a for a in accounts if a.get("latency_ms") is not None]
+    if valid:
+        valid.sort(key=lambda a: a["latency_ms"])
+        account = valid[0]
+    elif accounts:
+        account = accounts[0]
+    else:
+        return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
+
+    api_url = normalize_api_url(account["api_url"])
+    api_key = account["api_key"]
+    # 如果请求指定了模型就用请求的，否则用账号配置的
+    effective_model = model or account["model"]
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": effective_model,
+        "messages": messages,
+        "stream": stream,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    try:
+        upstream = requests.post(
+            api_url, headers=headers, json=payload, stream=stream, timeout=120,
+        )
+        upstream.raise_for_status()
+    except requests.exceptions.Timeout:
+        return {"error": {"message": "Upstream API timeout", "type": "timeout"}, "ok": False}, 504
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code
+        try:
+            body = e.response.json()
+            msg = body.get("error", {}).get("message", str(e))
+        except Exception:
+            msg = str(e)
+        return {"error": {"message": msg, "type": "upstream_error", "code": status}, "ok": False}, status
+    except requests.exceptions.RequestException as e:
+        return {"error": {"message": str(e), "type": "connection_error"}, "ok": False}, 502
+
+    if stream:
+        # 流式响应
+        def generate():
+            buffer = ""
+            for chunk in upstream.iter_content(chunk_size=None, decode_unicode=True):
+                if not chunk:
+                    continue
+                buffer += chunk
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_content = line[6:]
+                        if data_content.strip() == "[DONE]":
+                            yield "data: [DONE]\n\n"
+                            return
+                        yield f"data: {data_content}\n\n"
+                    elif line.startswith(":"):
+                        continue
+            if buffer.strip():
+                if buffer.startswith("data: "):
+                    dc = buffer[6:]
+                    if dc.strip() != "[DONE]":
+                        yield f"data: {dc}\n\n"
+                    else:
+                        yield "data: [DONE]\n\n"
+                else:
+                    yield f"data: {buffer}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            }
+        )
+    else:
+        # 非流式响应
+        try:
+            resp_data = upstream.json()
+            return resp_data
+        except Exception as e:
+            return {"error": {"message": f"Failed to parse upstream response: {str(e)}", "type": "parse_error"}, "ok": False}, 502
 
 
 def _migrate_old_data():

@@ -28,11 +28,15 @@
         .badge-green { background: #e8f5e9; color: #2e7d32; }
         .badge-gray { background: #f5f5f5; color: #757575; }
         .key-text { font-family: monospace; font-size: 11px; color: #757575; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
-        .copy-btn {
-            font-size: 11px; padding: 2px 8px; border: 1px solid #d0d5dd; border-radius: 4px;
+        .copy-btn, .btn-small {
+            font-size: 11px; padding: 3px 10px; border: 1px solid #d0d5dd; border-radius: 4px;
             background: #fff; cursor: pointer; color: #444; margin-left: 4px;
         }
-        .copy-btn:hover { background: #f0f2f5; }
+        .copy-btn:hover, .btn-small:hover { background: #f0f2f5; }
+        .btn-small.danger { color: #e53935; border-color: #e53935; }
+        .btn-small.danger:hover { background: #fff0f0; }
+        .btn-small.primary { color: #1b74e4; border-color: #1b74e4; }
+        .btn-small.primary:hover { background: #e8f2ff; }
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
         .login-form {
             max-width: 360px; margin: 80px auto; background: #fff; border-radius: 12px;
@@ -50,15 +54,37 @@
         }
         .login-form button:hover { background: #1665c1; }
         .error { color: #e53935; font-size: 13px; text-align: center; margin-top: 8px; }
-        .nav { margin-bottom: 16px; }
+        .nav { margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .nav a { color: #1b74e4; text-decoration: none; font-size: 14px; }
         .nav a:hover { text-decoration: underline; }
+        .nav .logout-btn {
+            margin-left: auto; padding: 6px 14px; border: 1px solid #d0d5dd; border-radius: 6px;
+            background: #fff; cursor: pointer; font-size: 13px; color: #5f6368;
+        }
+        .nav .logout-btn:hover { background: #fff0f0; color: #e53935; border-color: #e53935; }
         .msg-count { font-size: 11px; color: #999; }
+        .form-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+        .form-row input, .form-row select {
+            padding: 6px 10px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 13px; outline: none; flex: 1; min-width: 120px;
+        }
+        .form-row input:focus, .form-row select:focus { border-color: #1b74e4; }
+        .form-row button { flex-shrink: 0; }
+        .msg { font-size: 13px; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
+        .msg.success { display: block; background: #e8f5e9; color: #1b5e20; }
+        .msg.fail { display: block; background: #fff0f0; color: #c62828; }
+        .msg.info { display: block; background: #e8f2ff; color: #004999; }
+        .proxy-box {
+            background: #f5f7fa; border-radius: 8px; padding: 14px; margin-top: 8px;
+            font-family: monospace; font-size: 13px; line-height: 1.8;
+        }
+        .proxy-box .label { color: #65676b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .proxy-box .value { color: #1b74e4; word-break: break-all; }
         @media (max-width: 600px) {
             body { padding: 12px; }
             .card { padding: 12px; }
             table { font-size: 12px; }
             th, td { padding: 6px 6px; }
+            .form-row input, .form-row select { min-width: 80px; }
         }
     </style>
 </head>
@@ -76,11 +102,41 @@
     {% else %}
     <div class="nav">
         <a href="/">&larr; 返回首页</a>
+        <span style="font-size:13px;color:#8e9399;">{{ base_url }}</span>
+        <form method="post" action="/admin/logout" style="margin:0;">
+            <button class="logout-btn" type="submit">退出登录</button>
+        </form>
     </div>
     <h1>管理后台</h1>
 
+    <!-- 转发 API 信息 -->
     <div class="card">
-        <h2>账号列表 ({{ accounts|length }})</h2>
+        <h2>🔗 OpenAI 兼容转发 API</h2>
+        <div class="proxy-box">
+            <div><span class="label">API 地址：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="copy-btn" onclick="copyText('proxyUrl')">复制</button></div>
+            <div><span class="label">API Key：</span><span class="value" id="proxyKey">{{ proxy_api_key }}</span> <button class="copy-btn" onclick="copyText('proxyKey')">复制</button></div>
+            <div style="margin-top:8px;font-family:system-ui;font-size:12px;color:#8e9399;">
+                可用此地址和 Key 在支持 OpenAI API 的工具中使用，请求将自动转发到账号池中延迟最低的账号。
+            </div>
+        </div>
+    </div>
+
+    <!-- 账号管理 -->
+    <div class="card">
+        <h2>📋 账号管理</h2>
+        <div id="accountMsg" class="msg"></div>
+        <!-- 添加账号 -->
+        <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e9edf2;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#1c1e21;">添加新账号</div>
+            <div class="form-row">
+                <input type="text" id="newName" placeholder="名称" />
+                <input type="url" id="newUrl" placeholder="API 地址 https://..." />
+                <input type="password" id="newKey" placeholder="API Key" />
+                <input type="text" id="newModel" placeholder="模型名" />
+                <button class="btn-small primary" onclick="adminAddAccount()">添加</button>
+            </div>
+        </div>
+        <!-- 账号列表 -->
         {% if accounts %}
         <table>
             <thead>
@@ -90,14 +146,14 @@
                     <th>模型</th>
                     <th>API Key</th>
                     <th>延迟</th>
-                    <th>测速时间</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for acc in accounts %}
                 <tr>
                     <td>{{ acc.name }}</td>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ acc.api_url }}">{{ acc.api_url }}</td>
+                    <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ acc.api_url }}">{{ acc.api_url }}</td>
                     <td>{{ acc.model }}</td>
                     <td>
                         <span class="key-text" title="{{ acc.api_key }}">{{ acc.api_key_preview }}</span>
@@ -111,18 +167,21 @@
                         <span class="badge badge-gray">未测速</span>
                         {% endif %}
                     </td>
-                    <td>{{ acc.last_speed_test or '-' }}</td>
+                    <td>
+                        <button class="btn-small danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <div class="empty">暂无账号数据</div>
+        <div class="empty">暂无账号，在上方添加</div>
         {% endif %}
     </div>
 
+    <!-- 对话列表 -->
     <div class="card">
-        <h2>对话列表 ({{ conversations|length }})</h2>
+        <h2>💬 对话列表 ({{ conversations|length }})</h2>
         {% if conversations %}
         <table>
             <thead>
@@ -161,12 +220,75 @@ function copyKey(id) {
         btn.textContent = '已复制';
         setTimeout(() => btn.textContent = orig, 1500);
     }).catch(() => {
-        // fallback
         input.type = 'text';
         input.select();
         document.execCommand('copy');
         input.type = 'hidden';
     });
+}
+
+function copyText(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    navigator.clipboard.writeText(el.textContent).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(() => btn.textContent = orig, 1500);
+    }).catch(() => {});
+}
+
+function showAdminMsg(text, type) {
+    const el = document.getElementById('accountMsg');
+    el.textContent = text;
+    el.className = 'msg ' + type;
+}
+
+async function adminAddAccount() {
+    const name = document.getElementById('newName').value.trim();
+    const url = document.getElementById('newUrl').value.trim();
+    const key = document.getElementById('newKey').value.trim();
+    const model = document.getElementById('newModel').value.trim();
+    if (!name || !url || !key || !model) {
+        showAdminMsg('请填写完整信息', 'fail');
+        return;
+    }
+    try {
+        const resp = await fetch('/api/accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+        });
+        const result = await resp.json();
+        if (result.ok) {
+            showAdminMsg('添加成功', 'success');
+            document.getElementById('newName').value = '';
+            document.getElementById('newUrl').value = '';
+            document.getElementById('newKey').value = '';
+            document.getElementById('newModel').value = '';
+            setTimeout(() => location.reload(), 800);
+        } else {
+            showAdminMsg(result.message, 'fail');
+        }
+    } catch (e) {
+        showAdminMsg('网络错误', 'fail');
+    }
+}
+
+async function adminDeleteAccount(id) {
+    if (!confirm('确定要删除这个账号吗？')) return;
+    try {
+        const resp = await fetch('/api/accounts/' + id, { method: 'DELETE' });
+        const result = await resp.json();
+        if (result.ok) {
+            showAdminMsg('已删除', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showAdminMsg(result.message, 'fail');
+        }
+    } catch (e) {
+        showAdminMsg('网络错误', 'fail');
+    }
 }
 </script>
 </body>
