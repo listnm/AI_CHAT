@@ -10,37 +10,82 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #f0f2f5; color: #1c1e21; padding: 20px;
         }
-        .container { max-width: 1000px; margin: 0 auto; }
+        .container { max-width: 1100px; margin: 0 auto; }
         h1 { font-size: 22px; margin-bottom: 20px; color: #1c1e21; }
         .card {
             background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-x: auto;
         }
         .card h2 { font-size: 16px; margin-bottom: 12px; color: #65676b; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e9edf2; word-break: break-all; }
-        th { color: #65676b; font-weight: 600; white-space: nowrap; }
-        tr:hover { background: #f7f8fa; }
+
+        /* ===== 表格统一样式 ===== */
+        .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .acc-table th, .acc-table td {
+            text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
+            vertical-align: middle;
+        }
+        .acc-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
+        .acc-table tr:hover { background: #f7f8fa; }
+        .acc-table .col-name { width: 14%; }
+        .acc-table .col-url { width: 22%; }
+        .acc-table .col-model { width: 18%; }
+        .acc-table .col-key { width: 18%; }
+        .acc-table .col-latency { width: 10%; }
+        .acc-table .col-actions { width: 18%; }
+
+        /* ===== 表格内表单控件统一 ===== */
+        .table-input {
+            width: 100%; padding: 6px 8px; border: 1px solid #d0d5dd; border-radius: 5px;
+            font-size: 12px; outline: none; background: #fff;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .table-input:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
+        .table-select {
+            width: 100%; padding: 5px 6px; border: 1px solid #d0d5dd; border-radius: 5px;
+            font-size: 12px; outline: none; background: #fff; cursor: pointer;
+            transition: border-color .15s, box-shadow .15s;
+        }
+        .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
+        .model-wrap {
+            display: flex; gap: 4px; align-items: center;
+        }
+        .model-wrap .table-select { flex: 1; min-width: 0; }
+        .model-wrap .refresh-sm {
+            width: 28px; height: 28px; flex-shrink: 0;
+            border: 1px solid #d0d5dd; border-radius: 5px;
+            background: #f5f7fa; font-size: 14px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .model-wrap .refresh-sm:hover { background: #e4e6ea; }
+
+        /* ===== 操作按钮组 ===== */
+        .action-group { display: flex; gap: 4px; flex-wrap: nowrap; }
+        .btn-act {
+            font-size: 11px; padding: 4px 8px; border: 1px solid #d0d5dd; border-radius: 4px;
+            background: #fff; cursor: pointer; color: #444; white-space: nowrap;
+            transition: all .15s; line-height: 1.4;
+        }
+        .btn-act:hover { background: #f0f2f5; }
+        .btn-act.primary { color: #1b74e4; border-color: #1b74e4; }
+        .btn-act.primary:hover { background: #e8f2ff; }
+        .btn-act.success { color: #2e7d32; border-color: #2e7d32; }
+        .btn-act.success:hover { background: #e8f5e9; }
+        .btn-act.danger { color: #e53935; border-color: #e53935; }
+        .btn-act.danger:hover { background: #fff0f0; }
+        .btn-act:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* ===== 徽章 ===== */
         .badge {
             display: inline-block; padding: 2px 8px; border-radius: 4px;
-            font-size: 11px; font-weight: 600;
+            font-size: 11px; font-weight: 600; white-space: nowrap;
         }
         .badge-green { background: #e8f5e9; color: #2e7d32; }
         .badge-gray { background: #f5f5f5; color: #757575; }
         .badge-red { background: #fff0f0; color: #c62828; }
         .badge-blue { background: #e8f2ff; color: #1b74e4; }
-        .key-text { font-family: monospace; font-size: 11px; color: #757575; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
-        .copy-btn, .btn-small {
-            font-size: 11px; padding: 3px 10px; border: 1px solid #d0d5dd; border-radius: 4px;
-            background: #fff; cursor: pointer; color: #444; margin-left: 4px;
-        }
-        .copy-btn:hover, .btn-small:hover { background: #f0f2f5; }
-        .btn-small.danger { color: #e53935; border-color: #e53935; }
-        .btn-small.danger:hover { background: #fff0f0; }
-        .btn-small.primary { color: #1b74e4; border-color: #1b74e4; }
-        .btn-small.primary:hover { background: #e8f2ff; }
-        .btn-small.success { color: #2e7d32; border-color: #2e7d32; }
-        .btn-small.success:hover { background: #e8f5e9; }
+        .key-mono { font-family: monospace; font-size: 11px; }
+
+        /* ===== 其他 ===== */
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
         .login-form {
             max-width: 360px; margin: 80px auto; background: #fff; border-radius: 12px;
@@ -66,7 +111,6 @@
             background: #fff; cursor: pointer; font-size: 13px; color: #5f6368;
         }
         .nav .logout-btn:hover { background: #fff0f0; color: #e53935; border-color: #e53935; }
-        .msg-count { font-size: 11px; color: #999; }
         .form-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
         .form-row input, .form-row select {
             padding: 6px 10px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 13px; outline: none; flex: 1; min-width: 120px;
@@ -85,22 +129,17 @@
         .proxy-box .value { color: #1b74e4; word-break: break-all; }
         .fastest-row { background: #f0fff4 !important; }
         .fastest-row td { border-bottom-color: #c8e6c9; }
-        .refresh-model-btn {
-            width: 36px; height: 36px; border: 1px solid #d0d5dd; border-radius: 6px;
-            background: #f5f7fa; font-size: 16px; cursor: pointer; flex-shrink: 0;
-            display: flex; align-items: center; justify-content: center;
+        .batch-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+        .fastest-label { font-size: 12px; color: #2e7d32; display: none; }
+        @media (max-width: 700px) {
+            .acc-table .col-url { display: none; }
+            .acc-table .col-key { display: none; }
         }
-        .refresh-model-btn:hover { background: #e4e6ea; }
-        .edit-input {
-            padding: 4px 6px; border: 1px solid #d0d5dd; border-radius: 4px;
-            font-size: 12px; outline: none; width: 100%; min-width: 60px;
-        }
-        .edit-input:focus { border-color: #1b74e4; }
         @media (max-width: 600px) {
             body { padding: 12px; }
             .card { padding: 12px; }
-            table { font-size: 12px; }
-            th, td { padding: 6px 6px; }
+            .acc-table { font-size: 12px; }
+            .acc-table th, .acc-table td { padding: 6px 4px; }
             .form-row input, .form-row select { min-width: 80px; }
         }
     </style>
@@ -130,13 +169,13 @@
     <div class="card">
         <h2>🔗 OpenAI 兼容转发 API</h2>
         <div class="proxy-box">
-            <div><span class="label">API 地址：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="copy-btn" onclick="copyText('proxyUrl')">复制</button></div>
-            <div><span class="label">API Key：</span><span class="value" id="proxyKey">{{ proxy_api_key }}</span> <button class="copy-btn" onclick="copyText('proxyKey')">复制</button></div>
+            <div><span class="label">API 地址：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="btn-act" onclick="copyText('proxyUrl')">复制</button></div>
+            <div><span class="label">API Key：</span><span class="value" id="proxyKey">{{ proxy_api_key }}</span> <button class="btn-act" onclick="copyText('proxyKey')">复制</button></div>
             <div style="margin-top:8px;font-family:system-ui;font-size:12px;color:#8e9399;line-height:1.7;">
-                <strong>使用方式：</strong><br>
-                • 不传 <code>account</code> 参数 → 自动选择延迟最低的账号<br>
-                • 传 <code>"account": "账号名称"</code> → 手动指定使用哪个中转站<br>
-                • 响应中会包含 <code>_provider</code> 字段说明实际调用的账号
+                <strong>两种选择方式：</strong><br>
+                <span style="color:#1b74e4;font-weight:600;">方式一：自动选择</span> — 不传 <code>account</code> 参数，系统自动选延迟最低的账号<br>
+                <span style="color:#2e7d32;font-weight:600;">方式二：手动选择</span> — 传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站<br>
+                <span style="color:#8e9399;">▼ 响应中会包含 <code>_provider</code> 字段说明实际调用的账号</span>
             </div>
         </div>
     </div>
@@ -147,9 +186,9 @@
         <div id="accountMsg" class="msg"></div>
 
         <!-- 批量操作 -->
-        <div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn-small primary" onclick="adminSpeedTestAll()">🚀 全部测速</button>
-            <span id="fastestLabel" style="font-size:12px;color:#2e7d32;display:none;align-self:center;"></span>
+        <div class="batch-bar">
+            <button class="btn-act primary" onclick="adminSpeedTestAll()">🚀 全部测速</button>
+            <span id="fastestLabel" class="fastest-label"></span>
         </div>
 
         <!-- 添加账号 -->
@@ -162,38 +201,40 @@
             </div>
             <div class="form-row">
                 <select id="newModel"><option value="">— 先填地址和 Key 再点右侧刷新 —</option></select>
-                <button class="refresh-model-btn" id="newRefreshModels" title="从 API 获取模型列表">↻</button>
-                <button class="btn-small primary" onclick="adminAddAccount()">添加</button>
+                <button class="refresh-sm" id="newRefreshModels" title="从 API 获取模型列表" style="width:36px;height:36px;font-size:16px;">↻</button>
+                <button class="btn-act primary" onclick="adminAddAccount()">添加</button>
             </div>
         </div>
 
         <!-- 账号列表 -->
         {% if accounts %}
-        <table>
+        <table class="acc-table">
             <thead>
                 <tr>
-                    <th>名称</th>
-                    <th>API 地址</th>
-                    <th>模型</th>
-                    <th>API Key</th>
-                    <th>延迟</th>
-                    <th>操作</th>
+                    <th class="col-name">名称</th>
+                    <th class="col-url">API 地址</th>
+                    <th class="col-model">模型</th>
+                    <th class="col-key">API Key</th>
+                    <th class="col-latency">延迟</th>
+                    <th class="col-actions">操作</th>
                 </tr>
             </thead>
             <tbody>
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
-                    <td><input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="edit-input" /></td>
-                    <td><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="edit-input" style="max-width:160px;" /></td>
+                    <td><input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" /></td>
+                    <td class="col-url"><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" /></td>
                     <td>
-                        <select id="model-{{ acc.id }}" style="padding:3px 6px;border:1px solid #d0d5dd;border-radius:4px;font-size:12px;max-width:130px;">
-                            <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
-                        </select>
-                        <button class="refresh-model-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表" style="width:28px;height:28px;font-size:13px;display:inline-flex;vertical-align:middle;">↻</button>
+                        <div class="model-wrap">
+                            <select id="model-{{ acc.id }}" class="table-select">
+                                <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                            </select>
+                            <button class="refresh-sm" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">↻</button>
+                        </div>
                     </td>
-                    <td>
-                        <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="edit-input" style="max-width:120px;font-family:monospace;font-size:11px;" />
-                        <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">复制</button>
+                    <td class="col-key">
+                        <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
+                        <button class="btn-act" onclick="copyKey('{{ acc.id }}')" style="margin-top:3px;">复制</button>
                     </td>
                     <td id="latency-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
@@ -203,9 +244,11 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button class="btn-small success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
-                        <button class="btn-small primary" onclick="adminSaveAccount('{{ acc.id }}')">保存</button>
-                        <button class="btn-small danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
+                        <div class="action-group">
+                            <button class="btn-act success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
+                            <button class="btn-act primary" onclick="adminSaveAccount('{{ acc.id }}')">保存</button>
+                            <button class="btn-act danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -220,22 +263,22 @@
     <div class="card">
         <h2>💬 对话列表 ({{ conversations|length }})</h2>
         {% if conversations %}
-        <table>
+        <table class="acc-table">
             <thead>
                 <tr>
-                    <th>标题</th>
-                    <th>消息数</th>
-                    <th>创建时间</th>
-                    <th>更新时间</th>
+                    <th style="width:40%;">标题</th>
+                    <th style="width:12%;">消息数</th>
+                    <th style="width:24%;">创建时间</th>
+                    <th style="width:24%;">更新时间</th>
                 </tr>
             </thead>
             <tbody>
                 {% for c in conversations %}
                 <tr>
                     <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.title }}">{{ c.title }}</td>
-                    <td><span class="msg-count">{{ c.msg_count }} 条</span></td>
-                    <td>{{ c.created_at[:19] }}</td>
-                    <td>{{ c.updated_at[:19] }}</td>
+                    <td><span class="badge badge-gray">{{ c.msg_count }} 条</span></td>
+                    <td style="color:#8e9399;font-size:12px;">{{ c.created_at[:19] }}</td>
+                    <td style="color:#8e9399;font-size:12px;">{{ c.updated_at[:19] }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
