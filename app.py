@@ -11,6 +11,23 @@ from flask import Flask, render_template, request, Response, stream_with_context
 app = Flask(__name__)
 
 
+def normalize_api_url(url: str) -> str:
+    """
+    自动补全 API URL 路径
+    如果用户输入的是 base URL（如 https://aihub.top），
+    自动追加 /v1/chat/completions
+    """
+    url = url.rstrip("/")
+    # 如果已经包含完整路径，直接返回
+    if url.endswith("/chat/completions"):
+        return url
+    # 如果以 /v1 结尾，补全 chat/completions
+    if url.endswith("/v1"):
+        return url + "/chat/completions"
+    # 否则认为是 base URL，追加 /v1/chat/completions
+    return url + "/v1/chat/completions"
+
+
 @app.route("/")
 def index():
     """渲染主页面"""
@@ -24,7 +41,7 @@ def api_check():
     向用户指定的 API 发送一个简单请求，验证地址、Key、模型是否可用
     """
     data = request.get_json(force=True)
-    api_url = data.get("api_url", "")
+    api_url = normalize_api_url(data.get("api_url", ""))
     api_key = data.get("api_key", "")
     model = data.get("model", "")
 
@@ -77,8 +94,8 @@ def chat():
     """
     data = request.get_json(force=True)
 
-    # 从请求体中提取参数
-    api_url = data.get("api_url", "")
+    # 从请求体中提取参数，并自动补全 URL 路径
+    api_url = normalize_api_url(data.get("api_url", ""))
     api_key = data.get("api_key", "")
     model = data.get("model", "")
     messages = data.get("messages", [])
