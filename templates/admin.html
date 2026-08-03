@@ -172,9 +172,10 @@
             <div><span class="label">API 地址：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="btn-act" onclick="copyText('proxyUrl')">复制</button></div>
             <div><span class="label">API Key：</span><span class="value" id="proxyKey">{{ proxy_api_key }}</span> <button class="btn-act" onclick="copyText('proxyKey')">复制</button></div>
             <div style="margin-top:8px;font-family:system-ui;font-size:12px;color:#8e9399;line-height:1.7;">
-                <strong>两种选择方式：</strong><br>
-                <span style="color:#1b74e4;font-weight:600;">方式一：自动选择</span> — 不传 <code>account</code> 参数，系统自动选延迟最低的账号<br>
+                <strong>三种使用方式：</strong><br>
+                <span style="color:#1b74e4;font-weight:600;">方式一：自动选择</span> — 不传 <code>account</code> 参数，系统优先使用 ⭐默认账号，无默认则选最快的<br>
                 <span style="color:#2e7d32;font-weight:600;">方式二：手动选择</span> — 传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站<br>
+                <span style="color:#e65100;font-weight:600;">方式三：model=auto</span> — 传 <code>"model": "auto"</code>，自动选最优账号（兼容各种 AI 工具，如 ChatGPT、Cursor 等）<br>
                 <span style="color:#8e9399;">▼ 响应中会包含 <code>_provider</code> 字段说明实际调用的账号</span>
             </div>
         </div>
@@ -222,7 +223,12 @@
             <tbody>
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
-                    <td><input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" /></td>
+                    <td>
+                        <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
+                        {% if acc.is_default %}
+                        <span class="badge badge-blue" style="display:inline-block;margin-top:3px;">⭐ 默认</span>
+                        {% endif %}
+                    </td>
                     <td class="col-url"><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" /></td>
                     <td>
                         <div class="model-wrap">
@@ -247,6 +253,11 @@
                         <div class="action-group">
                             <button class="btn-act success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
                             <button class="btn-act primary" onclick="adminSaveAccount('{{ acc.id }}')">保存</button>
+                            {% if acc.is_default %}
+                            <button class="btn-act" disabled>默认账号</button>
+                            {% else %}
+                            <button class="btn-act" onclick="adminSetDefault('{{ acc.id }}')">设为默认</button>
+                            {% endif %}
                             <button class="btn-act danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
                         </div>
                     </td>
@@ -317,6 +328,25 @@ function showAdminMsg(text, type) {
     const el = document.getElementById('accountMsg');
     el.textContent = text;
     el.className = 'msg ' + type;
+}
+
+// ================================================================
+//  设为默认账号
+// ================================================================
+async function adminSetDefault(id) {
+    if (!confirm('确定要将此账号设为默认中转站吗？')) return;
+    try {
+        const resp = await fetch('/api/accounts/' + id + '/set-default', { method: 'POST' });
+        const result = await resp.json();
+        if (result.ok) {
+            showAdminMsg('已设为默认中转站', 'success');
+            setTimeout(() => location.reload(), 500);
+        } else {
+            showAdminMsg(result.message, 'fail');
+        }
+    } catch (e) {
+        showAdminMsg('设置失败', 'fail');
+    }
 }
 
 // ================================================================

@@ -111,7 +111,8 @@ def _init_db():
             api_key_encrypted TEXT NOT NULL,
             model TEXT NOT NULL,
             latency_ms INTEGER,
-            last_speed_test TEXT
+            last_speed_test TEXT,
+            is_default INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS conversations (
             id TEXT PRIMARY KEY,
@@ -121,6 +122,11 @@ def _init_db():
             updated_at TEXT NOT NULL
         );
     """)
+    # 兼容旧表：添加 is_default 列（如果不存在）
+    try:
+        conn.execute("ALTER TABLE accounts ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass  # 列已存在
     conn.commit()
     conn.close()
 
@@ -175,7 +181,7 @@ def _load_accounts() -> list:
     """从数据库加载所有账号"""
     conn = _get_db()
     try:
-        rows = conn.execute("SELECT * FROM accounts").fetchall()
+        rows = conn.execute("SELECT * FROM accounts ORDER BY is_default DESC, latency_ms ASC").fetchall()
         result = []
         for row in rows:
             result.append({
@@ -186,6 +192,7 @@ def _load_accounts() -> list:
                 "model": row["model"],
                 "latency_ms": row["latency_ms"],
                 "last_speed_test": row["last_speed_test"],
+                "is_default": bool(row["is_default"]),
             })
         return result
     finally:
@@ -199,8 +206,8 @@ def _save_accounts(accounts: list):
         conn.execute("DELETE FROM accounts")
         for acc in accounts:
             conn.execute(
-                "INSERT INTO accounts (id, name, api_url, api_key_encrypted, model, latency_ms, last_speed_test) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (acc["id"], acc["name"], acc["api_url"], _encrypt(acc["api_key"]), acc["model"], acc.get("latency_ms"), acc.get("last_speed_test"))
+                "INSERT INTO accounts (id, name, api_url, api_key_encrypted, model, latency_ms, last_speed_test, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (acc["id"], acc["name"], acc["api_url"], _encrypt(acc["api_key"]), acc["model"], acc.get("latency_ms"), acc.get("last_speed_test"), 1 if acc.get("is_default") else 0)
             )
         conn.commit()
     finally:
@@ -222,6 +229,7 @@ def _find_account(account_id: str) -> dict | None:
             "model": row["model"],
             "latency_ms": row["latency_ms"],
             "last_speed_test": row["last_speed_test"],
+            "is_default": bool(row["is_default"]),
         }
     finally:
         conn.close()
@@ -293,6 +301,7 @@ def admin():
             "api_key_preview": acc["api_key"][:12] + "..." if acc.get("api_key") else "",
             "latency_ms": acc.get("latency_ms"),
             "last_speed_test": acc.get("last_speed_test"),
+            "is_default": acc.get("is_default", False),
         })
 
     convs = _load_conversations()
@@ -449,6 +458,25 @@ def api_accounts_update(account_id):
             _save_accounts(accounts)
             return {"ok": True, "message": "账号已更新"}
     return {"ok": False, "message": "账号不存在"}
+
+
+@app.route("/api/accounts/<account_id>/set-default", methods=["POST"])
+def api_accounts_set_default(account_id):
+    """将指定账号设为默认中转站"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
+    accounts = _load_accounts()
+    found = False
+    for acc in accounts:
+        if acc["id"] == account_id:
+            acc["is_default"] = True
+            found = True
+        else:
+            acc["is_default"] = False
+    if not found:
+        return {"ok": False, "message": "账号不存在"}
+    _save_accounts(accounts)
+    return {"ok": True, "message": "已设为默认中转站"}
 
 
 @app.route("/api/accounts/speedtest", methods=["POST"])
@@ -973,7 +1001,7 @@ def _select_account(account_name: str = "") -> dict | None:
     """
     选择账号：
     - 指定 account_name → 按名称匹配
-    - 不指定 → 选延迟最低的
+    - 不指定 → 优先使用被设为默认的账号，没有则选最快的
     """
     accounts = _load_accounts()
     if not accounts:
@@ -983,6 +1011,11 @@ def _select_account(account_name: str = "") -> dict | None:
         for a in accounts:
             if a.get("name", "").strip() == account_name.strip():
                 return a
+
+    # 优先使用默认账号
+    for a in accounts:
+        if a.get("is_default"):
+            return a
 
     # 按延迟排序选最快的
     valid = [a for a in accounts if a.get("latency_ms") is not None]
@@ -1008,9 +1041,11 @@ def proxy_chat_completions():
     OpenAI 兼容的 API 转发端点
     认证方式：Authorization: Bearer {PROXY_API_KEY}
 
-    请求参数：
-    - account: 账号名称（可选）。指定后用该账号，不指定则自动选最快
-    - 其他参数与 OpenAI API 一致（model, messages, stream 等）
+    使用方式：
+    - 不传任何选择参数 → 使用默认中转站（可在后台设置），无默认则选最快的
+    - 传 "account": "账号名称" → 手动指定使用哪个中转站
+    - 传 "model": "auto" → 自动选择最优中转站（兼容各种 AI 工具）
+    - 传 "model": "具体模型名" → 直接传给中转站，不干涉
 
     响应中会包含 _provider 字段说明实际使用的账号
     """
@@ -1023,6 +1058,7 @@ def proxy_chat_completions():
     data = request.get_json(force=True) or {}
     account_name = data.get("account", "")
     model = data.get("model", "")
+    is_auto = model == "auto"
     messages = data.get("messages", [])
     stream = data.get("stream", False)
     temperature = data.get("temperature", 0.7)
@@ -1031,14 +1067,15 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 选择账号：指定 account 则用该账号，否则自动选最快
-    account = _select_account(account_name)
+    # 选择账号：指定 account 则用该账号，否则用默认/最快的
+    account = _select_account(account_name) if not is_auto else _select_account()
     if not account:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
     api_url = normalize_api_url(account["api_url"])
     api_key = account["api_key"]
-    effective_model = model or account["model"]
+    # model=auto 时使用账号配置的模型名，否则用请求的 model
+    effective_model = account["model"] if is_auto else (model or account["model"])
     provider_info = _make_provider_info(account)
     provider_info["effective_model"] = effective_model
 
