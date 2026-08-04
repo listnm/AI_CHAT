@@ -92,6 +92,9 @@
         .key-wrap { display: flex; align-items: center; gap: 4px; }
         .key-wrap .table-input { flex: 1; min-width: 0; }
         .key-wrap .btn-act { flex-shrink: 0; }
+        .url-wrap { display: flex; align-items: center; gap: 4px; }
+        .url-wrap .table-input { flex: 1; min-width: 0; }
+        .url-wrap .btn-act { flex-shrink: 0; }
 
         /* ===== 其他 ===== */
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
@@ -224,13 +227,16 @@
             .acc-table td .model-wrap .table-select { flex: 1; min-width: 0; }
             .acc-table td .key-wrap { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; align-items: center; }
             .acc-table td .key-wrap .table-input { flex: 1; min-width: 0; }
+            .acc-table td .url-wrap { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; align-items: center; }
+            .acc-table td .url-wrap .table-input { flex: 1; min-width: 0; }
             /* URL 和 Key 输入框用等宽字体 */
             .acc-table td.col-url .table-input,
             .acc-table td.col-key .table-input {
                 font-family: "SF Mono", "Fira Code", monospace;
             }
             /* 复制按钮紧凑 */
-            .acc-table td.col-key .btn-act {
+            .acc-table td.col-key .btn-act,
+            .acc-table td.col-url .btn-act {
                 padding: 4px 10px; min-height: 30px; font-size: 11px; width: auto; flex-shrink: 0;
             }
             /* 卡片中显示所有列 */
@@ -375,7 +381,10 @@
                         </div>
                     </td>
                     <td data-label="API 地址" class="col-url">
-                        <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" />
+                        <div class="url-wrap">
+                            <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" />
+                            <button class="btn-act" onclick="copyUrl('{{ acc.id }}')" title="复制地址">复制</button>
+                        </div>
                     </td>
                     <td data-label="模型">
                         <div class="model-wrap">
@@ -453,6 +462,17 @@
 <script>
 function copyKey(id) {
     const input = document.getElementById('key-' + id);
+    if (!input) return;
+    navigator.clipboard.writeText(input.value).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '已复制';
+        setTimeout(() => btn.textContent = orig, 1500);
+    }).catch(() => {});
+}
+
+function copyUrl(id) {
+    const input = document.getElementById('url-' + id);
     if (!input) return;
     navigator.clipboard.writeText(input.value).then(() => {
         const btn = event.target;
