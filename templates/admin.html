@@ -21,28 +21,28 @@
         /* ===== 表格统一样式 ===== */
         .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .acc-table th, .acc-table td {
-            text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
+            text-align: left; padding: 10px 10px; border-bottom: 1px solid #e9edf2;
             vertical-align: middle;
         }
         .acc-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
         .acc-table tr:hover { background: #f7f8fa; }
-        .acc-table .col-name { width: 14%; }
-        .acc-table .col-url { width: 22%; }
-        .acc-table .col-model { width: 18%; }
-        .acc-table .col-key { width: 18%; }
-        .acc-table .col-latency { width: 10%; }
-        .acc-table .col-actions { width: 18%; }
+        .acc-table .col-name { width: 12%; }
+        .acc-table .col-url { width: 28%; }
+        .acc-table .col-model { width: 14%; }
+        .acc-table .col-key { width: 22%; }
+        .acc-table .col-latency { width: 8%; }
+        .acc-table .col-actions { width: 16%; }
 
         /* ===== 表格内表单控件统一 ===== */
         .table-input {
-            width: 100%; padding: 6px 8px; border: 1px solid #d0d5dd; border-radius: 5px;
-            font-size: 12px; outline: none; background: #fff;
+            width: 100%; padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
+            font-size: 13px; outline: none; background: #fff;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-input:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
         .table-select {
-            width: 100%; padding: 5px 6px; border: 1px solid #d0d5dd; border-radius: 5px;
-            font-size: 12px; outline: none; background: #fff; cursor: pointer;
+            width: 100%; padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
+            font-size: 13px; outline: none; background: #fff; cursor: pointer;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
@@ -51,9 +51,9 @@
         }
         .model-wrap .table-select { flex: 1; min-width: 0; }
         .model-wrap .refresh-sm {
-            width: 28px; height: 28px; flex-shrink: 0;
-            border: 1px solid #d0d5dd; border-radius: 5px;
-            background: #f5f7fa; font-size: 14px; cursor: pointer;
+            width: 32px; height: 32px; flex-shrink: 0;
+            border: 1px solid #d0d5dd; border-radius: 6px;
+            background: #f5f7fa; font-size: 15px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
         }
         .model-wrap .refresh-sm:hover { background: #e4e6ea; }
@@ -61,9 +61,9 @@
         /* ===== 操作按钮组 ===== */
         .action-group { display: flex; gap: 4px; flex-wrap: nowrap; }
         .btn-act {
-            font-size: 11px; padding: 4px 8px; border: 1px solid #d0d5dd; border-radius: 4px;
+            font-size: 12px; padding: 5px 10px; border: 1px solid #d0d5dd; border-radius: 5px;
             background: #fff; cursor: pointer; color: #444; white-space: nowrap;
-            transition: all .15s; line-height: 1.4;
+            transition: all .15s; line-height: 1.4; min-height: 30px; display: inline-flex; align-items: center; gap: 2px;
         }
         .btn-act:hover { background: #f0f2f5; }
         .btn-act.primary { color: #1b74e4; border-color: #1b74e4; }
@@ -136,13 +136,9 @@
         .fastest-row td { border-bottom-color: #c8e6c9; }
         .batch-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
         .fastest-label { font-size: 12px; color: #2e7d32; display: none; }
-        @media (max-width: 700px) {
-            .acc-table .col-url { display: none; }
-            .acc-table .col-key { display: none; }
-        }
 
-        /* ===== 手机端自适应（≤ 640px） ===== */
-        @media (max-width: 640px) {
+        /* ===== 手机/平板自适应（≤ 700px）→ 卡片布局 ===== */
+        @media (max-width: 700px) {
             body { padding: 10px; }
             .card { padding: 14px; border-radius: 10px; overflow: hidden; }
             .card h2 { font-size: 15px; }
@@ -162,13 +158,13 @@
             /* 卡片内各字段行 */
             .acc-table td {
                 padding: 5px 0; border: none; font-size: 13px;
-                display: flex; align-items: center; gap: 6px;
+                display: flex; align-items: center; gap: 8px;
             }
             .acc-table td::before {
                 content: attr(data-label); font-weight: 600; color: #65676b;
-                font-size: 11px; width: 56px; flex-shrink: 0; text-align: right;
+                font-size: 11px; width: 48px; flex-shrink: 0; text-align: right;
             }
-            /* 名称行：更突出，无 label */
+            /* 名称行：卡片标题样式，无 label */
             .acc-table td[data-label="名称"]::before { display: none; }
             .acc-table td[data-label="名称"] {
                 font-size: 15px; font-weight: 600; padding: 0 0 8px 0;
@@ -179,9 +175,9 @@
                 font-weight: 600; font-size: 14px; border-color: transparent;
                 background: transparent; padding-left: 0;
             }
-            /* 延迟行：右对齐，无 label */
+            /* 延迟行：右上角，无 label */
             .acc-table td[data-label="延迟"] {
-                justify-content: flex-end; padding: 2px 0; margin-top: -4px;
+                position: absolute; top: 16px; right: 16px; padding: 0;
             }
             .acc-table td[data-label="延迟"]::before { display: none; }
 
@@ -202,23 +198,22 @@
             .btn-act[disabled] { opacity: .5; }
             .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* 输入框在卡片中 */
+            /* 卡片内输入框统一大小 */
             .acc-table td .table-input {
-                width: auto; flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px;
+                width: auto; flex: 1; min-width: 0; font-size: 13px; padding: 8px 10px;
             }
             .acc-table td .model-wrap { flex: 1; min-width: 0; }
-            .acc-table td .model-wrap .table-select { flex: 1; font-size: 12px; }
-            /* URL 和 Key 输入框用等宽小字 */
+            .acc-table td .model-wrap .table-select { flex: 1; font-size: 13px; }
+            /* URL 和 Key 输入框用等宽字体 */
             .acc-table td.col-url .table-input,
             .acc-table td.col-key .table-input {
-                font-family: "SF Mono", "Fira Code", monospace; font-size: 11px;
+                font-family: "SF Mono", "Fira Code", monospace;
             }
             /* 复制按钮紧凑 */
             .acc-table td.col-key .btn-act {
-                padding: 4px 8px; min-height: 28px; font-size: 11px; width: auto;
+                padding: 4px 10px; min-height: 30px; font-size: 11px; width: auto;
             }
-
-            /* 手机卡片中显示 API 地址和 Key（覆盖 700px 的隐藏） */
+            /* 卡片中显示所有列 */
             .acc-table td.col-url,
             .acc-table td.col-key { display: flex; }
 
@@ -247,7 +242,7 @@
             }
             .card:last-child .acc-table td::before {
                 content: attr(data-label); font-weight: 600; color: #65676b;
-                font-size: 11px; min-width: 52px; flex-shrink: 0;
+                font-size: 11px; min-width: 48px; flex-shrink: 0;
             }
             .card:last-child .acc-table td[data-label="标题"] {
                 max-width: none !important; white-space: normal !important;
