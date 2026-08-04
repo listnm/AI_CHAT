@@ -35,36 +35,57 @@
 
         /* ===== 表格内表单控件 ===== */
         .table-input {
-            padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
+            width: 100%; padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
             font-size: 13px; outline: none; background: #fff; box-sizing: border-box;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-input:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
         .table-select {
-            padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
+            width: 100%; padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
             font-size: 13px; outline: none; background: #fff; cursor: pointer; box-sizing: border-box;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
 
-        /* ===== 行容器：flex 输入框 + 按钮同行 ===== */
-        .name-wrap, .url-wrap, .key-wrap, .model-wrap {
-            display: flex; align-items: center; gap: 4px; width: 100%;
+        /* ===== 输入框+按钮同行：用绝对定位避免 flex 嵌套问题 ===== */
+        .acc-table td.col-name,
+        .acc-table td.col-url,
+        .acc-table td.col-model,
+        .acc-table td.col-key { position: relative; }
+
+        /* 名称：左边徽章 + 右边输入框 */
+        .col-name .table-input {
+            width: calc(100% - 32px);
         }
-        .name-wrap .table-input,
-        .url-wrap .table-input,
-        .key-wrap .table-input { flex: 1; min-width: 0; }
-        .model-wrap .table-select { flex: 1; min-width: 0; }
-        .name-wrap .badge { flex: none; }
-        .url-wrap .btn-act,
-        .key-wrap .btn-act { flex: none; }
-        .model-wrap .refresh-sm {
-            flex: none; width: 32px; height: 32px;
-            border: 1px solid #d0d5dd; border-radius: 6px;
-            background: #f5f7fa; font-size: 15px; cursor: pointer;
+        .col-name .badge {
+            position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+        }
+
+        /* URL / Key：右边有复制按钮，输入框右侧留白 */
+        .col-url .table-input,
+        .col-key .table-input {
+            padding-right: 54px;
+        }
+        .col-url .copy-btn,
+        .col-key .copy-btn {
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            font-size: 11px; padding: 4px 8px; height: 28px;
+        }
+
+        /* 模型：右边有刷新按钮 */
+        .col-model .table-select {
+            padding-right: 44px;
+        }
+        .col-model .refresh-btn {
+            position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+            width: 32px; height: 28px; border: 1px solid #d0d5dd; border-radius: 6px;
+            background: #f5f7fa; font-size: 14px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
         }
-        .model-wrap .refresh-sm:hover { background: #e4e6ea; }
+        .col-model .refresh-btn:hover { background: #e4e6ea; }
+
+        .key-mono { font-family: monospace; }
+        .key-mono-mobile { font-family: monospace; }
 
         /* ===== 操作按钮组 ===== */
         .action-group { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -186,9 +207,9 @@
                 font-size: 15px; font-weight: 600; padding: 0 0 8px 0;
                 border-bottom: 1px solid #f0f2f5; margin-bottom: 6px;
             }
-            .acc-table td[data-label="名称"] .name-wrap .table-input {
+            .acc-table td[data-label="名称"] .table-input {
                 font-weight: 600; font-size: 14px; border-color: transparent;
-                background: transparent; padding-left: 0;
+                background: transparent;
             }
             /* 延迟行：右上角 */
             .acc-table td[data-label="延迟"]::before { display: none; }
@@ -213,38 +234,40 @@
             .btn-act[disabled] { opacity: .5; }
             .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* 输入框铺满 */
-            .acc-table td .table-input {
-                display: block; box-sizing: border-box;
-                font-size: 13px; padding: 8px 10px;
-            }
+            /* 输入框铺满：width:100% + 绝对定位按钮 */
+            .acc-table td .table-input,
             .acc-table td .table-select {
-                display: block; box-sizing: border-box;
-                font-size: 13px;
+                box-sizing: border-box; font-size: 13px; padding: 8px 10px;
             }
-
-            /* wrap 容器用 flex */
-            .url-wrap, .key-wrap, .model-wrap, .name-wrap {
-                display: flex; align-items: center; gap: 4px; width: 100%;
-            }
-            .name-wrap .table-input,
-            .url-wrap .table-input,
-            .key-wrap .table-input { flex: 1; min-width: 0; }
-            .model-wrap .table-select { flex: 1; min-width: 0; }
-            .name-wrap .badge { flex: none; }
-            .url-wrap .btn-act,
-            .key-wrap .btn-act { flex: none; }
-            .model-wrap .refresh-sm { flex: none; width: 36px; height: 36px; }
-
-            /* URL 和 Key 等宽字体 */
+            .acc-table td.col-url,
+            .acc-table td.col-key { position: relative; }
             .acc-table td.col-url .table-input,
             .acc-table td.col-key .table-input {
-                font-family: "SF Mono", "Fira Code", monospace;
+                padding-right: 60px;
             }
-            /* 复制按钮紧凑 */
-            .acc-table td.col-key .btn-act,
-            .acc-table td.col-url .btn-act {
-                padding: 4px 10px; min-height: 30px; font-size: 11px;
+            .acc-table td.col-url .copy-btn,
+            .acc-table td.col-key .copy-btn {
+                position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+                font-size: 11px; padding: 4px 8px; height: 28px;
+            }
+            .acc-table td.col-model { position: relative; }
+            .acc-table td.col-model .table-select {
+                padding-right: 48px;
+            }
+            .acc-table td.col-model .refresh-btn {
+                position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+                width: 36px; height: 32px;
+            }
+            .acc-table td.col-name { position: relative; }
+            .acc-table td.col-name .table-input {
+                padding-left: 34px; font-weight: 600; font-size: 14px;
+            }
+            .acc-table td.col-name .badge {
+                position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+            }
+            .acc-table td.col-url .table-input,
+            .acc-table td.col-key .table-input {
+                font-family: monospace;
             }
 
             /* 添加表单垂直堆叠 */
@@ -370,33 +393,25 @@
             <tbody>
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
-                    <td data-label="名称">
-                        <div class="name-wrap">
-                            {% if acc.is_default %}
-                            <span class="badge badge-blue" title="默认中转站">⭐</span>
-                            {% endif %}
-                            <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
-                        </div>
+                    <td data-label="名称" class="col-name">
+                        {% if acc.is_default %}
+                        <span class="badge badge-blue" title="默认中转站">⭐</span>
+                        {% endif %}
+                        <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
                     </td>
                     <td data-label="API 地址" class="col-url">
-                        <div class="url-wrap">
-                            <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" />
-                            <button class="btn-act" onclick="copyUrl('{{ acc.id }}')" title="复制地址">复制</button>
-                        </div>
+                        <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" />
+                        <button class="btn-act copy-btn" onclick="copyUrl('{{ acc.id }}')" title="复制地址">复制</button>
                     </td>
-                    <td data-label="模型">
-                        <div class="model-wrap">
-                            <select id="model-{{ acc.id }}" class="table-select">
-                                <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
-                            </select>
-                            <button class="refresh-sm" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">↻</button>
-                        </div>
+                    <td data-label="模型" class="col-model">
+                        <select id="model-{{ acc.id }}" class="table-select">
+                            <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                        </select>
+                        <button class="refresh-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">↻</button>
                     </td>
                     <td data-label="API Key" class="col-key">
-                        <div class="key-wrap">
-                            <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
-                            <button class="btn-act" onclick="copyKey('{{ acc.id }}')">复制</button>
-                        </div>
+                        <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
+                        <button class="btn-act copy-btn" onclick="copyKey('{{ acc.id }}')">复制</button>
                     </td>
                     <td data-label="延迟" id="latency-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
