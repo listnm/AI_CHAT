@@ -35,34 +35,34 @@
 
         /* ===== 表格内表单控件 ===== */
         .table-input {
-            width: 100%; padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
+            padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
             font-size: 13px; outline: none; background: #fff; box-sizing: border-box;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-input:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
         .table-select {
-            width: 100%; padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
+            padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
             font-size: 13px; outline: none; background: #fff; cursor: pointer; box-sizing: border-box;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
 
-        /* ===== 行容器：输入框 + 按钮 ===== */
+        /* ===== 行容器：flex 输入框 + 按钮同行 ===== */
         .name-wrap, .url-wrap, .key-wrap, .model-wrap {
-            display: table; width: 100%; table-layout: fixed;
+            display: flex; align-items: center; gap: 4px; width: 100%;
         }
         .name-wrap .table-input,
         .url-wrap .table-input,
-        .key-wrap .table-input { display: table-cell; width: 100%; }
-        .model-wrap .table-select { display: table-cell; width: 100%; }
-        .name-wrap .badge { display: table-cell; width: 1px; white-space: nowrap; }
+        .key-wrap .table-input { flex: 1; min-width: 0; }
+        .model-wrap .table-select { flex: 1; min-width: 0; }
+        .name-wrap .badge { flex: none; }
         .url-wrap .btn-act,
-        .key-wrap .btn-act { display: table-cell; width: 1px; white-space: nowrap; }
+        .key-wrap .btn-act { flex: none; }
         .model-wrap .refresh-sm {
-            display: table-cell; width: 32px; vertical-align: middle;
+            flex: none; width: 32px; height: 32px;
             border: 1px solid #d0d5dd; border-radius: 6px;
             background: #f5f7fa; font-size: 15px; cursor: pointer;
-            text-align: center;
+            display: flex; align-items: center; justify-content: center;
         }
         .model-wrap .refresh-sm:hover { background: #e4e6ea; }
 
@@ -213,28 +213,28 @@
             .btn-act[disabled] { opacity: .5; }
             .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* 输入框铺满：直接用 width:100% + display:block，不依赖 flex */
+            /* 输入框铺满 */
             .acc-table td .table-input {
-                display: block; width: 100%; box-sizing: border-box;
+                display: block; box-sizing: border-box;
                 font-size: 13px; padding: 8px 10px;
             }
             .acc-table td .table-select {
-                display: block; width: 100%; box-sizing: border-box;
+                display: block; box-sizing: border-box;
                 font-size: 13px;
             }
 
-            /* wrap 容器用 table 布局，宽度计算最可靠 */
+            /* wrap 容器用 flex */
             .url-wrap, .key-wrap, .model-wrap, .name-wrap {
-                display: table; width: 100%; table-layout: fixed;
+                display: flex; align-items: center; gap: 4px; width: 100%;
             }
             .name-wrap .table-input,
             .url-wrap .table-input,
-            .key-wrap .table-input { display: table-cell; width: 100%; }
-            .model-wrap .table-select { display: table-cell; width: 100%; }
-            .name-wrap .badge { display: table-cell; width: 1px; white-space: nowrap; }
+            .key-wrap .table-input { flex: 1; min-width: 0; }
+            .model-wrap .table-select { flex: 1; min-width: 0; }
+            .name-wrap .badge { flex: none; }
             .url-wrap .btn-act,
-            .key-wrap .btn-act { display: table-cell; width: 1px; white-space: nowrap; }
-            .model-wrap .refresh-sm { display: table-cell; width: 36px; }
+            .key-wrap .btn-act { flex: none; }
+            .model-wrap .refresh-sm { flex: none; width: 36px; height: 36px; }
 
             /* URL 和 Key 等宽字体 */
             .acc-table td.col-url .table-input,
