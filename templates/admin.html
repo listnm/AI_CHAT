@@ -89,6 +89,9 @@
         .name-wrap { display: flex; align-items: center; gap: 6px; }
         .name-wrap .table-input { flex: 1; min-width: 0; }
         .name-wrap .badge { flex-shrink: 0; }
+        .key-wrap { display: flex; align-items: center; gap: 4px; }
+        .key-wrap .table-input { flex: 1; min-width: 0; }
+        .key-wrap .btn-act { flex-shrink: 0; }
 
         /* ===== 其他 ===== */
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
@@ -137,10 +140,19 @@
         .batch-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
         .fastest-label { font-size: 12px; color: #2e7d32; display: none; }
 
+        /* ===== 对话表格（桌面端，复用 acc-table 样式） ===== */
+        .conv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .conv-table th, .conv-table td {
+            text-align: left; padding: 10px 10px; border-bottom: 1px solid #e9edf2;
+            vertical-align: middle;
+        }
+        .conv-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
+        .conv-table tr:hover { background: #f7f8fa; }
+
         /* ===== 手机/平板自适应（≤ 700px）→ 卡片布局 ===== */
         @media (max-width: 700px) {
             body { padding: 10px; }
-            .card { padding: 14px; border-radius: 10px; overflow: hidden; }
+            .card { padding: 14px; border-radius: 10px; overflow: visible; }
             .card h2 { font-size: 15px; }
 
             /* --- 账号表格 → 卡片布局 --- */
@@ -151,6 +163,7 @@
                 padding: 16px; margin-bottom: 10px;
                 border: 1px solid #e9edf2; border-radius: 12px;
                 background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04);
+                position: relative;
             }
             .acc-table tr:hover { background: #fff; }
             .fastest-row { background: #f6fff9 !important; border-color: #b8e6c0 !important; }
@@ -226,31 +239,35 @@
             .form-row .refresh-sm { width: 100%; height: 40px; }
 
             /* --- 对话表格 → 卡片布局 --- */
-            .card:last-child .acc-table,
-            .card:last-child .acc-table tbody,
-            .card:last-child .acc-table tr,
-            .card:last-child .acc-table td { display: block; }
-            .card:last-child .acc-table thead { display: none; }
-            .card:last-child .acc-table tr {
+            .conv-table, .conv-table thead, .conv-table tbody,
+            .conv-table tr, .conv-table td { display: block; }
+            .conv-table thead { display: none; }
+            .conv-table tr {
                 padding: 10px 12px; margin-bottom: 8px; border: 1px solid #e9edf2;
                 border-radius: 8px; background: #fff;
             }
-            .card:last-child .acc-table tr:hover { background: #fff; }
-            .card:last-child .acc-table td {
+            .conv-table tr:hover { background: #fff; }
+            .conv-table td {
                 padding: 3px 0; border: none; font-size: 12px;
                 display: flex; align-items: center; gap: 6px;
             }
-            .card:last-child .acc-table td::before {
+            .conv-table td::before {
                 content: attr(data-label); font-weight: 600; color: #65676b;
                 font-size: 11px; min-width: 48px; flex-shrink: 0;
             }
-            .card:last-child .acc-table td[data-label="标题"] {
-                max-width: none !important; white-space: normal !important;
+            .conv-table td[data-label="标题"] {
+                max-width: none !important; overflow: visible !important;
+                text-overflow: clip !important; white-space: normal !important;
             }
 
             /* --- 转发 API 信息 --- */
-            .proxy-box { font-size: 12px; padding: 12px; }
+            .proxy-box { font-size: 12px; padding: 12px; word-break: break-all; }
             .proxy-box .value { word-break: break-all; font-size: 11px; }
+            .proxy-box code {
+                font-size: 11px; word-break: break-all; display: inline-block;
+                max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+            }
+            .proxy-box div div:last-child { font-size: 11px; line-height: 1.8; }
 
             /* --- 批量操作栏 --- */
             .batch-bar { flex-direction: column; align-items: stretch; gap: 6px; }
@@ -360,8 +377,10 @@
                         </div>
                     </td>
                     <td data-label="API Key" class="col-key">
-                        <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
-                        <button class="btn-act" onclick="copyKey('{{ acc.id }}')" style="margin-top:3px;">复制</button>
+                        <div class="key-wrap">
+                            <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
+                            <button class="btn-act" onclick="copyKey('{{ acc.id }}')">复制</button>
+                        </div>
                     </td>
                     <td data-label="延迟" id="latency-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
@@ -395,7 +414,7 @@
     <div class="card">
         <h2>💬 对话列表 ({{ conversations|length }})</h2>
         {% if conversations %}
-        <table class="acc-table">
+        <table class="conv-table">
             <thead>
                 <tr>
                     <th style="width:40%;">标题</th>
