@@ -538,6 +538,15 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* 按钮点击反馈 */
+        .btn:active:not(:disabled),
+        .copy-btn:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        .btn, .copy-btn {
+            transition: all 0.15s ease;
+        }
+
         /* ===== 空状态 ===== */
         .empty-state {
             text-align: center;
@@ -894,7 +903,7 @@
 
             <!-- 批量操作 -->
             <div class="toolbar">
-                <button class="btn btn-primary" onclick="adminSpeedTestAll()">
+                <button class="btn btn-primary" onclick="adminSpeedTestAll(this)">
                     🚀 全部测速
                 </button>
                 <div id="fastestLabel" class="fastest-label">
@@ -927,7 +936,7 @@
                     <button class="btn btn-outline btn-icon" id="newRefreshModels" title="从 API 获取模型列表">
                         ↻
                     </button>
-                    <button class="btn btn-primary" onclick="adminAddAccount()">
+                    <button class="btn btn-primary" onclick="adminAddAccount(this)">
                         ✨ 添加账号
                     </button>
                 </div>
@@ -961,7 +970,7 @@
                             <td>
                                 <div class="field-wrap">
                                     <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono" />
-                                    <button class="copy-btn" onclick="copyUrl('{{ acc.id }}')">📋 复制地址</button>
+                                    <button class="copy-btn" onclick="copyUrl('{{ acc.id }}', this)">📋 复制地址</button>
                                 </div>
                             </td>
                             <td>
@@ -969,13 +978,13 @@
                                     <select id="model-{{ acc.id }}" class="select">
                                         <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
                                     </select>
-                                    <button class="copy-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">🔄 刷新</button>
+                                    <button class="copy-btn" onclick="adminRefreshModels('{{ acc.id }}', this)" title="刷新模型列表">🔄 刷新</button>
                                 </div>
                             </td>
                             <td>
                                 <div class="field-wrap">
                                     <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono" />
-                                    <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">📋 复制 Key</button>
+                                    <button class="copy-btn" onclick="copyKey('{{ acc.id }}', this)">📋 复制 Key</button>
                                 </div>
                             </td>
                             <td id="latency-{{ acc.id }}">
@@ -987,14 +996,14 @@
                             </td>
                             <td>
                                 <div class="action-group">
-                                    <button class="btn btn-success btn-sm" onclick="adminTestAccount('{{ acc.id }}')">⚡ 测速</button>
-                                    <button class="btn btn-primary btn-sm" onclick="adminSaveAccount('{{ acc.id }}')">💾 保存</button>
+                                    <button class="btn btn-success btn-sm" onclick="adminTestAccount('{{ acc.id }}', this)">⚡ 测速</button>
+                                    <button class="btn btn-primary btn-sm" onclick="adminSaveAccount('{{ acc.id }}', this)">💾 保存</button>
                                     {% if acc.is_default %}
                                     <button class="btn btn-outline btn-sm" disabled>⭐ 默认</button>
                                     {% else %}
-                                    <button class="btn btn-outline btn-sm" onclick="adminSetDefault('{{ acc.id }}')">⭐ 设为默认</button>
+                                    <button class="btn btn-outline btn-sm" onclick="adminSetDefault('{{ acc.id }}', this)">⭐ 设为默认</button>
                                     {% endif %}
-                                    <button class="btn btn-danger btn-sm" onclick="adminDeleteAccount('{{ acc.id }}')">🗑️ 删除</button>
+                                    <button class="btn btn-danger btn-sm" onclick="adminDeleteAccount('{{ acc.id }}', this)">🗑️ 删除</button>
                                 </div>
                             </td>
                         </tr>
@@ -1026,30 +1035,30 @@
                         <div class="account-card-field">
                             <span class="account-card-label">API 地址</span>
                             <input type="url" id="url-mobile-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono">
-                            <button class="copy-btn" onclick="copyUrl('{{ acc.id }}')">📋 复制地址</button>
+                            <button class="copy-btn" onclick="copyUrl('{{ acc.id }}', this)">📋 复制地址</button>
                         </div>
                         <div class="account-card-field">
                             <span class="account-card-label">模型</span>
                             <select id="model-mobile-{{ acc.id }}" class="select">
                                 <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
                             </select>
-                            <button class="copy-btn" onclick="adminRefreshModelsMobile('{{ acc.id }}')">🔄 刷新模型</button>
+                            <button class="copy-btn" onclick="adminRefreshModelsMobile('{{ acc.id }}', this)">🔄 刷新模型</button>
                         </div>
                         <div class="account-card-field">
                             <span class="account-card-label">API Key</span>
                             <input type="text" id="key-mobile-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono">
-                            <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">📋 复制 Key</button>
+                            <button class="copy-btn" onclick="copyKey('{{ acc.id }}', this)">📋 复制 Key</button>
                         </div>
                     </div>
                     <div class="account-card-actions">
-                        <button class="btn btn-success" onclick="adminTestAccount('{{ acc.id }}')">⚡ 测速</button>
-                        <button class="btn btn-primary" onclick="adminSaveAccountMobile('{{ acc.id }}')">💾 保存</button>
+                        <button class="btn btn-success" onclick="adminTestAccount('{{ acc.id }}', this)">⚡ 测速</button>
+                        <button class="btn btn-primary" onclick="adminSaveAccountMobile('{{ acc.id }}', this)">💾 保存</button>
                         {% if acc.is_default %}
                         <button class="btn btn-outline" disabled>⭐ 默认</button>
                         {% else %}
-                        <button class="btn btn-outline" onclick="adminSetDefault('{{ acc.id }}')">⭐ 设为默认</button>
+                        <button class="btn btn-outline" onclick="adminSetDefault('{{ acc.id }}', this)">⭐ 设为默认</button>
                         {% endif %}
-                        <button class="btn btn-danger" onclick="adminDeleteAccount('{{ acc.id }}')">🗑️ 删除</button>
+                        <button class="btn btn-danger" onclick="adminDeleteAccount('{{ acc.id }}', this)">🗑️ 删除</button>
                     </div>
                 </div>
                 {% endfor %}
@@ -1120,20 +1129,48 @@
 
     <script>
         // ===== 辅助函数 =====
-        function copyKey(id) {
-            const input = document.getElementById('key-' + id) || document.getElementById('key-mobile-' + id);
-            if (!input) return;
-            navigator.clipboard.writeText(input.value).then(() => {
-                showToast('已复制 Key');
-            }).catch(() => {});
+        // 给按钮添加点击反馈
+        function btnLoading(btn, loadingText) {
+            if (!btn) return;
+            btn.dataset.origText = btn.innerHTML;
+            btn.dataset.origDisabled = btn.disabled;
+            btn.innerHTML = loadingText || '⏳ 处理中...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.style.pointerEvents = 'none';
+        }
+        function btnDone(btn) {
+            if (!btn) return;
+            btn.innerHTML = btn.dataset.origText || btn.innerHTML;
+            btn.disabled = btn.dataset.origDisabled === 'true';
+            btn.style.opacity = '';
+            btn.style.pointerEvents = '';
         }
 
-        function copyUrl(id) {
+        function copyKey(id, btn) {
+            const input = document.getElementById('key-' + id) || document.getElementById('key-mobile-' + id);
+            if (!input) return;
+            if (btn) btnLoading(btn, '⏳');
+            navigator.clipboard.writeText(input.value).then(() => {
+                showToast('已复制 Key');
+                if (btn) btnDone(btn);
+            }).catch(() => {
+                showToast('复制失败');
+                if (btn) btnDone(btn);
+            });
+        }
+
+        function copyUrl(id, btn) {
             const input = document.getElementById('url-' + id) || document.getElementById('url-mobile-' + id);
             if (!input) return;
+            if (btn) btnLoading(btn, '⏳');
             navigator.clipboard.writeText(input.value).then(() => {
                 showToast('已复制地址');
-            }).catch(() => {});
+                if (btn) btnDone(btn);
+            }).catch(() => {
+                showToast('复制失败');
+                if (btn) btnDone(btn);
+            });
         }
 
         function copyText(elementId) {
@@ -1165,8 +1202,9 @@
         }
 
         // ===== 账号操作 =====
-        async function adminSetDefault(id) {
+        async function adminSetDefault(id, btn) {
             if (!confirm('确定要将此账号设为默认中转站吗？')) return;
+            if (btn) btnLoading(btn, '⏳ 设置中...');
             try {
                 const resp = await fetch('/api/accounts/' + id + '/set-default', { method: 'POST' });
                 const result = await resp.json();
@@ -1175,33 +1213,36 @@
                     setTimeout(() => location.reload(), 800);
                 } else {
                     showAdminMsg(result.message, 'fail');
+                    if (btn) btnDone(btn);
                 }
             } catch (e) {
                 showAdminMsg('设置失败', 'fail');
+                if (btn) btnDone(btn);
             }
         }
 
-        async function adminSaveAccount(id) {
+        async function adminSaveAccount(id, btn) {
             const name = document.getElementById('name-' + id).value.trim();
             const url = document.getElementById('url-' + id).value.trim();
             const key = document.getElementById('key-' + id).value.trim();
             const model = document.getElementById('model-' + id).value;
-            await saveAccount(id, name, url, key, model);
+            await saveAccount(id, name, url, key, model, btn);
         }
 
-        async function adminSaveAccountMobile(id) {
+        async function adminSaveAccountMobile(id, btn) {
             const name = document.getElementById('name-mobile-' + id).value.trim();
             const url = document.getElementById('url-mobile-' + id).value.trim();
             const key = document.getElementById('key-mobile-' + id).value.trim();
             const model = document.getElementById('model-mobile-' + id).value;
-            await saveAccount(id, name, url, key, model);
+            await saveAccount(id, name, url, key, model, btn);
         }
 
-        async function saveAccount(id, name, url, key, model) {
+        async function saveAccount(id, name, url, key, model, btn) {
             if (!name || !url) {
                 showAdminMsg('名称和 API 地址不能为空', 'fail');
                 return;
             }
+            if (btn) btnLoading(btn, '⏳ 保存中...');
             try {
                 const resp = await fetch('/api/accounts/' + id, {
                     method: 'PUT',
@@ -1216,6 +1257,8 @@
                 }
             } catch (e) {
                 showAdminMsg('保存失败', 'fail');
+            } finally {
+                if (btn) btnDone(btn);
             }
         }
 
@@ -1265,25 +1308,27 @@
             }
         });
 
-        async function adminRefreshModels(id) {
+        async function adminRefreshModels(id, btn) {
+            if (btn) btnLoading(btn, '⏳ 刷新中...');
             const sel = document.getElementById('model-' + id);
             const currentVal = sel.value;
             sel.innerHTML = '<option value="">加载中...</option>';
             const url = document.getElementById('url-' + id).value.trim();
             const key = document.getElementById('key-' + id).value.trim();
-            await doRefreshModels(id, url, key, sel, currentVal);
+            await doRefreshModels(id, url, key, sel, currentVal, btn);
         }
 
-        async function adminRefreshModelsMobile(id) {
+        async function adminRefreshModelsMobile(id, btn) {
+            if (btn) btnLoading(btn, '⏳ 刷新中...');
             const sel = document.getElementById('model-mobile-' + id);
             const currentVal = sel.value;
             sel.innerHTML = '<option value="">加载中...</option>';
             const url = document.getElementById('url-mobile-' + id).value.trim();
             const key = document.getElementById('key-mobile-' + id).value.trim();
-            await doRefreshModels(id, url, key, sel, currentVal);
+            await doRefreshModels(id, url, key, sel, currentVal, btn);
         }
 
-        async function doRefreshModels(id, url, key, sel, currentVal) {
+        async function doRefreshModels(id, url, key, sel, currentVal, btn) {
             try {
                 const resp = await fetch('/api/models', {
                     method: 'POST',
@@ -1309,11 +1354,13 @@
             } catch (e) {
                 sel.innerHTML = '<option value="">加载失败</option>';
                 showAdminMsg('网络错误', 'fail');
+            } finally {
+                if (btn) btnDone(btn);
             }
         }
 
         // ===== 添加账号 =====
-        async function adminAddAccount() {
+        async function adminAddAccount(btn) {
             const name = document.getElementById('newName').value.trim();
             const url = document.getElementById('newUrl').value.trim();
             const key = document.getElementById('newKey').value.trim();
@@ -1322,6 +1369,7 @@
                 showAdminMsg('请填写完整信息（名称、地址、Key、模型）', 'fail');
                 return;
             }
+            if (btn) btnLoading(btn, '⏳ 添加中...');
             try {
                 const resp = await fetch('/api/accounts', {
                     method: 'POST',
@@ -1334,15 +1382,18 @@
                     setTimeout(() => location.reload(), 800);
                 } else {
                     showAdminMsg(result.message, 'fail');
+                    if (btn) btnDone(btn);
                 }
             } catch (e) {
                 showAdminMsg('网络错误', 'fail');
+                if (btn) btnDone(btn);
             }
         }
 
         // ===== 删除账号 =====
-        async function adminDeleteAccount(id) {
+        async function adminDeleteAccount(id, btn) {
             if (!confirm('确定要删除这个账号吗？')) return;
+            if (btn) btnLoading(btn, '⏳ 删除中...');
             try {
                 const resp = await fetch('/api/accounts/' + id, { method: 'DELETE' });
                 const result = await resp.json();
@@ -1351,14 +1402,17 @@
                     setTimeout(() => location.reload(), 800);
                 } else {
                     showAdminMsg(result.message, 'fail');
+                    if (btn) btnDone(btn);
                 }
             } catch (e) {
                 showAdminMsg('网络错误', 'fail');
+                if (btn) btnDone(btn);
             }
         }
 
         // ===== 测速 =====
-        async function adminTestAccount(id) {
+        async function adminTestAccount(id, btn) {
+            if (btn) btnLoading(btn, '⏳ 测速中...');
             const latencyEl = document.getElementById('latency-' + id) || document.getElementById('latency-mobile-' + id);
             if (latencyEl) {
                 latencyEl.innerHTML = '<span class="latency-badge loading">测速中...</span>';
@@ -1394,6 +1448,8 @@
             } catch (e) {
                 if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge error">错误</span>';
                 showAdminMsg('测速请求失败', 'fail');
+            } finally {
+                if (btn) btnDone(btn);
             }
         }
 
