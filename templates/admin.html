@@ -152,47 +152,75 @@
             .acc-table tr, .acc-table td { display: block; }
             .acc-table thead { display: none; }
             .acc-table tr {
-                padding: 14px; margin-bottom: 10px; border: 1px solid #e9edf2;
-                border-radius: 10px; background: #fff; position: relative;
+                padding: 16px; margin-bottom: 10px;
+                border: 1px solid #e9edf2; border-radius: 12px;
+                background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04);
             }
             .acc-table tr:hover { background: #fff; }
-            .fastest-row { background: #f0fff4 !important; }
+            .fastest-row { background: #f6fff9 !important; border-color: #b8e6c0 !important; }
+
+            /* 卡片内各字段行 */
             .acc-table td {
                 padding: 5px 0; border: none; font-size: 13px;
-                display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+                display: flex; align-items: center; gap: 6px;
             }
             .acc-table td::before {
                 content: attr(data-label); font-weight: 600; color: #65676b;
-                font-size: 11px; min-width: 52px; flex-shrink: 0;
+                font-size: 11px; width: 56px; flex-shrink: 0; text-align: right;
             }
-            /* 操作列特殊处理：不显示 label，按钮换行 */
+            /* 名称行：更突出，无 label */
+            .acc-table td[data-label="名称"]::before { display: none; }
+            .acc-table td[data-label="名称"] {
+                font-size: 15px; font-weight: 600; padding: 0 0 8px 0;
+                border-bottom: 1px solid #f0f2f5; margin-bottom: 6px;
+            }
+            .acc-table td[data-label="名称"] .name-wrap { width: 100%; }
+            .acc-table td[data-label="名称"] .name-wrap .table-input {
+                font-weight: 600; font-size: 14px; border-color: transparent;
+                background: transparent; padding-left: 0;
+            }
+            /* 延迟行：右对齐，无 label */
+            .acc-table td[data-label="延迟"] {
+                justify-content: flex-end; padding: 2px 0; margin-top: -4px;
+            }
+            .acc-table td[data-label="延迟"]::before { display: none; }
+
+            /* 操作行：底部整行按钮 */
             .acc-table td[data-label="操作"]::before { display: none; }
             .acc-table td[data-label="操作"] {
                 padding-top: 10px; margin-top: 8px;
-                border-top: 1px solid #e9edf2; justify-content: center;
+                border-top: 1px solid #f0f2f5;
             }
-            .acc-table td[data-label="延迟"]::before { min-width: 52px; }
-            .acc-table td[data-label="API 地址"]::before { min-width: 52px; }
-            .acc-table td[data-label="API Key"]::before { min-width: 52px; }
-            .acc-table td[data-label="模型"]::before { min-width: 52px; }
-            .acc-table td[data-label="名称"]::before { min-width: 52px; }
+            .action-group {
+                display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%;
+            }
+            .btn-act {
+                font-size: 12px; padding: 9px 0; border-radius: 8px;
+                min-height: 38px; display: flex; align-items: center;
+                justify-content: center; gap: 2px; width: 100%;
+            }
+            .btn-act[disabled] { opacity: .5; }
+            .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* 卡片内输入框撑满 */
-            .acc-table td .table-input { width: auto; flex: 1; min-width: 80px; }
+            /* 输入框在卡片中 */
+            .acc-table td .table-input {
+                width: auto; flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px;
+            }
             .acc-table td .model-wrap { flex: 1; min-width: 0; }
-            .acc-table td .model-wrap .table-select { flex: 1; }
+            .acc-table td .model-wrap .table-select { flex: 1; font-size: 12px; }
+            /* URL 和 Key 输入框用等宽小字 */
+            .acc-table td.col-url .table-input,
+            .acc-table td.col-key .table-input {
+                font-family: "SF Mono", "Fira Code", monospace; font-size: 11px;
+            }
+            /* 复制按钮紧凑 */
+            .acc-table td.col-key .btn-act {
+                padding: 4px 8px; min-height: 28px; font-size: 11px; width: auto;
+            }
 
             /* 手机卡片中显示 API 地址和 Key（覆盖 700px 的隐藏） */
             .acc-table td.col-url,
             .acc-table td.col-key { display: flex; }
-
-            /* --- 操作按钮加大（触摸友好） --- */
-            .action-group { flex-wrap: wrap; justify-content: center; gap: 6px; }
-            .btn-act {
-                font-size: 12px; padding: 8px 12px; border-radius: 6px;
-                min-height: 36px; display: flex; align-items: center; gap: 2px;
-            }
-            .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
             /* --- 添加表单垂直堆叠 --- */
             .form-row { flex-direction: column; gap: 8px; }
