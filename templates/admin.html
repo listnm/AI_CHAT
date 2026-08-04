@@ -1413,10 +1413,11 @@
         // ===== 测速 =====
         async function adminTestAccount(id, btn) {
             if (btn) btnLoading(btn, '⏳ 测速中...');
-            const latencyEl = document.getElementById('latency-' + id) || document.getElementById('latency-mobile-' + id);
-            if (latencyEl) {
-                latencyEl.innerHTML = '<span class="latency-badge loading">测速中...</span>';
-            }
+            const latencyElDesktop = document.getElementById('latency-' + id);
+            const latencyElMobile = document.getElementById('latency-mobile-' + id);
+            [latencyElDesktop, latencyElMobile].forEach(el => {
+                if (el) el.innerHTML = '<span class="latency-badge loading">测速中...</span>';
+            });
 
             const url = document.getElementById('url-' + id)?.value.trim() || document.getElementById('url-mobile-' + id)?.value.trim();
             const key = document.getElementById('key-' + id)?.value.trim() || document.getElementById('key-mobile-' + id)?.value.trim();
@@ -1439,26 +1440,33 @@
                 });
 
                 if (result.ok) {
-                    if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge success">' + elapsed + 'ms</span>';
+                    const html = '<span class="latency-badge success">' + elapsed + 'ms</span>';
+                    [latencyElDesktop, latencyElMobile].forEach(el => {
+                        if (el) el.innerHTML = html;
+                    });
                     showAdminMsg('测速成功：' + elapsed + 'ms', 'success');
                 } else {
-                    if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge error">不可用</span>';
+                    const html = '<span class="latency-badge error">不可用</span>';
+                    [latencyElDesktop, latencyElMobile].forEach(el => {
+                        if (el) el.innerHTML = html;
+                    });
                     showAdminMsg(result.message, 'fail');
                 }
             } catch (e) {
-                if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge error">错误</span>';
+                const html = '<span class="latency-badge error">错误</span>';
+                [latencyElDesktop, latencyElMobile].forEach(el => {
+                    if (el) el.innerHTML = html;
+                });
                 showAdminMsg('测速请求失败', 'fail');
             } finally {
                 if (btn) btnDone(btn);
+                updateFastestLabel();
             }
         }
 
-        async function adminSpeedTestAll() {
+        async function adminSpeedTestAll(btn) {
             showAdminMsg('正在测试所有账号...', 'info');
-            const btn = event.target;
-            btn.disabled = true;
-            const origText = btn.innerHTML;
-            btn.innerHTML = '⏳ 测速中...';
+            if (btn) btnLoading(btn, '⏳ 测速中...');
 
             const rows = document.querySelectorAll('[id^="row-"]');
             for (const row of rows) {
@@ -1467,8 +1475,8 @@
                 await adminTestAccount(id);
             }
 
-            btn.disabled = false;
-            btn.innerHTML = origText;
+            if (btn) btnDone(btn);
+            updateFastestLabel();
         }
 
         // ===== 更新最快标签 =====
