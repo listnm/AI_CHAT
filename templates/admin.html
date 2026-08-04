@@ -2,761 +2,1474 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>管理后台 - AI 对话</title>
     <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #eef2ff;
+            --success: #10b981;
+            --success-light: #ecfdf5;
+            --danger: #ef4444;
+            --danger-light: #fef2f2;
+            --warning: #f59e0b;
+            --warning-light: #fffbeb;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --border: #e5e7eb;
+            --border-light: #f3f4f6;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #f0f2f5; color: #1c1e21; padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 40px;
         }
-        .container { max-width: 1100px; margin: 0 auto; }
-        h1 { font-size: 22px; margin-bottom: 20px; color: #1c1e21; }
+
+        /* ===== 顶部导航 ===== */
+        .admin-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            padding: 20px 24px;
+            color: white;
+        }
+        .admin-header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .admin-title {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .admin-title-icon {
+            width: 36px; height: 36px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .admin-nav {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .admin-nav a {
+            color: rgba(255,255,255,0.9);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+        .admin-nav a:hover { color: white; }
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+        .base-url {
+            font-size: 12px;
+            opacity: 0.75;
+            font-family: monospace;
+            background: rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        /* ===== 容器 ===== */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* ===== 卡片 ===== */
         .card {
-            background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,.08);
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-light);
         }
-        .card h2 { font-size: 16px; margin-bottom: 12px; color: #65676b; }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title-icon {
+            font-size: 20px;
+        }
 
-        /* ===== 表格统一样式 ===== */
-        .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .acc-table th, .acc-table td {
-            text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
-            vertical-align: middle; word-break: break-all;
+        /* ===== API 信息卡片 ===== */
+        .api-info-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%);
+            border: 1px solid #e0e7ff;
         }
-        .acc-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
-        .acc-table tr:hover { background: #f7f8fa; }
-        .acc-table .col-name { width: 12%; }
-        .acc-table .col-url { width: 26%; }
-        .acc-table .col-model { width: 16%; }
-        .acc-table .col-key { width: 22%; }
-        .acc-table .col-latency { width: 8%; }
-        .acc-table .col-actions { width: 16%; }
+        .api-info-box {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            border: 1px solid var(--border-light);
+        }
+        .api-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px dashed var(--border-light);
+        }
+        .api-row:last-child { border-bottom: none; }
+        .api-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        .api-value {
+            flex: 1;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            color: var(--primary);
+            word-break: break-all;
+        }
+        .usage-tips {
+            margin-top: 16px;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+        }
+        .usage-tips-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tip-list {
+            list-style: none;
+        }
+        .tip-item {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .tip-item .method {
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .tip-item code {
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
 
-        /* ===== 表格内表单控件 ===== */
-        .table-input {
-            width: 100%; padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
-            font-size: 13px; outline: none; background: #fff; box-sizing: border-box;
-            transition: border-color .15s, box-shadow .15s;
+        /* ===== 按钮 ===== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            text-decoration: none;
+            line-height: 1.4;
+            min-height: 36px;
+            font-family: inherit;
         }
-        .table-input:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
-        .table-select {
-            width: 100%; padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
-            font-size: 13px; outline: none; background: #fff; cursor: pointer; box-sizing: border-box;
-            transition: border-color .15s, box-shadow .15s;
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
         }
-        .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #059669;
+            box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        }
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+        }
+        .btn-outline {
+            background: white;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-outline:hover:not(:disabled) {
+            background: var(--border-light);
+            color: var(--text);
+        }
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            min-height: 30px;
+        }
+        .btn-lg {
+            padding: 12px 24px;
+            font-size: 15px;
+            min-height: 44px;
+        }
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .btn-block { width: 100%; }
 
-        /* ===== 输入框：按钮放在下方，简单可靠 ===== */
-        .col-url, .col-key, .col-model, .col-name {
-            vertical-align: top;
+        /* ===== 输入框 ===== */
+        .input, .select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            background: white;
+            color: var(--text);
+            transition: all 0.2s;
+            outline: none;
         }
-        .col-url .table-input,
-        .col-key .table-input,
-        .col-model .table-select {
+        .input:focus, .select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+        .input::placeholder {
+            color: var(--text-muted);
+        }
+        .input-mono {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+        }
+
+        /* ===== 表单 ===== */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            align-items: flex-end;
+        }
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        /* ===== 批量操作栏 ===== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .fastest-label {
+            display: none;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--success);
+            background: var(--success-light);
+            padding: 6px 14px;
+            border-radius: 8px;
+            align-items: center;
+            gap: 6px;
+        }
+        .fastest-label.active { display: inline-flex; }
+
+        /* ===== 账号添加区域 ===== */
+        .add-account-section {
+            background: var(--border-light);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ===== 账号表格（电脑端） ===== */
+        .account-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 14px;
+        }
+        .account-table thead {
+            background: var(--border-light);
+        }
+        .account-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+        }
+        .account-table td {
+            padding: 14px 16px;
+            vertical-align: middle;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .account-table tbody tr {
+            transition: background 0.2s;
+        }
+        .account-table tbody tr:hover {
+            background: #fafbfc;
+        }
+        .account-table tbody tr.fastest-row {
+            background: var(--success-light);
+        }
+        .account-table tbody tr.fastest-row:hover {
+            background: #d1fae5;
+        }
+
+        /* 表格内输入框容器 */
+        .field-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .field-wrap .input, .field-wrap .select {
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+        .field-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px 10px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .copy-btn:hover {
+            background: var(--primary-light);
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        /* 名称字段 */
+        .name-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .name-field .input {
+            flex: 1;
+            font-weight: 600;
+        }
+        .star-badge {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(245,158,11,0.3);
+        }
+
+        /* 延迟徽章 */
+        .latency-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .latency-badge.success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+        .latency-badge.gray {
+            background: var(--border-light);
+            color: var(--text-muted);
+        }
+        .latency-badge.error {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+        .latency-badge.loading {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        /* 操作按钮组 */
+        .action-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .action-group .btn {
+            padding: 6px 12px;
+            font-size: 12px;
+            min-height: 32px;
+        }
+
+        /* ===== 消息提示 ===== */
+        .msg {
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+        .msg-success {
+            display: block;
+            background: var(--success-light);
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+        .msg-fail {
+            display: block;
+            background: var(--danger-light);
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .msg-info {
+            display: block;
+            background: var(--primary-light);
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== 空状态 ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
             display: block;
         }
-        .col-url .copy-btn,
-        .col-key .copy-btn {
-            display: block; margin-top: 4px;
-            font-size: 11px; padding: 3px 10px; height: auto;
+        .empty-state-text {
+            font-size: 15px;
         }
-        .col-model .refresh-btn {
-            display: block; margin-top: 4px;
-            width: auto; height: auto; padding: 3px 10px; font-size: 12px;
-            border: 1px solid #d0d5dd; border-radius: 6px;
-            background: #f5f7fa; cursor: pointer;
-        }
-        .col-model .refresh-btn:hover { background: #e4e6ea; }
-
-        /* 名称：徽章和输入框同行 */
-        .col-name .name-field { display: flex; align-items: center; gap: 6px; }
-        .col-name .name-field .table-input { flex: 1; }
-
-        .key-mono { font-family: monospace; }
-
-        /* ===== 操作按钮组 ===== */
-        .action-group { display: flex; gap: 4px; flex-wrap: wrap; }
-        .btn-act {
-            font-size: 12px; padding: 5px 10px; border: 1px solid #d0d5dd; border-radius: 5px;
-            background: #fff; cursor: pointer; color: #444; white-space: nowrap;
-            transition: all .15s; line-height: 1.4; min-height: 30px;
-            display: inline-flex; align-items: center; gap: 2px;
-        }
-        .btn-act:hover { background: #f0f2f5; }
-        .btn-act.primary { color: #1b74e4; border-color: #1b74e4; }
-        .btn-act.primary:hover { background: #e8f2ff; }
-        .btn-act.success { color: #2e7d32; border-color: #2e7d32; }
-        .btn-act.success:hover { background: #e8f5e9; }
-        .btn-act.danger { color: #e53935; border-color: #e53935; }
-        .btn-act.danger:hover { background: #fff0f0; }
-        .btn-act:disabled { opacity: .5; cursor: not-allowed; }
-
-        /* ===== 徽章 ===== */
-        .badge {
-            display: inline-block; padding: 2px 8px; border-radius: 4px;
-            font-size: 11px; font-weight: 600; white-space: nowrap;
-        }
-        .badge-green { background: #e8f5e9; color: #2e7d32; }
-        .badge-gray { background: #f5f5f5; color: #757575; }
-        .badge-red { background: #fff0f0; color: #c62828; }
-        .badge-blue { background: #e8f2ff; color: #1b74e4; }
-        .key-mono { font-family: monospace; font-size: 11px; }
-
-        /* ===== 其他 ===== */
-        .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
-        .login-form {
-            max-width: 360px; margin: 80px auto; background: #fff; border-radius: 12px;
-            padding: 30px; box-shadow: 0 2px 8px rgba(0,0,0,.08);
-        }
-        .login-form h1 { text-align: center; margin-bottom: 24px; }
-        .login-form input {
-            width: 100%; padding: 10px 14px; border: 1px solid #d0d5dd; border-radius: 8px;
-            font-size: 14px; outline: none; margin-bottom: 12px;
-        }
-        .login-form input:focus { border-color: #1b74e4; }
-        .login-form button {
-            width: 100%; padding: 10px; background: #1b74e4; color: #fff; border: none;
-            border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;
-        }
-        .login-form button:hover { background: #1665c1; }
-        .error { color: #e53935; font-size: 13px; text-align: center; margin-top: 8px; }
-        .nav { margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .nav a { color: #1b74e4; text-decoration: none; font-size: 14px; }
-        .nav a:hover { text-decoration: underline; }
-        .nav .logout-btn {
-            margin-left: auto; padding: 6px 14px; border: 1px solid #d0d5dd; border-radius: 6px;
-            background: #fff; cursor: pointer; font-size: 13px; color: #5f6368;
-        }
-        .nav .logout-btn:hover { background: #fff0f0; color: #e53935; border-color: #e53935; }
-        .form-row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-        .form-row input, .form-row select {
-            padding: 6px 10px; border: 1px solid #d0d5dd; border-radius: 6px; font-size: 13px; outline: none; flex: 1; min-width: 120px;
-        }
-        .form-row input:focus, .form-row select:focus { border-color: #1b74e4; }
-        .form-row button { flex-shrink: 0; }
-        .msg { font-size: 13px; padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; display: none; }
-        .msg.success { display: block; background: #e8f5e9; color: #1b5e20; }
-        .msg.fail { display: block; background: #fff0f0; color: #c62828; }
-        .msg.info { display: block; background: #e8f2ff; color: #004999; }
-        .proxy-box {
-            background: #f5f7fa; border-radius: 8px; padding: 14px; margin-top: 8px;
-            font-family: monospace; font-size: 13px; line-height: 1.8;
-        }
-        .proxy-box .label { color: #65676b; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-        .proxy-box .value { color: #1b74e4; word-break: break-all; }
-        .fastest-row { background: #f0fff4 !important; }
-        .fastest-row td { border-bottom-color: #c8e6c9; }
-        .batch-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
-        .fastest-label { font-size: 12px; color: #2e7d32; display: none; }
 
         /* ===== 对话表格 ===== */
-        .conv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        .conv-table th, .conv-table td {
-            text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
-            vertical-align: middle;
+        .conv-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 14px;
         }
-        .conv-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
-        .conv-table tr:hover { background: #f7f8fa; }
+        .conv-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: var(--border-light);
+            border-bottom: 2px solid var(--border);
+        }
+        .conv-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border-light);
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+        .conv-table tbody tr:hover {
+            background: #fafbfc;
+        }
+        .conv-title {
+            color: var(--text);
+            font-weight: 500;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .msg-count-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            background: var(--border-light);
+            color: var(--text-secondary);
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
 
-        /* ===== 手机/平板自适应（≤ 700px）→ 卡片布局 ===== */
-        @media (max-width: 700px) {
-            body { padding: 10px; }
-            .card { padding: 14px; border-radius: 10px; }
-            .card h2 { font-size: 15px; }
+        /* ===== 登录页 ===== */
+        .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            padding: 20px;
+        }
+        .login-card {
+            background: white;
+            border-radius: 24px;
+            padding: 40px 36px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+        .login-logo {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 25px rgba(99,102,241,0.4);
+        }
+        .login-title {
+            font-size: 22px;
+            font-weight: 700;
+            text-align: center;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .login-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 28px;
+        }
+        .login-form .form-group {
+            margin-bottom: 20px;
+        }
+        .login-form .input {
+            padding: 14px 16px;
+            font-size: 15px;
+            border-radius: 12px;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            border-radius: 12px;
+        }
+        .login-error {
+            background: var(--danger-light);
+            color: var(--danger);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            text-align: center;
+            margin-top: 16px;
+            border: 1px solid #fecaca;
+        }
 
-            /* --- 账号表格 → 卡片布局 --- */
-            .acc-table, .acc-table thead, .acc-table tbody,
-            .acc-table tr, .acc-table td { display: block; }
-            .acc-table thead { display: none; }
-            .acc-table tr {
-                padding: 16px; margin-bottom: 10px;
-                border: 1px solid #e9edf2; border-radius: 12px;
-                background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.04);
-                position: relative;
-            }
-            .acc-table tr:hover { background: #fff; }
-            .fastest-row { background: #f6fff9 !important; border-color: #b8e6c0 !important; }
+        /* ===== 卡片视图（手机端账号列表） ===== */
+        .account-cards {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .account-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-sm);
+            transition: all 0.2s;
+            position: relative;
+        }
+        .account-card.fastest {
+            border-color: var(--success);
+            background: linear-gradient(135deg, #f0fdf4 0%, white 100%);
+        }
+        .account-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .account-card-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        .account-card-name .input {
+            font-weight: 700;
+            font-size: 16px;
+            padding: 8px 12px;
+        }
+        .account-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .account-card-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .account-card-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .account-card-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-light);
+        }
+        .account-card-actions .btn {
+            width: 100%;
+            min-height: 40px;
+            font-size: 13px;
+        }
+        .account-card-latency {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+        }
 
-            /* td 用 block，不用 flex，避免嵌套问题 */
-            .acc-table td {
-                padding: 6px 0; border: none; font-size: 13px;
-            }
-            /* label 独占一行 */
-            .acc-table td::before {
-                display: block; content: attr(data-label);
-                font-weight: 600; color: #65676b;
-                font-size: 11px; margin-bottom: 3px;
-            }
+        /* ===== 响应式（≤ 768px）===== */
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
 
-            /* 名称行：卡片标题 */
-            .acc-table td[data-label="名称"]::before { display: none; }
-            .acc-table td[data-label="名称"] {
-                font-size: 15px; font-weight: 600; padding: 0 0 8px 0;
-                border-bottom: 1px solid #f0f2f5; margin-bottom: 6px;
-            }
-            .acc-table td[data-label="名称"] .table-input {
-                font-weight: 600; font-size: 14px; border-color: transparent;
-                background: transparent;
-            }
-            .acc-table td[data-label="名称"] .name-field {
-                display: flex; align-items: center; gap: 6px;
-            }
-            /* 延迟行：右上角 */
-            .acc-table td[data-label="延迟"]::before { display: none; }
-            .acc-table td[data-label="延迟"] {
-                position: absolute; top: 16px; right: 16px; padding: 0;
-            }
+            /* 顶部导航 */
+            .admin-header { padding: 16px; }
+            .admin-header-inner { flex-direction: column; align-items: stretch; }
+            .admin-nav { justify-content: space-between; }
+            .base-url { display: none; }
 
-            /* 操作行：底部整行按钮 */
-            .acc-table td[data-label="操作"]::before { display: none; }
-            .acc-table td[data-label="操作"] {
-                padding-top: 10px; margin-top: 8px;
-                border-top: 1px solid #f0f2f5;
-            }
-            .action-group {
-                display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%;
-            }
-            .btn-act {
-                font-size: 12px; padding: 9px 0; border-radius: 8px;
-                min-height: 38px; display: flex; align-items: center;
-                justify-content: center; gap: 2px; width: 100%;
-            }
-            .btn-act[disabled] { opacity: .5; }
-            .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
+            /* 卡片 */
+            .card { padding: 16px; border-radius: 14px; }
+            .card-title { font-size: 16px; }
 
-            /* 输入框：按钮放在下方 */
-            .acc-table td .table-input,
-            .acc-table td .table-select {
-                box-sizing: border-box; font-size: 13px; padding: 8px 10px;
-            }
-            .acc-table td.col-url,
-            .acc-table td.col-key { }
-            .acc-table td.col-url .copy-btn,
-            .acc-table td.col-key .copy-btn {
-                display: block; margin-top: 4px;
-                font-size: 11px; padding: 3px 10px;
-            }
-            .acc-table td.col-model .refresh-btn {
-                display: block; margin-top: 4px;
-                width: auto; height: auto; padding: 3px 10px;
-            }
-            .acc-table td.col-name .name-field {
-                display: flex; align-items: center; gap: 6px;
-            }
-            .acc-table td.col-name .name-field .table-input {
-                flex: 1; font-weight: 600; font-size: 14px;
-            }
-            .acc-table td.col-url .table-input,
-            .acc-table td.col-key .table-input {
-                font-family: monospace;
-            }
+            /* 表单行：垂直堆叠 */
+            .form-row { flex-direction: column; gap: 12px; }
+            .form-row .form-group { width: 100%; }
+            .form-row .btn { width: 100%; }
+            .form-row .btn-icon { width: 100%; }
 
-            /* 添加表单垂直堆叠 */
-            .form-row { flex-direction: column; gap: 8px; }
-            .form-row input, .form-row select {
-                width: 100%; min-width: 0; padding: 10px 12px; font-size: 14px;
-            }
-            .form-row button { width: 100%; }
-            .form-row .refresh-sm { width: 100%; height: 40px; }
+            /* 电脑端表格隐藏，显示卡片视图 */
+            .account-table { display: none; }
+            .account-cards { display: flex; }
+
+            /* 工具栏 */
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .toolbar .btn { width: 100%; }
+            .fastest-label { justify-content: center; }
+
+            /* API 信息 */
+            .api-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+            .api-label { min-width: auto; }
 
             /* 对话表格 → 卡片 */
-            .conv-table, .conv-table thead, .conv-table tbody,
-            .conv-table tr, .conv-table td { display: block; }
-            .conv-table thead { display: none; }
-            .conv-table tr {
-                padding: 10px 12px; margin-bottom: 8px; border: 1px solid #e9edf2;
-                border-radius: 8px; background: #fff;
+            .conv-table { display: none; }
+            .conv-cards { display: flex; flex-direction: column; gap: 10px; }
+            .conv-card {
+                background: white;
+                border: 1px solid var(--border-light);
+                border-radius: 12px;
+                padding: 14px;
             }
-            .conv-table tr:hover { background: #fff; }
-            .conv-table td {
-                padding: 3px 0; border: none; font-size: 12px;
+            .conv-card-title {
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--text);
+                margin-bottom: 8px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
-            .conv-table td::before {
-                display: block; content: attr(data-label);
-                font-weight: 600; color: #65676b;
-                font-size: 11px; margin-bottom: 2px;
-            }
-            .conv-table td[data-label="标题"] {
-                max-width: none !important; overflow: visible !important;
-                text-overflow: clip !important; white-space: normal !important;
-            }
-
-            .proxy-box { font-size: 12px; padding: 12px; word-break: break-all; }
-            .proxy-box .value { word-break: break-all; font-size: 11px; }
-            .proxy-box code {
-                font-size: 11px; word-break: break-all;
+            .conv-card-meta {
+                display: flex;
+                gap: 16px;
+                font-size: 12px;
+                color: var(--text-secondary);
+                flex-wrap: wrap;
             }
 
-            .batch-bar { flex-direction: column; align-items: stretch; gap: 6px; }
-            .batch-bar .btn-act { justify-content: center; }
-            .fastest-label { text-align: center; }
-            .nav { gap: 8px; }
-            .nav .logout-btn { margin-left: 0; }
+            /* 登录页 */
+            .login-card { padding: 32px 24px; border-radius: 20px; }
         }
+
+        /* 对话卡片视图（手机端） */
+        .conv-cards { display: none; }
     </style>
 </head>
 <body>
-<div class="container">
     {% if not logged_in %}
-    <div class="login-form">
-        <h1>管理后台</h1>
-        <form method="post" action="/admin">
-            <input type="password" name="password" placeholder="请输入管理员密码" required autofocus>
-            <button type="submit">登录</button>
-            {% if error %}<div class="error">{{ error }}</div>{% endif %}
-        </form>
+    <div class="login-page">
+        <div class="login-card">
+            <div class="login-logo">🔐</div>
+            <h1 class="login-title">管理后台</h1>
+            <p class="login-subtitle">请输入管理员密码以继续</p>
+            <form method="post" action="/admin" class="login-form">
+                <div class="form-group">
+                    <input type="password" name="password" class="input" placeholder="管理员密码" required autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary login-btn">登录</button>
+                {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+            </form>
+        </div>
     </div>
     {% else %}
-    <div class="nav">
-        <a href="/">&larr; 返回首页</a>
-        <span style="font-size:13px;color:#8e9399;">{{ base_url }}</span>
-        <form method="post" action="/admin/logout" style="margin:0;">
-            <button class="logout-btn" type="submit">退出登录</button>
-        </form>
-    </div>
-    <h1>管理后台</h1>
 
-    <!-- 转发 API 信息 -->
-    <div class="card">
-        <h2>🔗 OpenAI 兼容转发 API</h2>
-        <div class="proxy-box">
-            <div><span class="label">API 地址：</span><span class="value" id="proxyUrl">{{ proxy_url }}</span> <button class="btn-act" onclick="copyText('proxyUrl')">复制</button></div>
-            <div><span class="label">API Key：</span><span class="value" id="proxyKey">{{ proxy_api_key }}</span> <button class="btn-act" onclick="copyText('proxyKey')">复制</button></div>
-            <div style="margin-top:8px;font-family:system-ui;font-size:12px;color:#8e9399;line-height:1.7;">
-                <strong>三种使用方式：</strong><br>
-                <span style="color:#1b74e4;font-weight:600;">方式一：自动选择</span> — 不传 <code>account</code> 参数，系统优先使用 ⭐默认账号，无默认则选最快的<br>
-                <span style="color:#2e7d32;font-weight:600;">方式二：手动选择</span> — 传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站<br>
-                <span style="color:#e65100;font-weight:600;">方式三：model=auto</span> — 传 <code>"model": "auto"</code>，自动选最优账号（兼容各种 AI 工具，如 ChatGPT、Cursor 等）<br>
-                <span style="color:#8e9399;">▼ 响应中会包含 <code>_provider</code> 字段说明实际调用的账号</span>
+    <!-- 顶部导航 -->
+    <div class="admin-header">
+        <div class="admin-header-inner">
+            <div class="admin-title">
+                <div class="admin-title-icon">⚡</div>
+                <span>AI 对话管理后台</span>
+            </div>
+            <div class="admin-nav">
+                <a href="/">← 返回首页</a>
+                <span class="base-url">{{ base_url }}</span>
+                <form method="post" action="/admin/logout" style="margin:0;">
+                    <button class="logout-btn" type="submit">退出</button>
+                </form>
             </div>
         </div>
     </div>
 
-    <!-- 账号管理 -->
-    <div class="card">
-        <h2>📋 账号管理</h2>
-        <div id="accountMsg" class="msg"></div>
-
-        <!-- 批量操作 -->
-        <div class="batch-bar">
-            <button class="btn-act primary" onclick="adminSpeedTestAll()">🚀 全部测速</button>
-            <span id="fastestLabel" class="fastest-label"></span>
+    <div class="container">
+        <!-- 转发 API 信息 -->
+        <div class="card api-info-card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-icon">🔗</span>
+                    OpenAI 兼容转发 API
+                </div>
+            </div>
+            <div class="api-info-box">
+                <div class="api-row">
+                    <span class="api-label">API 地址</span>
+                    <span class="api-value" id="proxyUrl">{{ proxy_url }}</span>
+                    <button class="copy-btn" onclick="copyText('proxyUrl')">📋 复制</button>
+                </div>
+                <div class="api-row">
+                    <span class="api-label">API Key</span>
+                    <span class="api-value" id="proxyKey">{{ proxy_api_key }}</span>
+                    <button class="copy-btn" onclick="copyText('proxyKey')">📋 复制</button>
+                </div>
+            </div>
+            <div class="usage-tips">
+                <div class="usage-tips-title">💡 三种使用方式</div>
+                <ul class="tip-list">
+                    <li class="tip-item">
+                        <span class="method" style="color:#6366f1;">方式一：自动</span>
+                        <span>不传 <code>account</code> 参数，系统优先使用 ⭐默认账号，无默认则选最快的</span>
+                    </li>
+                    <li class="tip-item">
+                        <span class="method" style="color:#10b981;">方式二：手动</span>
+                        <span>传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站</span>
+                    </li>
+                    <li class="tip-item">
+                        <span class="method" style="color:#f59e0b;">方式三：auto</span>
+                        <span>传 <code>"model": "auto"</code>，自动选最优账号（兼容各种 AI 工具）</span>
+                    </li>
+                </ul>
+            </div>
         </div>
 
-        <!-- 添加账号 -->
-        <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e9edf2;">
-            <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#1c1e21;">添加新账号</div>
-            <div class="form-row">
-                <input type="text" id="newName" placeholder="名称" />
-                <input type="url" id="newUrl" placeholder="API 地址 https://..." />
-                <input type="password" id="newKey" placeholder="API Key" />
+        <!-- 账号管理 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-icon">📋</span>
+                    账号管理
+                </div>
+                <div id="accountMsg" class="msg" style="margin-bottom:0;"></div>
             </div>
-            <div class="form-row">
-                <select id="newModel"><option value="">— 先填地址和 Key 再点右侧刷新 —</option></select>
-                <button class="refresh-sm" id="newRefreshModels" title="从 API 获取模型列表" style="width:36px;height:36px;font-size:16px;">↻</button>
-                <button class="btn-act primary" onclick="adminAddAccount()">添加</button>
-            </div>
-        </div>
 
-        <!-- 账号列表 -->
-        {% if accounts %}
-        <table class="acc-table">
-            <thead>
-                <tr>
-                    <th class="col-name">名称</th>
-                    <th class="col-url">API 地址</th>
-                    <th class="col-model">模型</th>
-                    <th class="col-key">API Key</th>
-                    <th class="col-latency">延迟</th>
-                    <th class="col-actions">操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for acc in accounts %}
-                <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
-                    <td data-label="名称" class="col-name">
-                        <div class="name-field">
-                            {% if acc.is_default %}
-                            <span class="badge badge-blue" title="默认中转站">⭐</span>
-                            {% endif %}
-                            <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
-                        </div>
-                    </td>
-                    <td data-label="API 地址" class="col-url">
-                        <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" />
-                        <button class="btn-act copy-btn" onclick="copyUrl('{{ acc.id }}')" title="复制地址">复制</button>
-                    </td>
-                    <td data-label="模型" class="col-model">
-                        <select id="model-{{ acc.id }}" class="table-select">
-                            <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+            <!-- 批量操作 -->
+            <div class="toolbar">
+                <button class="btn btn-primary" onclick="adminSpeedTestAll()">
+                    🚀 全部测速
+                </button>
+                <div id="fastestLabel" class="fastest-label">
+                    ✅ 当前最快：<span id="fastestName"></span> (<span id="fastestMs"></span>)
+                </div>
+            </div>
+
+            <!-- 添加账号 -->
+            <div class="add-account-section">
+                <div class="section-title">➕ 添加新账号</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="text" id="newName" class="input" placeholder="账号名称（如: aihub.top）">
+                    </div>
+                    <div class="form-group">
+                        <input type="url" id="newUrl" class="input" placeholder="API 地址 https://...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="password" id="newKey" class="input input-mono" placeholder="API Key">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <select id="newModel" class="select">
+                            <option value="">— 先填地址和 Key 再点右侧刷新 —</option>
                         </select>
-                        <button class="refresh-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">↻</button>
-                    </td>
-                    <td data-label="API Key" class="col-key">
-                        <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
-                        <button class="btn-act copy-btn" onclick="copyKey('{{ acc.id }}')">复制</button>
-                    </td>
-                    <td data-label="延迟" id="latency-{{ acc.id }}">
+                    </div>
+                    <button class="btn btn-outline btn-icon" id="newRefreshModels" title="从 API 获取模型列表">
+                        ↻
+                    </button>
+                    <button class="btn btn-primary" onclick="adminAddAccount()">
+                        ✨ 添加账号
+                    </button>
+                </div>
+            </div>
+
+            <!-- 账号列表 - 电脑端表格 -->
+            {% if accounts %}
+            <div style="overflow-x: auto;">
+                <table class="account-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 10%;">名称</th>
+                            <th style="width: 28%;">API 地址</th>
+                            <th style="width: 18%;">模型</th>
+                            <th style="width: 22%;">API Key</th>
+                            <th style="width: 8%;">延迟</th>
+                            <th style="width: 14%;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for acc in accounts %}
+                        <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
+                            <td>
+                                <div class="name-field">
+                                    {% if acc.is_default %}
+                                    <span class="star-badge" title="默认中转站">⭐</span>
+                                    {% endif %}
+                                    <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="input" />
+                                </div>
+                            </td>
+                            <td>
+                                <div class="field-wrap">
+                                    <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono" />
+                                    <button class="copy-btn" onclick="copyUrl('{{ acc.id }}')">📋 复制地址</button>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="field-wrap">
+                                    <select id="model-{{ acc.id }}" class="select">
+                                        <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                                    </select>
+                                    <button class="copy-btn" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">🔄 刷新</button>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="field-wrap">
+                                    <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono" />
+                                    <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">📋 复制 Key</button>
+                                </div>
+                            </td>
+                            <td id="latency-{{ acc.id }}">
+                                {% if acc.latency_ms is not none %}
+                                <span class="latency-badge success">{{ acc.latency_ms }}ms</span>
+                                {% else %}
+                                <span class="latency-badge gray">未测速</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-group">
+                                    <button class="btn btn-success btn-sm" onclick="adminTestAccount('{{ acc.id }}')">⚡ 测速</button>
+                                    <button class="btn btn-primary btn-sm" onclick="adminSaveAccount('{{ acc.id }}')">💾 保存</button>
+                                    {% if acc.is_default %}
+                                    <button class="btn btn-outline btn-sm" disabled>⭐ 默认</button>
+                                    {% else %}
+                                    <button class="btn btn-outline btn-sm" onclick="adminSetDefault('{{ acc.id }}')">⭐ 设为默认</button>
+                                    {% endif %}
+                                    <button class="btn btn-danger btn-sm" onclick="adminDeleteAccount('{{ acc.id }}')">🗑️ 删除</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 账号卡片 - 手机端 -->
+            <div class="account-cards">
+                {% for acc in accounts %}
+                <div class="account-card {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}fastest{% endif %}" id="row-mobile-{{ acc.id }}">
+                    <div class="account-card-latency" id="latency-mobile-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
-                        <span class="badge badge-green">{{ acc.latency_ms }}ms</span>
+                        <span class="latency-badge success">{{ acc.latency_ms }}ms</span>
                         {% else %}
-                        <span class="badge badge-gray">未测速</span>
+                        <span class="latency-badge gray">未测速</span>
                         {% endif %}
-                    </td>
-                    <td data-label="操作">
-                        <div class="action-group">
-                            <button class="btn-act success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
-                            <button class="btn-act primary" onclick="adminSaveAccount('{{ acc.id }}')">保存</button>
+                    </div>
+                    <div class="account-card-header">
+                        <div class="account-card-name">
                             {% if acc.is_default %}
-                            <button class="btn-act" disabled>默认账号</button>
-                            {% else %}
-                            <button class="btn-act" onclick="adminSetDefault('{{ acc.id }}')">设为默认</button>
+                            <span class="star-badge" title="默认中转站">⭐</span>
                             {% endif %}
-                            <button class="btn-act danger" onclick="adminDeleteAccount('{{ acc.id }}')">删除</button>
+                            <input type="text" id="name-mobile-{{ acc.id }}" value="{{ acc.name }}" class="input" onchange="updateAccountName('{{ acc.id }}', this.value)" />
                         </div>
-                    </td>
-                </tr>
+                    </div>
+                    <div class="account-card-body">
+                        <div class="account-card-field">
+                            <span class="account-card-label">API 地址</span>
+                            <input type="url" id="url-mobile-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono">
+                            <button class="copy-btn" onclick="copyUrl('{{ acc.id }}')">📋 复制地址</button>
+                        </div>
+                        <div class="account-card-field">
+                            <span class="account-card-label">模型</span>
+                            <select id="model-mobile-{{ acc.id }}" class="select">
+                                <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                            </select>
+                            <button class="copy-btn" onclick="adminRefreshModelsMobile('{{ acc.id }}')">🔄 刷新模型</button>
+                        </div>
+                        <div class="account-card-field">
+                            <span class="account-card-label">API Key</span>
+                            <input type="text" id="key-mobile-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono">
+                            <button class="copy-btn" onclick="copyKey('{{ acc.id }}')">📋 复制 Key</button>
+                        </div>
+                    </div>
+                    <div class="account-card-actions">
+                        <button class="btn btn-success" onclick="adminTestAccount('{{ acc.id }}')">⚡ 测速</button>
+                        <button class="btn btn-primary" onclick="adminSaveAccountMobile('{{ acc.id }}')">💾 保存</button>
+                        {% if acc.is_default %}
+                        <button class="btn btn-outline" disabled>⭐ 默认</button>
+                        {% else %}
+                        <button class="btn btn-outline" onclick="adminSetDefault('{{ acc.id }}')">⭐ 设为默认</button>
+                        {% endif %}
+                        <button class="btn btn-danger" onclick="adminDeleteAccount('{{ acc.id }}')">🗑️ 删除</button>
+                    </div>
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="empty">暂无账号，在上方添加</div>
-        {% endif %}
-    </div>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <span class="empty-state-icon">📭</span>
+                <p class="empty-state-text">暂无账号，在上方添加</p>
+            </div>
+            {% endif %}
+        </div>
 
-    <!-- 对话列表 -->
-    <div class="card">
-        <h2>💬 对话列表 ({{ conversations|length }})</h2>
-        {% if conversations %}
-        <table class="conv-table">
-            <thead>
-                <tr>
-                    <th style="width:40%;">标题</th>
-                    <th style="width:12%;">消息数</th>
-                    <th style="width:24%;">创建时间</th>
-                    <th style="width:24%;">更新时间</th>
-                </tr>
-            </thead>
-            <tbody>
+        <!-- 对话列表 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-icon">💬</span>
+                    对话列表 ({{ conversations|length }})
+                </div>
+            </div>
+
+            {% if conversations %}
+            <!-- 电脑端表格 -->
+            <div style="overflow-x: auto;">
+                <table class="conv-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40%;">标题</th>
+                            <th style="width:12%;">消息数</th>
+                            <th style="width:24%;">创建时间</th>
+                            <th style="width:24%;">更新时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for c in conversations %}
+                        <tr>
+                            <td><div class="conv-title" title="{{ c.title }}">{{ c.title }}</div></td>
+                            <td><span class="msg-count-badge">{{ c.msg_count }} 条</span></td>
+                            <td>{{ c.created_at[:19] }}</td>
+                            <td>{{ c.updated_at[:19] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 手机端卡片 -->
+            <div class="conv-cards">
                 {% for c in conversations %}
-                <tr>
-                    <td data-label="标题" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.title }}">{{ c.title }}</td>
-                    <td data-label="消息数"><span class="badge badge-gray">{{ c.msg_count }} 条</span></td>
-                    <td data-label="创建时间" style="color:#8e9399;font-size:12px;">{{ c.created_at[:19] }}</td>
-                    <td data-label="更新时间" style="color:#8e9399;font-size:12px;">{{ c.updated_at[:19] }}</td>
-                </tr>
+                <div class="conv-card">
+                    <div class="conv-card-title" title="{{ c.title }}">{{ c.title }}</div>
+                    <div class="conv-card-meta">
+                        <span>📨 {{ c.msg_count }} 条消息</span>
+                        <span>🕐 {{ c.created_at[:19] }}</span>
+                    </div>
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <div class="empty">暂无对话数据</div>
-        {% endif %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <span class="empty-state-icon">💭</span>
+                <p class="empty-state-text">暂无对话数据</p>
+            </div>
+            {% endif %}
+        </div>
     </div>
-    {% endif %}
-</div>
 
-<script>
-function copyKey(id) {
-    const input = document.getElementById('key-' + id);
-    if (!input) return;
-    navigator.clipboard.writeText(input.value).then(() => {
-        const btn = event.target;
-        const orig = btn.textContent;
-        btn.textContent = '已复制';
-        setTimeout(() => btn.textContent = orig, 1500);
-    }).catch(() => {});
-}
-
-function copyUrl(id) {
-    const input = document.getElementById('url-' + id);
-    if (!input) return;
-    navigator.clipboard.writeText(input.value).then(() => {
-        const btn = event.target;
-        const orig = btn.textContent;
-        btn.textContent = '已复制';
-        setTimeout(() => btn.textContent = orig, 1500);
-    }).catch(() => {});
-}
-
-function copyText(elementId) {
-    const el = document.getElementById(elementId);
-    if (!el) return;
-    navigator.clipboard.writeText(el.textContent).then(() => {
-        const btn = event.target;
-        const orig = btn.textContent;
-        btn.textContent = '已复制';
-        setTimeout(() => btn.textContent = orig, 1500);
-    }).catch(() => {});
-}
-
-function showAdminMsg(text, type) {
-    const el = document.getElementById('accountMsg');
-    el.textContent = text;
-    el.className = 'msg ' + type;
-}
-
-async function adminSetDefault(id) {
-    if (!confirm('确定要将此账号设为默认中转站吗？')) return;
-    try {
-        const resp = await fetch('/api/accounts/' + id + '/set-default', { method: 'POST' });
-        const result = await resp.json();
-        if (result.ok) {
-            showAdminMsg('已设为默认中转站', 'success');
-            setTimeout(() => location.reload(), 500);
-        } else {
-            showAdminMsg(result.message, 'fail');
+    <script>
+        // ===== 辅助函数 =====
+        function copyKey(id) {
+            const input = document.getElementById('key-' + id) || document.getElementById('key-mobile-' + id);
+            if (!input) return;
+            navigator.clipboard.writeText(input.value).then(() => {
+                showToast('已复制 Key');
+            }).catch(() => {});
         }
-    } catch (e) {
-        showAdminMsg('设置失败', 'fail');
-    }
-}
 
-async function adminSaveAccount(id) {
-    const name = document.getElementById('name-' + id).value.trim();
-    const url = document.getElementById('url-' + id).value.trim();
-    const key = document.getElementById('key-' + id).value.trim();
-    const model = document.getElementById('model-' + id).value;
-
-    if (!name || !url) {
-        showAdminMsg('名称和 API 地址不能为空', 'fail');
-        return;
-    }
-
-    try {
-        const resp = await fetch('/api/accounts/' + id, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: name,
-                api_url: url,
-                api_key: key,
-                model: model,
-            }),
-        });
-        const result = await resp.json();
-        if (result.ok) {
-            showAdminMsg('已保存', 'success');
-            setTimeout(() => location.reload(), 500);
-        } else {
-            showAdminMsg(result.message, 'fail');
+        function copyUrl(id) {
+            const input = document.getElementById('url-' + id) || document.getElementById('url-mobile-' + id);
+            if (!input) return;
+            navigator.clipboard.writeText(input.value).then(() => {
+                showToast('已复制地址');
+            }).catch(() => {});
         }
-    } catch (e) {
-        showAdminMsg('保存失败', 'fail');
-    }
-}
 
-document.getElementById('newRefreshModels').addEventListener('click', async function() {
-    const url = document.getElementById('newUrl').value.trim();
-    const key = document.getElementById('newKey').value.trim();
-    if (!url || !key) {
-        showAdminMsg('请先填写 API 地址和 Key', 'fail');
-        return;
-    }
-    const btn = this;
-    btn.textContent = '⏳';
-    btn.disabled = true;
-    const sel = document.getElementById('newModel');
-    sel.innerHTML = '<option value="">加载中...</option>';
-
-    try {
-        const resp = await fetch('/api/models', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_url: url, api_key: key }),
-        });
-        const result = await resp.json();
-        sel.innerHTML = '';
-        if (result.ok && result.models.length > 0) {
-            result.models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m; opt.textContent = m;
-                sel.appendChild(opt);
-            });
-            showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
-        } else {
-            sel.innerHTML = '<option value="">未获取到模型</option>';
-            showAdminMsg(result.message || '未获取到模型', 'fail');
+        function copyText(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            navigator.clipboard.writeText(el.textContent).then(() => {
+                showToast('已复制');
+            }).catch(() => {});
         }
-    } catch (e) {
-        sel.innerHTML = '<option value="">加载失败</option>';
-        showAdminMsg('网络错误', 'fail');
-    } finally {
-        btn.textContent = '↻';
-        btn.disabled = false;
-    }
-});
 
-async function adminRefreshModels(id) {
-    const sel = document.getElementById('model-' + id);
-    const currentVal = sel.value;
-    sel.innerHTML = '<option value="">加载中...</option>';
+        function showToast(text) {
+            const toast = document.createElement('div');
+            toast.textContent = text;
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#111827;color:white;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 10px 25px rgba(0,0,0,0.2);animation:fadeInDown 0.3s ease;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 1500);
+        }
 
-    const url = document.getElementById('url-' + id).value.trim();
-    const key = document.getElementById('key-' + id).value.trim();
+        function showAdminMsg(text, type) {
+            const el = document.getElementById('accountMsg');
+            el.textContent = text;
+            el.className = 'msg msg-' + type;
+            setTimeout(() => {
+                if (el.textContent === text) {
+                    el.className = 'msg';
+                    el.textContent = '';
+                }
+            }, 3000);
+        }
 
-    try {
-        const resp = await fetch('/api/models', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_url: url, api_key: key }),
-        });
-        const result = await resp.json();
-        sel.innerHTML = '';
-        if (result.ok && result.models.length > 0) {
-            result.models.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m; opt.textContent = m;
-                sel.appendChild(opt);
-            });
-            if (currentVal && [...sel.options].some(o => o.value === currentVal)) {
-                sel.value = currentVal;
+        // ===== 账号操作 =====
+        async function adminSetDefault(id) {
+            if (!confirm('确定要将此账号设为默认中转站吗？')) return;
+            try {
+                const resp = await fetch('/api/accounts/' + id + '/set-default', { method: 'POST' });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('已设为默认中转站', 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                showAdminMsg('设置失败', 'fail');
             }
-            showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
-        } else {
-            sel.innerHTML = '<option value="">未获取到模型</option>';
-            showAdminMsg(result.message || '未获取到模型', 'fail');
         }
-    } catch (e) {
-        sel.innerHTML = '<option value="">加载失败</option>';
-        showAdminMsg('网络错误', 'fail');
-    }
-}
 
-async function adminAddAccount() {
-    const name = document.getElementById('newName').value.trim();
-    const url = document.getElementById('newUrl').value.trim();
-    const key = document.getElementById('newKey').value.trim();
-    const model = document.getElementById('newModel').value;
-    if (!name || !url || !key || !model) {
-        showAdminMsg('请填写完整信息（名称、地址、Key、模型）', 'fail');
-        return;
-    }
-    try {
-        const resp = await fetch('/api/accounts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+        async function adminSaveAccount(id) {
+            const name = document.getElementById('name-' + id).value.trim();
+            const url = document.getElementById('url-' + id).value.trim();
+            const key = document.getElementById('key-' + id).value.trim();
+            const model = document.getElementById('model-' + id).value;
+            await saveAccount(id, name, url, key, model);
+        }
+
+        async function adminSaveAccountMobile(id) {
+            const name = document.getElementById('name-mobile-' + id).value.trim();
+            const url = document.getElementById('url-mobile-' + id).value.trim();
+            const key = document.getElementById('key-mobile-' + id).value.trim();
+            const model = document.getElementById('model-mobile-' + id).value;
+            await saveAccount(id, name, url, key, model);
+        }
+
+        async function saveAccount(id, name, url, key, model) {
+            if (!name || !url) {
+                showAdminMsg('名称和 API 地址不能为空', 'fail');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/accounts/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+                });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('保存成功', 'success');
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                showAdminMsg('保存失败', 'fail');
+            }
+        }
+
+        function updateAccountName(id, value) {
+            console.log('Name changed:', id, value);
+        }
+
+        // ===== 模型刷新 =====
+        document.getElementById('newRefreshModels').addEventListener('click', async function() {
+            const url = document.getElementById('newUrl').value.trim();
+            const key = document.getElementById('newKey').value.trim();
+            if (!url || !key) {
+                showAdminMsg('请先填写 API 地址和 Key', 'fail');
+                return;
+            }
+            const btn = this;
+            btn.textContent = '⏳';
+            btn.disabled = true;
+            const sel = document.getElementById('newModel');
+            sel.innerHTML = '<option value="">加载中...</option>';
+
+            try {
+                const resp = await fetch('/api/models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_url: url, api_key: key }),
+                });
+                const result = await resp.json();
+                sel.innerHTML = '';
+                if (result.ok && result.models.length > 0) {
+                    result.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m; opt.textContent = m;
+                        sel.appendChild(opt);
+                    });
+                    showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
+                } else {
+                    sel.innerHTML = '<option value="">未获取到模型</option>';
+                    showAdminMsg(result.message || '未获取到模型', 'fail');
+                }
+            } catch (e) {
+                sel.innerHTML = '<option value="">加载失败</option>';
+                showAdminMsg('网络错误', 'fail');
+            } finally {
+                btn.textContent = '↻';
+                btn.disabled = false;
+            }
         });
-        const result = await resp.json();
-        if (result.ok) {
-            showAdminMsg('添加成功，即将刷新', 'success');
-            setTimeout(() => location.reload(), 800);
-        } else {
-            showAdminMsg(result.message, 'fail');
+
+        async function adminRefreshModels(id) {
+            const sel = document.getElementById('model-' + id);
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">加载中...</option>';
+            const url = document.getElementById('url-' + id).value.trim();
+            const key = document.getElementById('key-' + id).value.trim();
+            await doRefreshModels(id, url, key, sel, currentVal);
         }
-    } catch (e) {
-        showAdminMsg('网络错误', 'fail');
-    }
-}
 
-async function adminDeleteAccount(id) {
-    if (!confirm('确定要删除这个账号吗？')) return;
-    try {
-        const resp = await fetch('/api/accounts/' + id, { method: 'DELETE' });
-        const result = await resp.json();
-        if (result.ok) {
-            showAdminMsg('已删除', 'success');
-            setTimeout(() => location.reload(), 500);
-        } else {
-            showAdminMsg(result.message, 'fail');
+        async function adminRefreshModelsMobile(id) {
+            const sel = document.getElementById('model-mobile-' + id);
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">加载中...</option>';
+            const url = document.getElementById('url-mobile-' + id).value.trim();
+            const key = document.getElementById('key-mobile-' + id).value.trim();
+            await doRefreshModels(id, url, key, sel, currentVal);
         }
-    } catch (e) {
-        showAdminMsg('网络错误', 'fail');
-    }
-}
 
-async function adminTestAccount(id) {
-    const cell = document.getElementById('latency-' + id);
-    cell.innerHTML = '<span class="badge badge-blue">测速中...</span>';
+        async function doRefreshModels(id, url, key, sel, currentVal) {
+            try {
+                const resp = await fetch('/api/models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_url: url, api_key: key }),
+                });
+                const result = await resp.json();
+                sel.innerHTML = '';
+                if (result.ok && result.models.length > 0) {
+                    result.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m; opt.textContent = m;
+                        sel.appendChild(opt);
+                    });
+                    if (currentVal && [...sel.options].some(o => o.value === currentVal)) {
+                        sel.value = currentVal;
+                    }
+                    showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
+                } else {
+                    sel.innerHTML = '<option value="">未获取到模型</option>';
+                    showAdminMsg(result.message || '未获取到模型', 'fail');
+                }
+            } catch (e) {
+                sel.innerHTML = '<option value="">加载失败</option>';
+                showAdminMsg('网络错误', 'fail');
+            }
+        }
 
-    const url = document.getElementById('url-' + id).value.trim();
-    const key = document.getElementById('key-' + id).value.trim();
-    const model = document.getElementById('model-' + id).value;
+        // ===== 添加账号 =====
+        async function adminAddAccount() {
+            const name = document.getElementById('newName').value.trim();
+            const url = document.getElementById('newUrl').value.trim();
+            const key = document.getElementById('newKey').value.trim();
+            const model = document.getElementById('newModel').value;
+            if (!name || !url || !key || !model) {
+                showAdminMsg('请填写完整信息（名称、地址、Key、模型）', 'fail');
+                return;
+            }
+            try {
+                const resp = await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+                });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('添加成功，即将刷新', 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                showAdminMsg('网络错误', 'fail');
+            }
+        }
 
-    try {
-        const start = Date.now();
-        const resp = await fetch('/api/check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ api_url: url, api_key: key, model: model }),
+        // ===== 删除账号 =====
+        async function adminDeleteAccount(id) {
+            if (!confirm('确定要删除这个账号吗？')) return;
+            try {
+                const resp = await fetch('/api/accounts/' + id, { method: 'DELETE' });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('已删除', 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                showAdminMsg('网络错误', 'fail');
+            }
+        }
+
+        // ===== 测速 =====
+        async function adminTestAccount(id) {
+            const latencyEl = document.getElementById('latency-' + id) || document.getElementById('latency-mobile-' + id);
+            if (latencyEl) {
+                latencyEl.innerHTML = '<span class="latency-badge loading">测速中...</span>';
+            }
+
+            const url = document.getElementById('url-' + id)?.value.trim() || document.getElementById('url-mobile-' + id)?.value.trim();
+            const key = document.getElementById('key-' + id)?.value.trim() || document.getElementById('key-mobile-' + id)?.value.trim();
+            const model = document.getElementById('model-' + id)?.value || document.getElementById('model-mobile-' + id)?.value;
+
+            try {
+                const start = Date.now();
+                const resp = await fetch('/api/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_url: url, api_key: key, model: model }),
+                });
+                const result = await resp.json();
+                const elapsed = Date.now() - start;
+
+                await fetch('/api/accounts/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latency_ms: result.ok ? elapsed : null, last_speed_test: new Date().toISOString() }),
+                });
+
+                if (result.ok) {
+                    if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge success">' + elapsed + 'ms</span>';
+                    showAdminMsg('测速成功：' + elapsed + 'ms', 'success');
+                } else {
+                    if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge error">不可用</span>';
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                if (latencyEl) latencyEl.innerHTML = '<span class="latency-badge error">错误</span>';
+                showAdminMsg('测速请求失败', 'fail');
+            }
+        }
+
+        async function adminSpeedTestAll() {
+            showAdminMsg('正在测试所有账号...', 'info');
+            const btn = event.target;
+            btn.disabled = true;
+            const origText = btn.innerHTML;
+            btn.innerHTML = '⏳ 测速中...';
+
+            const rows = document.querySelectorAll('[id^="row-"]');
+            for (const row of rows) {
+                const id = row.id.replace('row-', '');
+                if (!id || id.includes('mobile')) continue;
+                await adminTestAccount(id);
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
+
+        // ===== 更新最快标签 =====
+        function updateFastestLabel() {
+            let fastest = null;
+            let fastestId = null;
+
+            document.querySelectorAll('.account-table tbody tr').forEach(row => {
+                const id = row.id.replace('row-', '');
+                if (!id) return;
+                const cell = document.getElementById('latency-' + id);
+                if (!cell) return;
+                const badge = cell.querySelector('.latency-badge.success');
+                if (!badge) return;
+                const ms = parseInt(badge.textContent);
+                if (ms && (!fastest || ms < fastest)) {
+                    fastest = ms;
+                    fastestId = id;
+                }
+            });
+
+            // 更新表格高亮
+            document.querySelectorAll('.account-table tbody tr').forEach(row => {
+                row.classList.remove('fastest-row');
+            });
+            if (fastestId) {
+                const row = document.getElementById('row-' + fastestId);
+                if (row) row.classList.add('fastest-row');
+            }
+
+            // 更新卡片高亮
+            document.querySelectorAll('.account-card').forEach(card => {
+                card.classList.remove('fastest');
+            });
+            if (fastestId) {
+                const card = document.getElementById('row-mobile-' + fastestId);
+                if (card) card.classList.add('fastest');
+                const name = document.getElementById('name-' + fastestId)?.value || document.getElementById('name-mobile-' + fastestId)?.value || '';
+                document.getElementById('fastestName').textContent = name;
+                document.getElementById('fastestMs').textContent = fastest + 'ms';
+                document.getElementById('fastestLabel').classList.add('active');
+            } else {
+                document.getElementById('fastestLabel').classList.remove('active');
+            }
+        }
+
+        // 全局样式：添加动画
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInDown {
+                from { opacity: 0; transform: translate(-50%, -20px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(updateFastestLabel, 100);
         });
-        const result = await resp.json();
-        const elapsed = Date.now() - start;
-
-        await fetch('/api/accounts/' + id, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ latency_ms: result.ok ? elapsed : null, last_speed_test: new Date().toISOString() }),
-        });
-
-        if (result.ok) {
-            cell.innerHTML = '<span class="badge badge-green">' + elapsed + 'ms</span>';
-            showAdminMsg('「' + (document.getElementById('name-' + id)?.value || '') + '」' + elapsed + 'ms 可用', 'success');
-        } else {
-            cell.innerHTML = '<span class="badge badge-red">不可用</span>';
-            showAdminMsg(result.message, 'fail');
-        }
-        updateFastestLabel();
-    } catch (e) {
-        cell.innerHTML = '<span class="badge badge-red">错误</span>';
-        showAdminMsg('测速请求失败', 'fail');
-    }
-}
-
-async function adminSpeedTestAll() {
-    showAdminMsg('正在测试所有账号...', 'info');
-    const btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '⏳ 测速中...';
-
-    const rows = document.querySelectorAll('tbody tr');
-    for (const row of rows) {
-        const id = row.id.replace('row-', '');
-        if (!id) continue;
-        await adminTestAccount(id);
-    }
-
-    btn.disabled = false;
-    btn.textContent = '🚀 全部测速';
-    updateFastestLabel();
-}
-
-function updateFastestLabel() {
-    let fastest = null;
-    let fastestId = null;
-
-    document.querySelectorAll('tbody tr').forEach(row => {
-        const id = row.id.replace('row-', '');
-        const cell = document.getElementById('latency-' + id);
-        const badge = cell?.querySelector('.badge-green');
-        if (!badge) return;
-        const ms = parseInt(badge.textContent);
-        if (ms && (!fastest || ms < fastest)) {
-            fastest = ms;
-            fastestId = id;
-        }
-    });
-
-    document.querySelectorAll('tbody tr').forEach(row => {
-        row.classList.remove('fastest-row');
-    });
-    if (fastestId) {
-        const row = document.getElementById('row-' + fastestId);
-        if (row) row.classList.add('fastest-row');
-    }
-
-    const label = document.getElementById('fastestLabel');
-    if (fastestId) {
-        const name = document.getElementById('name-' + fastestId)?.value || '';
-        label.textContent = '✅ 当前最快：' + name + ' (' + fastest + 'ms)';
-        label.style.display = 'inline';
-    } else {
-        label.style.display = 'none';
-    }
-}
-
-document.addEventListener('DOMContentLoaded', updateFastestLabel);
-</script>
+    </script>
 </body>
 </html>
