@@ -47,45 +47,33 @@
         }
         .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
 
-        /* ===== 输入框+按钮同行：用绝对定位避免 flex 嵌套问题 ===== */
-        .acc-table td.col-name,
-        .acc-table td.col-url,
-        .acc-table td.col-model,
-        .acc-table td.col-key { position: relative; }
-
-        /* 名称：左边徽章 + 右边输入框 */
-        .col-name .table-input {
-            width: calc(100% - 32px);
+        /* ===== 输入框：按钮放在下方，简单可靠 ===== */
+        .col-url, .col-key, .col-model, .col-name {
+            vertical-align: top;
         }
-        .col-name .badge {
-            position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
-        }
-
-        /* URL / Key：右边有复制按钮，输入框右侧留白 */
         .col-url .table-input,
-        .col-key .table-input {
-            padding-right: 68px;
+        .col-key .table-input,
+        .col-model .table-select {
+            display: block;
         }
         .col-url .copy-btn,
         .col-key .copy-btn {
-            position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-            font-size: 11px; padding: 4px 8px; height: 28px; width: auto;
-        }
-
-        /* 模型：右边有刷新按钮 */
-        .col-model .table-select {
-            padding-right: 44px;
+            display: block; margin-top: 4px;
+            font-size: 11px; padding: 3px 10px; height: auto;
         }
         .col-model .refresh-btn {
-            position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-            width: 32px; height: 28px; border: 1px solid #d0d5dd; border-radius: 6px;
-            background: #f5f7fa; font-size: 14px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
+            display: block; margin-top: 4px;
+            width: auto; height: auto; padding: 3px 10px; font-size: 12px;
+            border: 1px solid #d0d5dd; border-radius: 6px;
+            background: #f5f7fa; cursor: pointer;
         }
         .col-model .refresh-btn:hover { background: #e4e6ea; }
 
+        /* 名称：徽章和输入框同行 */
+        .col-name .name-field { display: flex; align-items: center; gap: 6px; }
+        .col-name .name-field .table-input { flex: 1; }
+
         .key-mono { font-family: monospace; }
-        .key-mono-mobile { font-family: monospace; }
 
         /* ===== 操作按钮组 ===== */
         .action-group { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -211,6 +199,9 @@
                 font-weight: 600; font-size: 14px; border-color: transparent;
                 background: transparent;
             }
+            .acc-table td[data-label="名称"] .name-field {
+                display: flex; align-items: center; gap: 6px;
+            }
             /* 延迟行：右上角 */
             .acc-table td[data-label="延迟"]::before { display: none; }
             .acc-table td[data-label="延迟"] {
@@ -234,36 +225,27 @@
             .btn-act[disabled] { opacity: .5; }
             .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* 输入框铺满：width:100% + 绝对定位按钮 */
+            /* 输入框：按钮放在下方 */
             .acc-table td .table-input,
             .acc-table td .table-select {
                 box-sizing: border-box; font-size: 13px; padding: 8px 10px;
             }
             .acc-table td.col-url,
-            .acc-table td.col-key { position: relative; }
-            .acc-table td.col-url .table-input,
-            .acc-table td.col-key .table-input {
-                padding-right: 72px;
-            }
+            .acc-table td.col-key { }
             .acc-table td.col-url .copy-btn,
             .acc-table td.col-key .copy-btn {
-                position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-                font-size: 11px; padding: 4px 8px; height: 28px;
-            }
-            .acc-table td.col-model { position: relative; }
-            .acc-table td.col-model .table-select {
-                padding-right: 48px;
+                display: block; margin-top: 4px;
+                font-size: 11px; padding: 3px 10px;
             }
             .acc-table td.col-model .refresh-btn {
-                position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-                width: 36px; height: 32px;
+                display: block; margin-top: 4px;
+                width: auto; height: auto; padding: 3px 10px;
             }
-            .acc-table td.col-name { position: relative; }
-            .acc-table td.col-name .table-input {
-                padding-left: 34px; font-weight: 600; font-size: 14px;
+            .acc-table td.col-name .name-field {
+                display: flex; align-items: center; gap: 6px;
             }
-            .acc-table td.col-name .badge {
-                position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
+            .acc-table td.col-name .name-field .table-input {
+                flex: 1; font-weight: 600; font-size: 14px;
             }
             .acc-table td.col-url .table-input,
             .acc-table td.col-key .table-input {
@@ -394,10 +376,12 @@
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
                     <td data-label="名称" class="col-name">
-                        {% if acc.is_default %}
-                        <span class="badge badge-blue" title="默认中转站">⭐</span>
-                        {% endif %}
-                        <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
+                        <div class="name-field">
+                            {% if acc.is_default %}
+                            <span class="badge badge-blue" title="默认中转站">⭐</span>
+                            {% endif %}
+                            <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
+                        </div>
                     </td>
                     <td data-label="API 地址" class="col-url">
                         <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" />
