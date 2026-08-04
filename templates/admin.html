@@ -171,15 +171,18 @@
             .acc-table tr:hover { background: #fff; }
             .fastest-row { background: #f6fff9 !important; border-color: #b8e6c0 !important; }
 
+            /* td 用 block，不用 flex，避免嵌套问题 */
             .acc-table td {
-                padding: 5px 0; border: none; font-size: 13px;
-                display: flex; align-items: center; gap: 8px;
+                padding: 6px 0; border: none; font-size: 13px;
             }
+            /* label 独占一行 */
             .acc-table td::before {
-                content: attr(data-label); font-weight: 600; color: #65676b;
-                font-size: 11px; width: 48px; flex-shrink: 0; text-align: right;
+                display: block; content: attr(data-label);
+                font-weight: 600; color: #65676b;
+                font-size: 11px; margin-bottom: 3px;
             }
-            /* 名称行：卡片标题，无 label */
+
+            /* 名称行：卡片标题 */
             .acc-table td[data-label="名称"]::before { display: none; }
             .acc-table td[data-label="名称"] {
                 font-size: 15px; font-weight: 600; padding: 0 0 8px 0;
@@ -190,10 +193,10 @@
                 background: transparent; padding-left: 0;
             }
             /* 延迟行：右上角 */
+            .acc-table td[data-label="延迟"]::before { display: none; }
             .acc-table td[data-label="延迟"] {
                 position: absolute; top: 16px; right: 16px; padding: 0;
             }
-            .acc-table td[data-label="延迟"]::before { display: none; }
 
             /* 操作行：底部整行按钮 */
             .acc-table td[data-label="操作"]::before { display: none; }
@@ -212,10 +215,37 @@
             .btn-act[disabled] { opacity: .5; }
             .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* URL/Key 复制按钮紧凑 */
+            /* 输入框铺满：直接用 width:100% + display:block，不依赖 flex */
+            .acc-table td .table-input {
+                display: block; width: 100%; box-sizing: border-box;
+                font-size: 13px; padding: 8px 10px;
+            }
+            .acc-table td .table-select {
+                display: block; width: 100%; box-sizing: border-box;
+                font-size: 13px;
+            }
+
+            /* wrap 容器内部 flex，不嵌套在 td flex 里 */
+            .url-wrap, .key-wrap, .model-wrap, .name-wrap {
+                display: flex; align-items: center; gap: 4px; width: 100%;
+            }
+            .url-wrap .table-input,
+            .key-wrap .table-input,
+            .name-wrap .table-input { flex: 1; min-width: 0; }
+            .model-wrap .table-select { flex: 1; min-width: 0; }
+            .url-wrap .btn-act,
+            .key-wrap .btn-act,
+            .model-wrap .refresh-sm { flex-shrink: 0; }
+
+            /* URL 和 Key 等宽字体 */
+            .acc-table td.col-url .table-input,
+            .acc-table td.col-key .table-input {
+                font-family: "SF Mono", "Fira Code", monospace;
+            }
+            /* 复制按钮紧凑 */
             .acc-table td.col-key .btn-act,
             .acc-table td.col-url .btn-act {
-                padding: 4px 10px; min-height: 30px; font-size: 11px; width: auto;
+                padding: 4px 10px; min-height: 30px; font-size: 11px;
             }
 
             /* 添加表单垂直堆叠 */
@@ -237,11 +267,11 @@
             .conv-table tr:hover { background: #fff; }
             .conv-table td {
                 padding: 3px 0; border: none; font-size: 12px;
-                display: flex; align-items: center; gap: 6px;
             }
             .conv-table td::before {
-                content: attr(data-label); font-weight: 600; color: #65676b;
-                font-size: 11px; min-width: 48px; flex-shrink: 0;
+                display: block; content: attr(data-label);
+                font-weight: 600; color: #65676b;
+                font-size: 11px; margin-bottom: 2px;
             }
             .conv-table td[data-label="标题"] {
                 max-width: none !important; overflow: visible !important;
@@ -251,8 +281,7 @@
             .proxy-box { font-size: 12px; padding: 12px; word-break: break-all; }
             .proxy-box .value { word-break: break-all; font-size: 11px; }
             .proxy-box code {
-                font-size: 11px; word-break: break-all; display: inline-block;
-                max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+                font-size: 11px; word-break: break-all;
             }
 
             .batch-bar { flex-direction: column; align-items: stretch; gap: 6px; }
