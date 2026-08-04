@@ -19,7 +19,7 @@
         .card h2 { font-size: 16px; margin-bottom: 12px; color: #65676b; }
 
         /* ===== 表格统一样式 ===== */
-        .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+        .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .acc-table th, .acc-table td {
             text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
             vertical-align: middle; word-break: break-all;
@@ -47,18 +47,19 @@
         }
         .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
 
-        /* ===== flex 容器（输入框+按钮同行） ===== */
+        /* ===== 行容器：输入框 + 按钮 ===== */
         .name-wrap, .url-wrap, .key-wrap, .model-wrap {
             display: flex; align-items: center; gap: 4px; width: 100%;
         }
+        /* 输入框占满剩余空间，按钮固定不压缩 */
         .name-wrap .table-input,
         .url-wrap .table-input,
-        .key-wrap .table-input { flex: 1 1 0; min-width: 0; width: 0; }
-        .model-wrap .table-select { flex: 1 1 0; min-width: 0; width: 0; }
+        .key-wrap .table-input { flex: 1; min-width: 0; }
+        .model-wrap .table-select { flex: 1; min-width: 0; }
         .name-wrap .badge,
         .url-wrap .btn-act,
         .key-wrap .btn-act,
-        .model-wrap .refresh-sm { flex-shrink: 0; }
+        .model-wrap .refresh-sm { flex: none; }
 
         .model-wrap .refresh-sm {
             width: 32px; height: 32px;
