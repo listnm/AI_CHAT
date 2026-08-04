@@ -339,18 +339,44 @@
             margin-bottom: 20px;
             flex-wrap: wrap;
         }
-        .fastest-label {
-            display: none;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--success);
-            background: var(--success-light);
-            padding: 6px 14px;
-            border-radius: 8px;
+        .status-tags {
+            display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 10px;
+            flex-wrap: wrap;
+            flex: 1;
+            justify-content: flex-end;
         }
-        .fastest-label.active { display: inline-flex; }
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            flex-wrap: wrap;
+        }
+        .status-tag-default {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+        .status-tag-fastest {
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+        .status-tag-model {
+            padding: 2px 8px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 11px;
+        }
+        .status-tag span {
+            white-space: nowrap;
+        }
 
         /* ===== 账号添加区域 ===== */
         .add-account-section {
@@ -776,7 +802,8 @@
             /* 工具栏 */
             .toolbar { flex-direction: column; align-items: stretch; }
             .toolbar .btn { width: 100%; }
-            .fastest-label { justify-content: center; }
+            .status-tags { justify-content: stretch; flex-direction: column; }
+            .status-tag { justify-content: center; }
 
             /* API 信息 */
             .api-row { flex-direction: column; align-items: flex-start; gap: 6px; }
@@ -906,8 +933,15 @@
                 <button class="btn btn-primary" onclick="adminSpeedTestAll(this)">
                     🚀 全部测速
                 </button>
-                <div id="fastestLabel" class="fastest-label">
-                    ✅ 当前最快：<span id="fastestName"></span> (<span id="fastestMs"></span>)
+                <div class="status-tags">
+                    <div id="defaultLabel" class="status-tag status-tag-default">
+                        ⭐ 默认：<span id="defaultName">--</span>
+                        <span class="status-tag-model">模型：<span id="defaultModel">--</span></span>
+                    </div>
+                    <div id="fastestLabel" class="status-tag status-tag-fastest">
+                        ⚡ 最快：<span id="fastestName">--</span>
+                        <span class="status-tag-model">模型：<span id="fastestModel">--</span> (<span id="fastestMs">--</span>)</span>
+                    </div>
                 </div>
             </div>
 
@@ -958,7 +992,7 @@
                     </thead>
                     <tbody>
                         {% for acc in accounts %}
-                        <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
+                        <tr id="row-{{ acc.id }}" data-is-default="{{ acc.is_default and '1' or '0' }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
                             <td>
                                 <div class="name-field">
                                     {% if acc.is_default %}
@@ -1479,26 +1513,55 @@
             updateFastestLabel();
         }
 
-        // ===== 更新最快标签 =====
-        function updateFastestLabel() {
-            let fastest = null;
-            let fastestId = null;
-
+        // ===== 汇总收集账号信息 =====
+        function _collectAccountInfo() {
+            const info = [];
             document.querySelectorAll('.account-table tbody tr').forEach(row => {
                 const id = row.id.replace('row-', '');
                 if (!id) return;
-                const cell = document.getElementById('latency-' + id);
-                if (!cell) return;
-                const badge = cell.querySelector('.latency-badge.success');
-                if (!badge) return;
-                const ms = parseInt(badge.textContent);
-                if (ms && (!fastest || ms < fastest)) {
-                    fastest = ms;
-                    fastestId = id;
+                const name = document.getElementById('name-' + id)?.value || '';
+                const model = document.getElementById('model-' + id)?.value || '';
+                const latencyCell = document.getElementById('latency-' + id);
+                let latency = null;
+                if (latencyCell) {
+                    const badge = latencyCell.querySelector('.latency-badge.success');
+                    if (badge) latency = parseInt(badge.textContent);
                 }
+                const isDefault = row.getAttribute('data-is-default') === '1';
+                info.push({ id, name, model, latency, isDefault });
             });
+            return info;
+        }
 
-            // 更新表格高亮
+        function _updateDefaultLabel(accounts) {
+            const def = accounts.find(a => a.isDefault);
+            const nameEl = document.getElementById('defaultName');
+            const modelEl = document.getElementById('defaultModel');
+            if (def) {
+                nameEl.textContent = def.name || '未命名';
+                modelEl.textContent = def.model || '--';
+            } else {
+                // 无默认则回落最快的，无则显示--
+                const valid = accounts.filter(a => a.latency != null).sort((a,b) => a.latency - b.latency)[0];
+                nameEl.textContent = valid ? (valid.name || '未命名') : '无';
+                modelEl.textContent = valid ? (valid.model || '--') : '--';
+            }
+        }
+
+        // ===== 更新最快标签 =====
+        function updateFastestLabel() {
+            const accounts = _collectAccountInfo();
+
+            let fastest = null;
+            let fastestId = null;
+            for (const a of accounts) {
+                if (a.latency != null && (!fastest || a.latency < fastest)) {
+                    fastest = a.latency;
+                    fastestId = a.id;
+                }
+            }
+
+            // 表格高亮
             document.querySelectorAll('.account-table tbody tr').forEach(row => {
                 row.classList.remove('fastest-row');
             });
@@ -1507,20 +1570,29 @@
                 if (row) row.classList.add('fastest-row');
             }
 
-            // 更新卡片高亮
+            // 卡片高亮
             document.querySelectorAll('.account-card').forEach(card => {
                 card.classList.remove('fastest');
             });
             if (fastestId) {
                 const card = document.getElementById('row-mobile-' + fastestId);
                 if (card) card.classList.add('fastest');
-                const name = document.getElementById('name-' + fastestId)?.value || document.getElementById('name-mobile-' + fastestId)?.value || '';
-                document.getElementById('fastestName').textContent = name;
-                document.getElementById('fastestMs').textContent = fastest + 'ms';
-                document.getElementById('fastestLabel').classList.add('active');
-            } else {
-                document.getElementById('fastestLabel').classList.remove('active');
             }
+
+            // 顶部汇总标签
+            const fastestAcc = accounts.find(a => a.id === fastestId);
+            if (fastestAcc) {
+                document.getElementById('fastestName').textContent = fastestAcc.name || '未命名';
+                document.getElementById('fastestModel').textContent = fastestAcc.model || '--';
+                document.getElementById('fastestMs').textContent = fastest + 'ms';
+            } else {
+                document.getElementById('fastestName').textContent = '无';
+                document.getElementById('fastestModel').textContent = '--';
+                document.getElementById('fastestMs').textContent = '--';
+            }
+
+            // 默认账号标签
+            _updateDefaultLabel(accounts);
         }
 
         // 全局样式：添加动画
