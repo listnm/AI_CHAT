@@ -85,6 +85,11 @@
         .badge-blue { background: #e8f2ff; color: #1b74e4; }
         .key-mono { font-family: monospace; font-size: 11px; }
 
+        /* ===== 名称列（徽章+输入框同行） ===== */
+        .name-wrap { display: flex; align-items: center; gap: 6px; }
+        .name-wrap .table-input { flex: 1; min-width: 0; }
+        .name-wrap .badge { flex-shrink: 0; }
+
         /* ===== 其他 ===== */
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
         .login-form {
@@ -315,10 +320,12 @@
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
                     <td data-label="名称">
-                        <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
-                        {% if acc.is_default %}
-                        <span class="badge badge-blue" style="display:inline-block;margin-top:3px;">⭐ 默认</span>
-                        {% endif %}
+                        <div class="name-wrap">
+                            {% if acc.is_default %}
+                            <span class="badge badge-blue">⭐ 默认</span>
+                            {% endif %}
+                            <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
+                        </div>
                     </td>
                     <td data-label="API 地址" class="col-url"><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" /></td>
                     <td data-label="模型">
