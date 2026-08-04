@@ -345,7 +345,7 @@
                     <td data-label="名称">
                         <div class="name-wrap">
                             {% if acc.is_default %}
-                            <span class="badge badge-blue">⭐ 默认</span>
+                            <span class="badge badge-blue" title="默认中转站">⭐</span>
                             {% endif %}
                             <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
                         </div>
