@@ -335,7 +335,7 @@ def admin():
         proxy_models_url=proxy_url,
         proxy_api_key=PROXY_API_KEY,
         fastest_latency=fastest_latency,
-    )
+    ), 200, {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 
 @app.route("/admin/logout", methods=["POST"])

@@ -14,44 +14,54 @@
         h1 { font-size: 22px; margin-bottom: 20px; color: #1c1e21; }
         .card {
             background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,.08); overflow-x: auto;
+            box-shadow: 0 1px 3px rgba(0,0,0,.08);
         }
         .card h2 { font-size: 16px; margin-bottom: 12px; color: #65676b; }
 
         /* ===== 表格统一样式 ===== */
-        .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .acc-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
         .acc-table th, .acc-table td {
-            text-align: left; padding: 10px 10px; border-bottom: 1px solid #e9edf2;
-            vertical-align: middle;
+            text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
+            vertical-align: middle; word-break: break-all;
         }
         .acc-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
         .acc-table tr:hover { background: #f7f8fa; }
         .acc-table .col-name { width: 12%; }
-        .acc-table .col-url { width: 28%; }
-        .acc-table .col-model { width: 14%; }
+        .acc-table .col-url { width: 26%; }
+        .acc-table .col-model { width: 16%; }
         .acc-table .col-key { width: 22%; }
         .acc-table .col-latency { width: 8%; }
         .acc-table .col-actions { width: 16%; }
 
-        /* ===== 表格内表单控件统一 ===== */
+        /* ===== 表格内表单控件 ===== */
         .table-input {
             width: 100%; padding: 7px 10px; border: 1px solid #d0d5dd; border-radius: 6px;
-            font-size: 13px; outline: none; background: #fff;
+            font-size: 13px; outline: none; background: #fff; box-sizing: border-box;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-input:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
         .table-select {
             width: 100%; padding: 7px 8px; border: 1px solid #d0d5dd; border-radius: 6px;
-            font-size: 13px; outline: none; background: #fff; cursor: pointer;
+            font-size: 13px; outline: none; background: #fff; cursor: pointer; box-sizing: border-box;
             transition: border-color .15s, box-shadow .15s;
         }
         .table-select:focus { border-color: #1b74e4; box-shadow: 0 0 0 2px rgba(27,116,228,.12); }
-        .model-wrap {
-            display: flex; gap: 4px; align-items: center; width: 100%;
+
+        /* ===== flex 容器（输入框+按钮同行） ===== */
+        .name-wrap, .url-wrap, .key-wrap, .model-wrap {
+            display: flex; align-items: center; gap: 4px; width: 100%;
         }
-        .model-wrap .table-select { flex: 1; min-width: 0; }
+        .name-wrap .table-input,
+        .url-wrap .table-input,
+        .key-wrap .table-input { flex: 1 1 0; min-width: 0; width: 0; }
+        .model-wrap .table-select { flex: 1 1 0; min-width: 0; width: 0; }
+        .name-wrap .badge,
+        .url-wrap .btn-act,
+        .key-wrap .btn-act,
+        .model-wrap .refresh-sm { flex-shrink: 0; }
+
         .model-wrap .refresh-sm {
-            width: 32px; height: 32px; flex-shrink: 0;
+            width: 32px; height: 32px;
             border: 1px solid #d0d5dd; border-radius: 6px;
             background: #f5f7fa; font-size: 15px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
@@ -59,11 +69,12 @@
         .model-wrap .refresh-sm:hover { background: #e4e6ea; }
 
         /* ===== 操作按钮组 ===== */
-        .action-group { display: flex; gap: 4px; flex-wrap: nowrap; }
+        .action-group { display: flex; gap: 4px; flex-wrap: wrap; }
         .btn-act {
             font-size: 12px; padding: 5px 10px; border: 1px solid #d0d5dd; border-radius: 5px;
             background: #fff; cursor: pointer; color: #444; white-space: nowrap;
-            transition: all .15s; line-height: 1.4; min-height: 30px; display: inline-flex; align-items: center; gap: 2px;
+            transition: all .15s; line-height: 1.4; min-height: 30px;
+            display: inline-flex; align-items: center; gap: 2px;
         }
         .btn-act:hover { background: #f0f2f5; }
         .btn-act.primary { color: #1b74e4; border-color: #1b74e4; }
@@ -84,17 +95,6 @@
         .badge-red { background: #fff0f0; color: #c62828; }
         .badge-blue { background: #e8f2ff; color: #1b74e4; }
         .key-mono { font-family: monospace; font-size: 11px; }
-
-        /* ===== 名称列（徽章+输入框同行） ===== */
-        .name-wrap { display: flex; align-items: center; gap: 6px; }
-        .name-wrap .table-input { flex: 1; min-width: 0; }
-        .name-wrap .badge { flex-shrink: 0; }
-        .key-wrap { display: flex; align-items: center; gap: 4px; width: 100%; }
-        .key-wrap .table-input { flex: 1; min-width: 0; }
-        .key-wrap .btn-act { flex-shrink: 0; }
-        .url-wrap { display: flex; align-items: center; gap: 4px; width: 100%; }
-        .url-wrap .table-input { flex: 1; min-width: 0; }
-        .url-wrap .btn-act { flex-shrink: 0; }
 
         /* ===== 其他 ===== */
         .empty { color: #999; padding: 20px; text-align: center; font-size: 14px; }
@@ -143,10 +143,10 @@
         .batch-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
         .fastest-label { font-size: 12px; color: #2e7d32; display: none; }
 
-        /* ===== 对话表格（桌面端，复用 acc-table 样式） ===== */
+        /* ===== 对话表格 ===== */
         .conv-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         .conv-table th, .conv-table td {
-            text-align: left; padding: 10px 10px; border-bottom: 1px solid #e9edf2;
+            text-align: left; padding: 10px 8px; border-bottom: 1px solid #e9edf2;
             vertical-align: middle;
         }
         .conv-table th { color: #65676b; font-weight: 600; white-space: nowrap; font-size: 12px; }
@@ -155,7 +155,7 @@
         /* ===== 手机/平板自适应（≤ 700px）→ 卡片布局 ===== */
         @media (max-width: 700px) {
             body { padding: 10px; }
-            .card { padding: 14px; border-radius: 10px; overflow: visible; }
+            .card { padding: 14px; border-radius: 10px; }
             .card h2 { font-size: 15px; }
 
             /* --- 账号表格 → 卡片布局 --- */
@@ -171,7 +171,6 @@
             .acc-table tr:hover { background: #fff; }
             .fastest-row { background: #f6fff9 !important; border-color: #b8e6c0 !important; }
 
-            /* 卡片内各字段行 */
             .acc-table td {
                 padding: 5px 0; border: none; font-size: 13px;
                 display: flex; align-items: center; gap: 8px;
@@ -180,18 +179,17 @@
                 content: attr(data-label); font-weight: 600; color: #65676b;
                 font-size: 11px; width: 48px; flex-shrink: 0; text-align: right;
             }
-            /* 名称行：卡片标题样式，无 label */
+            /* 名称行：卡片标题，无 label */
             .acc-table td[data-label="名称"]::before { display: none; }
             .acc-table td[data-label="名称"] {
                 font-size: 15px; font-weight: 600; padding: 0 0 8px 0;
                 border-bottom: 1px solid #f0f2f5; margin-bottom: 6px;
             }
-            .acc-table td[data-label="名称"] .name-wrap { width: 100%; }
             .acc-table td[data-label="名称"] .name-wrap .table-input {
                 font-weight: 600; font-size: 14px; border-color: transparent;
                 background: transparent; padding-left: 0;
             }
-            /* 延迟行：右上角，无 label */
+            /* 延迟行：右上角 */
             .acc-table td[data-label="延迟"] {
                 position: absolute; top: 16px; right: 16px; padding: 0;
             }
@@ -214,36 +212,13 @@
             .btn-act[disabled] { opacity: .5; }
             .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
 
-            /* 卡片内输入框统一铺满宽度 */
-            .acc-table td .table-input {
-                width: 100%; flex: 1 1 auto; min-width: 0;
-                font-size: 13px; padding: 8px 10px; box-sizing: border-box;
-            }
-            .acc-table td .table-select {
-                width: 100%; flex: 1 1 auto; min-width: 0;
-                font-size: 13px; box-sizing: border-box;
-            }
-            .acc-table td .model-wrap { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; }
-            .acc-table td .model-wrap .table-select { flex: 1; min-width: 0; }
-            .acc-table td .key-wrap { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; align-items: center; }
-            .acc-table td .key-wrap .table-input { flex: 1; min-width: 0; }
-            .acc-table td .url-wrap { flex: 1 1 auto; min-width: 0; display: flex; gap: 4px; align-items: center; }
-            .acc-table td .url-wrap .table-input { flex: 1; min-width: 0; }
-            /* URL 和 Key 输入框用等宽字体 */
-            .acc-table td.col-url .table-input,
-            .acc-table td.col-key .table-input {
-                font-family: "SF Mono", "Fira Code", monospace;
-            }
-            /* 复制按钮紧凑 */
+            /* URL/Key 复制按钮紧凑 */
             .acc-table td.col-key .btn-act,
             .acc-table td.col-url .btn-act {
-                padding: 4px 10px; min-height: 30px; font-size: 11px; width: auto; flex-shrink: 0;
+                padding: 4px 10px; min-height: 30px; font-size: 11px; width: auto;
             }
-            /* 卡片中显示所有列 */
-            .acc-table td.col-url,
-            .acc-table td.col-key { display: flex; }
 
-            /* --- 添加表单垂直堆叠 --- */
+            /* 添加表单垂直堆叠 */
             .form-row { flex-direction: column; gap: 8px; }
             .form-row input, .form-row select {
                 width: 100%; min-width: 0; padding: 10px 12px; font-size: 14px;
@@ -251,7 +226,7 @@
             .form-row button { width: 100%; }
             .form-row .refresh-sm { width: 100%; height: 40px; }
 
-            /* --- 对话表格 → 卡片布局 --- */
+            /* 对话表格 → 卡片 */
             .conv-table, .conv-table thead, .conv-table tbody,
             .conv-table tr, .conv-table td { display: block; }
             .conv-table thead { display: none; }
@@ -273,21 +248,16 @@
                 text-overflow: clip !important; white-space: normal !important;
             }
 
-            /* --- 转发 API 信息 --- */
             .proxy-box { font-size: 12px; padding: 12px; word-break: break-all; }
             .proxy-box .value { word-break: break-all; font-size: 11px; }
             .proxy-box code {
                 font-size: 11px; word-break: break-all; display: inline-block;
                 max-width: 100%; overflow: hidden; text-overflow: ellipsis;
             }
-            .proxy-box div div:last-child { font-size: 11px; line-height: 1.8; }
 
-            /* --- 批量操作栏 --- */
             .batch-bar { flex-direction: column; align-items: stretch; gap: 6px; }
             .batch-bar .btn-act { justify-content: center; }
             .fastest-label { text-align: center; }
-
-            /* --- 导航栏 --- */
             .nav { gap: 8px; }
             .nav .logout-btn { margin-left: 0; }
         }
@@ -499,9 +469,6 @@ function showAdminMsg(text, type) {
     el.className = 'msg ' + type;
 }
 
-// ================================================================
-//  设为默认账号
-// ================================================================
 async function adminSetDefault(id) {
     if (!confirm('确定要将此账号设为默认中转站吗？')) return;
     try {
@@ -518,9 +485,6 @@ async function adminSetDefault(id) {
     }
 }
 
-// ================================================================
-//  保存账号全部字段（名称、地址、Key、模型）
-// ================================================================
 async function adminSaveAccount(id) {
     const name = document.getElementById('name-' + id).value.trim();
     const url = document.getElementById('url-' + id).value.trim();
@@ -555,9 +519,6 @@ async function adminSaveAccount(id) {
     }
 }
 
-// ================================================================
-//  刷新模型列表（添加表单）
-// ================================================================
 document.getElementById('newRefreshModels').addEventListener('click', async function() {
     const url = document.getElementById('newUrl').value.trim();
     const key = document.getElementById('newKey').value.trim();
@@ -599,15 +560,11 @@ document.getElementById('newRefreshModels').addEventListener('click', async func
     }
 });
 
-// ================================================================
-//  刷新模型列表（已有账号）
-// ================================================================
 async function adminRefreshModels(id) {
     const sel = document.getElementById('model-' + id);
     const currentVal = sel.value;
     sel.innerHTML = '<option value="">加载中...</option>';
 
-    // 使用输入框中的最新值
     const url = document.getElementById('url-' + id).value.trim();
     const key = document.getElementById('key-' + id).value.trim();
 
@@ -625,7 +582,6 @@ async function adminRefreshModels(id) {
                 opt.value = m; opt.textContent = m;
                 sel.appendChild(opt);
             });
-            // 恢复选中的模型
             if (currentVal && [...sel.options].some(o => o.value === currentVal)) {
                 sel.value = currentVal;
             }
@@ -640,9 +596,6 @@ async function adminRefreshModels(id) {
     }
 }
 
-// ================================================================
-//  添加账号
-// ================================================================
 async function adminAddAccount() {
     const name = document.getElementById('newName').value.trim();
     const url = document.getElementById('newUrl').value.trim();
@@ -670,9 +623,6 @@ async function adminAddAccount() {
     }
 }
 
-// ================================================================
-//  删除账号
-// ================================================================
 async function adminDeleteAccount(id) {
     if (!confirm('确定要删除这个账号吗？')) return;
     try {
@@ -689,14 +639,10 @@ async function adminDeleteAccount(id) {
     }
 }
 
-// ================================================================
-//  单个账号测速
-// ================================================================
 async function adminTestAccount(id) {
     const cell = document.getElementById('latency-' + id);
     cell.innerHTML = '<span class="badge badge-blue">测速中...</span>';
 
-    // 使用输入框中的最新值
     const url = document.getElementById('url-' + id).value.trim();
     const key = document.getElementById('key-' + id).value.trim();
     const model = document.getElementById('model-' + id).value;
@@ -711,7 +657,6 @@ async function adminTestAccount(id) {
         const result = await resp.json();
         const elapsed = Date.now() - start;
 
-        // 更新后端延迟数据
         await fetch('/api/accounts/' + id, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -725,7 +670,6 @@ async function adminTestAccount(id) {
             cell.innerHTML = '<span class="badge badge-red">不可用</span>';
             showAdminMsg(result.message, 'fail');
         }
-        // 更新最快标记
         updateFastestLabel();
     } catch (e) {
         cell.innerHTML = '<span class="badge badge-red">错误</span>';
@@ -733,16 +677,12 @@ async function adminTestAccount(id) {
     }
 }
 
-// ================================================================
-//  全部测速
-// ================================================================
 async function adminSpeedTestAll() {
     showAdminMsg('正在测试所有账号...', 'info');
     const btn = event.target;
     btn.disabled = true;
     btn.textContent = '⏳ 测速中...';
 
-    // 找到所有账号 ID
     const rows = document.querySelectorAll('tbody tr');
     for (const row of rows) {
         const id = row.id.replace('row-', '');
@@ -752,14 +692,9 @@ async function adminSpeedTestAll() {
 
     btn.disabled = false;
     btn.textContent = '🚀 全部测速';
-
-    // 找出最快账号
     updateFastestLabel();
 }
 
-// ================================================================
-//  更新最快标记
-// ================================================================
 function updateFastestLabel() {
     let fastest = null;
     let fastestId = null;
@@ -776,7 +711,6 @@ function updateFastestLabel() {
         }
     });
 
-    // 更新行样式
     document.querySelectorAll('tbody tr').forEach(row => {
         row.classList.remove('fastest-row');
     });
@@ -795,7 +729,6 @@ function updateFastestLabel() {
     }
 }
 
-// 页面加载完成后更新最快标记
 document.addEventListener('DOMContentLoaded', updateFastestLabel);
 </script>
 </body>
