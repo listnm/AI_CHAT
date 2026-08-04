@@ -49,23 +49,20 @@
 
         /* ===== 行容器：输入框 + 按钮 ===== */
         .name-wrap, .url-wrap, .key-wrap, .model-wrap {
-            display: flex; align-items: center; gap: 4px; width: 100%;
+            display: table; width: 100%; table-layout: fixed;
         }
-        /* 输入框占满剩余空间，按钮固定不压缩 */
         .name-wrap .table-input,
         .url-wrap .table-input,
-        .key-wrap .table-input { flex: 1; min-width: 0; }
-        .model-wrap .table-select { flex: 1; min-width: 0; }
-        .name-wrap .badge,
+        .key-wrap .table-input { display: table-cell; width: 100%; }
+        .model-wrap .table-select { display: table-cell; width: 100%; }
+        .name-wrap .badge { display: table-cell; width: 1px; white-space: nowrap; }
         .url-wrap .btn-act,
-        .key-wrap .btn-act,
-        .model-wrap .refresh-sm { flex: none; }
-
+        .key-wrap .btn-act { display: table-cell; width: 1px; white-space: nowrap; }
         .model-wrap .refresh-sm {
-            width: 32px; height: 32px;
+            display: table-cell; width: 32px; vertical-align: middle;
             border: 1px solid #d0d5dd; border-radius: 6px;
             background: #f5f7fa; font-size: 15px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
+            text-align: center;
         }
         .model-wrap .refresh-sm:hover { background: #e4e6ea; }
 
@@ -226,17 +223,18 @@
                 font-size: 13px;
             }
 
-            /* wrap 容器内部 flex，不嵌套在 td flex 里 */
+            /* wrap 容器用 table 布局，宽度计算最可靠 */
             .url-wrap, .key-wrap, .model-wrap, .name-wrap {
-                display: flex; align-items: center; gap: 4px; width: 100%;
+                display: table; width: 100%; table-layout: fixed;
             }
+            .name-wrap .table-input,
             .url-wrap .table-input,
-            .key-wrap .table-input,
-            .name-wrap .table-input { flex: 1; min-width: 0; }
-            .model-wrap .table-select { flex: 1; min-width: 0; }
+            .key-wrap .table-input { display: table-cell; width: 100%; }
+            .model-wrap .table-select { display: table-cell; width: 100%; }
+            .name-wrap .badge { display: table-cell; width: 1px; white-space: nowrap; }
             .url-wrap .btn-act,
-            .key-wrap .btn-act,
-            .model-wrap .refresh-sm { flex-shrink: 0; }
+            .key-wrap .btn-act { display: table-cell; width: 1px; white-space: nowrap; }
+            .model-wrap .refresh-sm { display: table-cell; width: 36px; }
 
             /* URL 和 Key 等宽字体 */
             .acc-table td.col-url .table-input,
