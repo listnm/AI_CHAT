@@ -495,14 +495,15 @@
 
         /* 操作按钮组 */
         .action-group {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 6px;
-            flex-wrap: wrap;
         }
         .action-group .btn {
-            padding: 6px 12px;
-            font-size: 12px;
-            min-height: 32px;
+            padding: 5px 10px;
+            font-size: 11px;
+            min-height: 30px;
+            white-space: nowrap;
         }
 
         /* ===== 消息提示 ===== */
@@ -938,12 +939,12 @@
                 <table class="account-table">
                     <thead>
                         <tr>
-                            <th style="width: 10%;">名称</th>
-                            <th style="width: 28%;">API 地址</th>
+                            <th style="width: 13%;">名称</th>
+                            <th style="width: 22%;">API 地址</th>
                             <th style="width: 18%;">模型</th>
                             <th style="width: 22%;">API Key</th>
                             <th style="width: 8%;">延迟</th>
-                            <th style="width: 14%;">操作</th>
+                            <th style="width: 17%;">操作</th>
                         </tr>
                     </thead>
                     <tbody>
