@@ -135,12 +135,99 @@
             .acc-table .col-url { display: none; }
             .acc-table .col-key { display: none; }
         }
-        @media (max-width: 600px) {
-            body { padding: 12px; }
-            .card { padding: 12px; }
-            .acc-table { font-size: 12px; }
-            .acc-table th, .acc-table td { padding: 6px 4px; }
-            .form-row input, .form-row select { min-width: 80px; }
+
+        /* ===== 手机端自适应（≤ 640px） ===== */
+        @media (max-width: 640px) {
+            body { padding: 10px; }
+            .card { padding: 14px; border-radius: 10px; overflow: hidden; }
+            .card h2 { font-size: 15px; }
+
+            /* --- 账号表格 → 卡片布局 --- */
+            .acc-table, .acc-table thead, .acc-table tbody,
+            .acc-table tr, .acc-table td { display: block; }
+            .acc-table thead { display: none; }
+            .acc-table tr {
+                padding: 14px; margin-bottom: 10px; border: 1px solid #e9edf2;
+                border-radius: 10px; background: #fff; position: relative;
+            }
+            .acc-table tr:hover { background: #fff; }
+            .fastest-row { background: #f0fff4 !important; }
+            .acc-table td {
+                padding: 5px 0; border: none; font-size: 13px;
+                display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+            }
+            .acc-table td::before {
+                content: attr(data-label); font-weight: 600; color: #65676b;
+                font-size: 11px; min-width: 52px; flex-shrink: 0;
+            }
+            /* 操作列特殊处理：不显示 label，按钮换行 */
+            .acc-table td[data-label="操作"]::before { display: none; }
+            .acc-table td[data-label="操作"] {
+                padding-top: 10px; margin-top: 8px;
+                border-top: 1px solid #e9edf2; justify-content: center;
+            }
+            .acc-table td[data-label="延迟"]::before { min-width: 52px; }
+            .acc-table td[data-label="API 地址"]::before { min-width: 52px; }
+            .acc-table td[data-label="API Key"]::before { min-width: 52px; }
+            .acc-table td[data-label="模型"]::before { min-width: 52px; }
+            .acc-table td[data-label="名称"]::before { min-width: 52px; }
+
+            /* 卡片内输入框撑满 */
+            .acc-table td .table-input { width: auto; flex: 1; min-width: 80px; }
+            .acc-table td .model-wrap { flex: 1; min-width: 0; }
+            .acc-table td .model-wrap .table-select { flex: 1; }
+
+            /* --- 操作按钮加大（触摸友好） --- */
+            .action-group { flex-wrap: wrap; justify-content: center; gap: 6px; }
+            .btn-act {
+                font-size: 12px; padding: 8px 12px; border-radius: 6px;
+                min-height: 36px; display: flex; align-items: center; gap: 2px;
+            }
+            .refresh-sm { width: 36px; height: 36px; min-width: 36px; }
+
+            /* --- 添加表单垂直堆叠 --- */
+            .form-row { flex-direction: column; gap: 8px; }
+            .form-row input, .form-row select {
+                width: 100%; min-width: 0; padding: 10px 12px; font-size: 14px;
+            }
+            .form-row button { width: 100%; }
+            .form-row .refresh-sm { width: 100%; height: 40px; }
+
+            /* --- 对话表格 → 卡片布局 --- */
+            .card:last-child .acc-table,
+            .card:last-child .acc-table tbody,
+            .card:last-child .acc-table tr,
+            .card:last-child .acc-table td { display: block; }
+            .card:last-child .acc-table thead { display: none; }
+            .card:last-child .acc-table tr {
+                padding: 10px 12px; margin-bottom: 8px; border: 1px solid #e9edf2;
+                border-radius: 8px; background: #fff;
+            }
+            .card:last-child .acc-table tr:hover { background: #fff; }
+            .card:last-child .acc-table td {
+                padding: 3px 0; border: none; font-size: 12px;
+                display: flex; align-items: center; gap: 6px;
+            }
+            .card:last-child .acc-table td::before {
+                content: attr(data-label); font-weight: 600; color: #65676b;
+                font-size: 11px; min-width: 52px; flex-shrink: 0;
+            }
+            .card:last-child .acc-table td[data-label="标题"] {
+                max-width: none !important; white-space: normal !important;
+            }
+
+            /* --- 转发 API 信息 --- */
+            .proxy-box { font-size: 12px; padding: 12px; }
+            .proxy-box .value { word-break: break-all; font-size: 11px; }
+
+            /* --- 批量操作栏 --- */
+            .batch-bar { flex-direction: column; align-items: stretch; gap: 6px; }
+            .batch-bar .btn-act { justify-content: center; }
+            .fastest-label { text-align: center; }
+
+            /* --- 导航栏 --- */
+            .nav { gap: 8px; }
+            .nav .logout-btn { margin-left: 0; }
         }
     </style>
 </head>
@@ -223,14 +310,14 @@
             <tbody>
                 {% for acc in accounts %}
                 <tr id="row-{{ acc.id }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
-                    <td>
+                    <td data-label="名称">
                         <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="table-input" />
                         {% if acc.is_default %}
                         <span class="badge badge-blue" style="display:inline-block;margin-top:3px;">⭐ 默认</span>
                         {% endif %}
                     </td>
-                    <td class="col-url"><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" /></td>
-                    <td>
+                    <td data-label="API 地址" class="col-url"><input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="table-input" /></td>
+                    <td data-label="模型">
                         <div class="model-wrap">
                             <select id="model-{{ acc.id }}" class="table-select">
                                 <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
@@ -238,18 +325,18 @@
                             <button class="refresh-sm" onclick="adminRefreshModels('{{ acc.id }}')" title="刷新模型列表">↻</button>
                         </div>
                     </td>
-                    <td class="col-key">
+                    <td data-label="API Key" class="col-key">
                         <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="table-input key-mono" />
                         <button class="btn-act" onclick="copyKey('{{ acc.id }}')" style="margin-top:3px;">复制</button>
                     </td>
-                    <td id="latency-{{ acc.id }}">
+                    <td data-label="延迟" id="latency-{{ acc.id }}">
                         {% if acc.latency_ms is not none %}
                         <span class="badge badge-green">{{ acc.latency_ms }}ms</span>
                         {% else %}
                         <span class="badge badge-gray">未测速</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td data-label="操作">
                         <div class="action-group">
                             <button class="btn-act success" onclick="adminTestAccount('{{ acc.id }}')">测速</button>
                             <button class="btn-act primary" onclick="adminSaveAccount('{{ acc.id }}')">保存</button>
@@ -286,10 +373,10 @@
             <tbody>
                 {% for c in conversations %}
                 <tr>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.title }}">{{ c.title }}</td>
-                    <td><span class="badge badge-gray">{{ c.msg_count }} 条</span></td>
-                    <td style="color:#8e9399;font-size:12px;">{{ c.created_at[:19] }}</td>
-                    <td style="color:#8e9399;font-size:12px;">{{ c.updated_at[:19] }}</td>
+                    <td data-label="标题" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ c.title }}">{{ c.title }}</td>
+                    <td data-label="消息数"><span class="badge badge-gray">{{ c.msg_count }} 条</span></td>
+                    <td data-label="创建时间" style="color:#8e9399;font-size:12px;">{{ c.created_at[:19] }}</td>
+                    <td data-label="更新时间" style="color:#8e9399;font-size:12px;">{{ c.updated_at[:19] }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
