@@ -585,33 +585,84 @@ def api_check():
         "Content-Type": "application/json",
     }
 
-    # ===== 轻量模式：调 /models，不消耗 token =====
+    # ===== 轻量模式：优先调 /models，失败或非预期格式则回退到同步对话 =====
+    # 说明：某些中转站（如 sub2api）不实现 /v1/models，会把它 fallback 成流式
+    # 对话，反而消耗 Token。回退用 stream=False 的同步对话，sub2api 等会识别为
+    # "同步"模式不消耗 Token，且 max_tokens=1 几乎不产生实际计费。
     if mode != "strict":
         models_url = api_url.replace("/chat/completions", "/models")
+        fallback_reason = None
         try:
             resp = requests.get(models_url, headers=headers, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
-            model_ids = [m.get("id", "") for m in data.get("data", []) if "id" in m]
-            # 如果传了 model，检查是否在列表中
-            model_ok = True
-            if model and model_ids:
-                model_ok = model in model_ids
-            if model_ok:
-                msg = "连接成功（轻量模式，不消耗 Token）"
-                if model and model_ids and model not in model_ids:
-                    msg += f"，但模型 {model} 不在可用列表中"
-                return {"ok": True, "message": msg, "mode": "light"}
+            # 404/405 等说明上游不支持 /models，直接走回退
+            if resp.status_code in (404, 405):
+                fallback_reason = f"上游不支持 /models（HTTP {resp.status_code}）"
             else:
-                return {"ok": False, "message": f"模型 {model} 不在可用列表中（共 {len(model_ids)} 个模型）"}
+                resp.raise_for_status()
+                data = resp.json()
+                # 正常模型列表格式：{"object": "list", "data": [{"id": ...}]}
+                if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+                    model_ids = [m.get("id", "") for m in data["data"] if "id" in m]
+                    model_ok = True
+                    if model and model_ids:
+                        model_ok = model in model_ids
+                    if model_ok:
+                        msg = "连接成功（轻量模式 · /models，不消耗 Token）"
+                        if model and model_ids and model not in model_ids:
+                            msg += f"，但模型 {model} 不在可用列表中"
+                        return {"ok": True, "message": msg, "mode": "light"}
+                    else:
+                        return {"ok": False, "message": f"模型 {model} 不在可用列表中（共 {len(model_ids)} 个模型）"}
+                else:
+                    # 返回的不是模型列表格式（可能是 sub2api 把 /models 当成对话处理了）
+                    fallback_reason = "上游 /models 返回非模型列表格式"
         except requests.exceptions.Timeout:
             return {"ok": False, "message": "连接超时，请检查 API 地址或网络"}
         except requests.exceptions.HTTPError as e:
             status = e.response.status_code
             if status == 401:
                 return {"ok": False, "message": "认证失败（401），请检查 API Key"}
+            elif status not in (404, 405):
+                # 其他 HTTP 错误直接返回，不回退（如 401/500 等）
+                return {"ok": False, "message": f"HTTP {status}：{e.response.text[:200]}"}
+            fallback_reason = f"HTTP {status}"
+        except requests.exceptions.ConnectionError:
+            return {"ok": False, "message": "无法连接到服务器，请检查 API 地址或网络"}
+        except Exception as e:
+            fallback_reason = f"/models 异常：{str(e)[:80]}"
+
+        # ===== 回退：同步对话验证（stream=False, max_tokens=1） =====
+        # 对 sub2api 等不实现 /models 的中转站，这是最安全的验证方式：
+        # - stream=False 被识别为"同步"模式，不消耗 Token
+        # - max_tokens=1 即使计费也极少
+        if not model:
+            return {"ok": False, "message": "上游不支持 /models 且未配置模型，无法回退验证"}
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "stream": False,
+        }
+        try:
+            resp = requests.post(api_url, headers=headers, json=payload, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+            if "choices" in data and len(data["choices"]) > 0:
+                msg = "连接成功（轻量模式 · 同步回退"
+                if fallback_reason:
+                    msg += f"：{fallback_reason}"
+                msg += "，不消耗 Token）"
+                return {"ok": True, "message": msg, "mode": "light_fallback"}
+            else:
+                return {"ok": False, "message": f"响应格式异常：{json.dumps(data)[:200]}"}
+        except requests.exceptions.Timeout:
+            return {"ok": False, "message": "连接超时，请检查 API 地址或网络"}
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code
+            if status == 401:
+                return {"ok": False, "message": "认证失败（401），请检查 API Key 是否正确"}
             elif status == 404:
-                return {"ok": False, "message": "API 地址不存在（404），请检查地址"}
+                return {"ok": False, "message": "API 地址不存在（404），请检查地址是否正确"}
             else:
                 return {"ok": False, "message": f"HTTP {status}：{e.response.text[:200]}"}
         except requests.exceptions.ConnectionError:
