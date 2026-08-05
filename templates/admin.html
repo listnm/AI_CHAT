@@ -378,6 +378,50 @@
             white-space: nowrap;
         }
 
+        /* ===== 测速模式开关 ===== */
+        .test-mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            user-select: none;
+        }
+        .test-mode-toggle input {
+            display: none;
+        }
+        .toggle-slider {
+            width: 36px;
+            height: 20px;
+            background: #d0d5dd;
+            border-radius: 10px;
+            position: relative;
+            transition: all 0.2s;
+        }
+        .toggle-slider::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .test-mode-toggle input:checked + .toggle-slider {
+            background: var(--primary);
+        }
+        .test-mode-toggle input:checked + .toggle-slider::after {
+            left: 18px;
+        }
+        .toggle-label {
+            white-space: nowrap;
+        }
+
         /* ===== 账号添加区域 ===== */
         .add-account-section {
             background: var(--border-light);
@@ -802,6 +846,7 @@
             /* 工具栏 */
             .toolbar { flex-direction: column; align-items: stretch; }
             .toolbar .btn { width: 100%; }
+            .test-mode-toggle { justify-content: center; padding: 4px 0; }
             .status-tags { justify-content: stretch; flex-direction: column; }
             .status-tag { justify-content: center; }
 
@@ -933,6 +978,11 @@
                 <button class="btn btn-primary" onclick="adminSpeedTestAll(this)">
                     🚀 全部测速
                 </button>
+                <label class="test-mode-toggle" title="轻量模式只验证连通性不消耗Token；严格模式会真实对话消耗少量Token">
+                    <input type="checkbox" id="strictModeToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">严格测速</span>
+                </label>
                 <div class="status-tags">
                     <div id="defaultLabel" class="status-tag status-tag-default">
                         ⭐ 默认：<span id="defaultName">--</span>
@@ -1445,8 +1495,14 @@
         }
 
         // ===== 测速 =====
+        function _getTestMode() {
+            const toggle = document.getElementById('strictModeToggle');
+            return (toggle && toggle.checked) ? 'strict' : 'light';
+        }
+
         async function adminTestAccount(id, btn) {
             if (btn) btnLoading(btn, '⏳ 测速中...');
+            const mode = _getTestMode();
             const latencyElDesktop = document.getElementById('latency-' + id);
             const latencyElMobile = document.getElementById('latency-mobile-' + id);
             [latencyElDesktop, latencyElMobile].forEach(el => {
@@ -1462,7 +1518,7 @@
                 const resp = await fetch('/api/check', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ api_url: url, api_key: key, model: model }),
+                    body: JSON.stringify({ api_url: url, api_key: key, model: model, mode: mode }),
                 });
                 const result = await resp.json();
                 const elapsed = Date.now() - start;
@@ -1474,11 +1530,12 @@
                 });
 
                 if (result.ok) {
-                    const html = '<span class="latency-badge success">' + elapsed + 'ms</span>';
+                    const tag = mode === 'strict' ? '⚡' : '✓';
+                    const html = `<span class="latency-badge success">${tag} ${elapsed}ms</span>`;
                     [latencyElDesktop, latencyElMobile].forEach(el => {
                         if (el) el.innerHTML = html;
                     });
-                    showAdminMsg('测速成功：' + elapsed + 'ms', 'success');
+                    showAdminMsg(result.message + '：' + elapsed + 'ms', 'success');
                 } else {
                     const html = '<span class="latency-badge error">不可用</span>';
                     [latencyElDesktop, latencyElMobile].forEach(el => {

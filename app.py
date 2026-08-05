@@ -557,9 +557,11 @@ def api_check():
     """
     API 连通性测试接口
     支持 account_id（使用已保存账号）或直接传入 api_url / api_key / model
+    mode: "light" (默认，调 /models 不消耗 token) 或 "strict" (真实对话，消耗少量 token)
     """
     data = request.get_json(force=True)
     account_id = data.get("account_id")
+    mode = data.get("mode", "light")  # light | strict
 
     if account_id:
         account = _find_account(account_id)
@@ -573,13 +575,51 @@ def api_check():
         api_key = data.get("api_key", "")
         model = data.get("model", "")
 
-    if not api_url or not api_key or not model:
-        return {"ok": False, "message": "请先完整填写 API 地址、Key 和模型名称"}
+    if not api_url or not api_key:
+        return {"ok": False, "message": "请先填写 API 地址和 Key"}
+    if mode == "strict" and not model:
+        return {"ok": False, "message": "严格测速需要模型名称"}
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+
+    # ===== 轻量模式：调 /models，不消耗 token =====
+    if mode != "strict":
+        models_url = api_url.replace("/chat/completions", "/models")
+        try:
+            resp = requests.get(models_url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            model_ids = [m.get("id", "") for m in data.get("data", []) if "id" in m]
+            # 如果传了 model，检查是否在列表中
+            model_ok = True
+            if model and model_ids:
+                model_ok = model in model_ids
+            if model_ok:
+                msg = "连接成功（轻量模式，不消耗 Token）"
+                if model and model_ids and model not in model_ids:
+                    msg += f"，但模型 {model} 不在可用列表中"
+                return {"ok": True, "message": msg, "mode": "light"}
+            else:
+                return {"ok": False, "message": f"模型 {model} 不在可用列表中（共 {len(model_ids)} 个模型）"}
+        except requests.exceptions.Timeout:
+            return {"ok": False, "message": "连接超时，请检查 API 地址或网络"}
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code
+            if status == 401:
+                return {"ok": False, "message": "认证失败（401），请检查 API Key"}
+            elif status == 404:
+                return {"ok": False, "message": "API 地址不存在（404），请检查地址"}
+            else:
+                return {"ok": False, "message": f"HTTP {status}：{e.response.text[:200]}"}
+        except requests.exceptions.ConnectionError:
+            return {"ok": False, "message": "无法连接到服务器，请检查 API 地址或网络"}
+        except Exception as e:
+            return {"ok": False, "message": f"测试失败：{str(e)}"}
+
+    # ===== 严格模式：真实对话，消耗少量 token =====
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": "Hi"}],
@@ -592,7 +632,7 @@ def api_check():
         resp.raise_for_status()
         data = resp.json()
         if "choices" in data and len(data["choices"]) > 0:
-            return {"ok": True, "message": "连接成功，API 可用"}
+            return {"ok": True, "message": "连接成功（严格模式，已消耗少量 Token）", "mode": "strict"}
         else:
             return {"ok": False, "message": f"响应格式异常：{json.dumps(data)[:200]}"}
     except requests.exceptions.Timeout:
