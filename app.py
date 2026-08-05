@@ -986,39 +986,39 @@ def chat():
         )
 
     def generate():
-        buffer = ""
-        for chunk in upstream_response.iter_content(chunk_size=None, decode_unicode=True):
+        buffer = b""
+        for chunk in upstream_response.iter_content(chunk_size=None):
             if not chunk:
                 continue
             buffer += chunk
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
+            while b"\n" in buffer:
+                line, buffer = buffer.split(b"\n", 1)
                 line = line.strip()
                 if not line:
                     continue
-                if line.startswith(":"):
+                if line.startswith(b":"):
                     continue
-                if line.startswith("data: "):
+                if line.startswith(b"data: "):
                     data_content = line[6:]
-                    if data_content.strip() == "[DONE]":
+                    if data_content.strip() == b"[DONE]":
                         yield "data: [DONE]\n\n"
                         return
-                    yield f"data: {data_content}\n\n"
-                elif line.startswith("event: "):
-                    yield f"{line}\n"
-                elif line.startswith("id: "):
-                    yield f"{line}\n"
-                elif line.startswith("retry: "):
-                    yield f"{line}\n"
+                    yield b"data: " + data_content + b"\n\n"
+                elif line.startswith(b"event: "):
+                    yield line + b"\n"
+                elif line.startswith(b"id: "):
+                    yield line + b"\n"
+                elif line.startswith(b"retry: "):
+                    yield line + b"\n"
         if buffer.strip():
-            if buffer.startswith("data: "):
+            if buffer.startswith(b"data: "):
                 data_content = buffer[6:]
-                if data_content.strip() != "[DONE]":
-                    yield f"data: {data_content}\n\n"
+                if data_content.strip() != b"[DONE]":
+                    yield b"data: " + data_content + b"\n\n"
                 else:
                     yield "data: [DONE]\n\n"
             else:
-                yield f"data: {buffer}\n\n"
+                yield b"data: " + buffer + b"\n\n"
         yield "data: [DONE]\n\n"
 
     return Response(
@@ -1156,34 +1156,34 @@ def proxy_chat_completions():
         def generate():
             # 先发送账号信息事件
             yield f"event: provider\ndata: {json.dumps(provider_info, ensure_ascii=False)}\n\n"
-            # 再转发上游的 SSE 数据
-            buffer = ""
-            for chunk in upstream.iter_content(chunk_size=None, decode_unicode=True):
+            # 直接透传原始字节，避免 decode_unicode 截断多字节 UTF-8 字符导致中文乱码
+            buffer = b""
+            for chunk in upstream.iter_content(chunk_size=None):
                 if not chunk:
                     continue
                 buffer += chunk
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
                     line = line.strip()
                     if not line:
                         continue
-                    if line.startswith("data: "):
+                    if line.startswith(b"data: "):
                         data_content = line[6:]
-                        if data_content.strip() == "[DONE]":
+                        if data_content.strip() == b"[DONE]":
                             yield "data: [DONE]\n\n"
                             return
-                        yield f"data: {data_content}\n\n"
-                    elif line.startswith(":"):
+                        yield b"data: " + data_content + b"\n\n"
+                    elif line.startswith(b":"):
                         continue
             if buffer.strip():
-                if buffer.startswith("data: "):
+                if buffer.startswith(b"data: "):
                     dc = buffer[6:]
-                    if dc.strip() != "[DONE]":
-                        yield f"data: {dc}\n\n"
+                    if dc.strip() != b"[DONE]":
+                        yield b"data: " + dc + b"\n\n"
                     else:
                         yield "data: [DONE]\n\n"
                 else:
-                    yield f"data: {buffer}\n\n"
+                    yield b"data: " + buffer + b"\n\n"
             yield "data: [DONE]\n\n"
 
         return Response(
