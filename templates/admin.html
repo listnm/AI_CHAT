@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>管理后台 - AI 对话</title>
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('theme') || 'light';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch(e) {}
+        })();
+    </script>
     <style>
         :root {
             --primary: #6366f1;
@@ -22,9 +30,38 @@
             --border-light: #f3f4f6;
             --bg: #f8fafc;
             --card: #ffffff;
+            --header-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --input-bg: #fafbfc;
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
             --shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
             --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+            color-scheme: light;
+        }
+
+        /* ===== 深色模式 ===== */
+        [data-theme="dark"] {
+            --primary: #2dd4a8;
+            --primary-hover: #26b891;
+            --primary-light: rgba(45, 212, 168, 0.12);
+            --success: #2dd4a8;
+            --success-light: rgba(45, 212, 168, 0.12);
+            --danger: #f87171;
+            --danger-light: rgba(248, 113, 113, 0.12);
+            --warning: #fbbf24;
+            --warning-light: rgba(251, 191, 36, 0.12);
+            --text: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e2d3d;
+            --border-light: #1a2435;
+            --bg: #0a0f14;
+            --card: #141d2a;
+            --header-grad: linear-gradient(135deg, #0f1620 0%, #141d2a 100%);
+            --input-bg: #0f1620;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.3);
+            color-scheme: dark;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -39,9 +76,10 @@
 
         /* ===== 顶部导航 ===== */
         .admin-header {
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            background: var(--header-grad);
             padding: 20px 24px;
             color: white;
+            border-bottom: 1px solid var(--border);
         }
         .admin-header-inner {
             max-width: 1200px;
@@ -292,7 +330,7 @@
             border-radius: 10px;
             font-size: 14px;
             font-family: inherit;
-            background: white;
+            background: var(--input-bg);
             color: var(--text);
             transition: all 0.2s;
             outline: none;
@@ -468,7 +506,7 @@
             transition: background 0.2s;
         }
         .account-table tbody tr:hover {
-            background: #fafbfc;
+            background: var(--input-bg);
         }
         .account-table tbody tr.fastest-row {
             background: var(--success-light);
@@ -654,7 +692,7 @@
         .conv-search input::placeholder { color: var(--text-muted); }
         .conv-search-icon {
             position: absolute; left: 11px; top: 50%;
-            transform: translateY(-50%); color: #9ca3af; font-size: 13px;
+            transform: translateY(-50%); color: var(--text-muted); font-size: 13px;
         }
         .conv-empty {
             text-align: center; padding: 48px 24px 40px; color: var(--text-muted);
@@ -804,14 +842,31 @@
             justify-content: center;
             background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
             padding: 20px;
+            position: relative;
         }
+        .login-theme-toggle {
+            position: fixed; top: 18px; right: 18px; z-index: 50;
+            width: 40px; height: 40px; border-radius: 10px;
+            background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.25);
+            color: #fff; cursor: pointer; font-size: 17px;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s; backdrop-filter: blur(4px);
+        }
+        .login-theme-toggle:hover { background: rgba(255,255,255,0.32); }
         .login-card {
-            background: white;
+            background: var(--card);
             border-radius: 24px;
             padding: 40px 36px;
             width: 100%;
             max-width: 400px;
             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+        [data-theme="dark"] .login-page {
+            background: linear-gradient(135deg, #0a0f14 0%, #0f1620 50%, #141d2a 100%);
+        }
+        [data-theme="dark"] .login-logo {
+            background: linear-gradient(135deg, #2dd4a8 0%, #14b8a6 100%);
+            box-shadow: 0 10px 25px rgba(45,212,168,0.4);
         }
         .login-logo {
             width: 64px;
@@ -1010,6 +1065,7 @@
 <body>
     {% if not logged_in %}
     <div class="login-page">
+        <button class="login-theme-toggle" id="themeToggle" type="button" title="切换深浅模式">🌙</button>
         <div class="login-card">
             <div class="login-logo">🔐</div>
             <h1 class="login-title">管理后台</h1>
@@ -1035,6 +1091,7 @@
             <div class="admin-nav">
                 <a href="/">← 返回首页</a>
                 <span class="base-url">{{ base_url }}</span>
+                <button class="logout-btn" id="themeToggle" type="button" title="切换深浅模式">🌙</button>
                 <form method="post" action="/admin/logout" style="margin:0;">
                     <button class="logout-btn" type="submit">退出</button>
                 </form>
@@ -1415,6 +1472,28 @@
     {% endif %}
 
     <script>
+        // ===== 主题切换（浅色 / 深色） =====
+        (function() {
+            var themeToggle = document.getElementById('themeToggle');
+            function applyIcon() {
+                var cur = document.documentElement.getAttribute('data-theme') || 'light';
+                if (themeToggle) {
+                    themeToggle.textContent = cur === 'dark' ? '☀️' : '🌙';
+                    themeToggle.title = cur === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+                }
+            }
+            applyIcon();
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    var cur = document.documentElement.getAttribute('data-theme') || 'light';
+                    var next = cur === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', next);
+                    try { localStorage.setItem('theme', next); } catch(e) {}
+                    applyIcon();
+                });
+            }
+        })();
+
         // ===== 辅助函数 =====
         // 给按钮添加点击反馈
         function btnLoading(btn, loadingText) {

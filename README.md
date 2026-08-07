@@ -12,7 +12,7 @@
 - **对话管理**：多会话隔离，历史对话保存到后端数据库
 - **图片上传**：支持图片识别（多模态模型）
 - **安全加密**：API Key 加密存储
-- **深色科技风 UI**：青绿色主题 + 发光效果 + 等宽字体标签
+- **浅色 / 深色双主题**：一键切换浅色（紫色调）与深色（青绿科技风）模式，整页适配，偏好自动记忆
 - **响应式设计**：电脑端表格 + 手机端卡片，自适应布局
 - **后台对话管理**：查看对话内容预览、搜索、展开详情、单条/批量删除
 
@@ -113,6 +113,7 @@ gunicorn app:app --timeout 600
 - **对话管理**：左侧栏创建、切换、删除对话，各对话内容相互隔离
 - **实时同步**：对话自动同步到后端数据库，后台可见
 - **Markdown 渲染**：AI 回复支持代码块、表格、列表、链接等格式
+- **主题切换**：点击左侧导航栏或顶部的 🌙/☀️ 按钮，在浅色与深色模式间切换，选择会自动记忆，下次打开自动应用
 
 ### 3. API 转发接口
 
@@ -209,7 +210,7 @@ curl https://你的域名/v1/chat/completions \
 
 - **后端**：Python / Flask / Gunicorn（超时 600s）
 - **数据库**：SQLite（本地）/ PostgreSQL（生产），对话保留 30 天
-- **前端**：原生 HTML / CSS / JavaScript，深色科技风主题
+- **前端**：原生 HTML / CSS / JavaScript，浅色/深色双主题可切换
 - **加密**：cryptography (Fernet) / base64 降级
 - **部署**：Render / 支持任意 Python 平台
 
@@ -219,8 +220,8 @@ curl https://你的域名/v1/chat/completions \
 .
 ├── app.py              # Flask 主应用（路由、API、数据库）
 ├── templates/
-│   ├── index.html      # 对话页面（深色科技风）
-│   └── admin.html      # 后台管理页面（深色科技风）
+│   ├── index.html      # 对话页面（浅色/深色双主题）
+│   └── admin.html      # 后台管理页面（浅色/深色双主题）
 ├── requirements.txt    # Python 依赖
 ├── Procfile            # 部署配置（Gunicorn --timeout 600）
 └── README.md           # 本文件
