@@ -1895,14 +1895,19 @@ def api_pool_login(pool_id):
     """对指定账号执行登录，并保存 access_token"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    acc = _find_pool_account(pool_id)
-    if not acc:
-        return {"ok": False, "message": "账号不存在"}
-    token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
-    if not token:
-        return {"ok": False, "message": f"登录失败：{err}"}
-    _update_pool_field(pool_id, access_token=token)
-    return {"ok": True, "message": "登录成功，已保存 Token", "token_preview": token[:16] + "..."}
+    try:
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
+        token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+        if not token:
+            return {"ok": False, "message": f"登录失败：{err}"}
+        _update_pool_field(pool_id, access_token=token)
+        return {"ok": True, "message": "登录成功，已保存 Token", "token_preview": token[:16] + "..."}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>/balance", methods=["POST"])
@@ -1910,31 +1915,36 @@ def api_pool_balance(pool_id):
     """查询并保存余额（如未登录或 Token 失效会自动重新登录）"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    acc = _find_pool_account(pool_id)
-    if not acc:
-        return {"ok": False, "message": "账号不存在"}
+    try:
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
 
-    token = acc.get("access_token")
-    need_relogin = False
-    if token:
-        balance, err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
-        if balance is None:
+        token = acc.get("access_token")
+        need_relogin = False
+        if token:
+            balance, err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
+            if balance is None:
+                need_relogin = True
+        else:
             need_relogin = True
-    else:
-        need_relogin = True
 
-    if need_relogin:
-        token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
-        if not token:
-            return {"ok": False, "message": f"登录失败，无法查询余额：{err}"}
-        _update_pool_field(pool_id, access_token=token)
-        balance, err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
-        if balance is None:
-            return {"ok": False, "message": f"登录成功但余额查询失败：{err}"}
+        if need_relogin:
+            token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            if not token:
+                return {"ok": False, "message": f"登录失败，无法查询余额：{err}"}
+            _update_pool_field(pool_id, access_token=token)
+            balance, err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
+            if balance is None:
+                return {"ok": False, "message": f"登录成功但余额查询失败：{err}"}
 
-    now = datetime.now().isoformat()
-    _update_pool_field(pool_id, balance=balance, balance_updated_at=now)
-    return {"ok": True, "message": "余额查询成功", "balance": balance, "updated_at": now}
+        now = datetime.now().isoformat()
+        _update_pool_field(pool_id, balance=balance, balance_updated_at=now)
+        return {"ok": True, "message": "余额查询成功", "balance": balance, "updated_at": now}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>/groups", methods=["POST"])
@@ -1942,33 +1952,38 @@ def api_pool_groups(pool_id):
     """查询并保存密钥/渠道分组（如未登录会自动登录）"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    acc = _find_pool_account(pool_id)
-    if not acc:
-        return {"ok": False, "message": "账号不存在"}
+    try:
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
 
-    token = acc.get("access_token")
-    need_relogin = False
-    groups = None
-    err = ""
-    if token:
-        groups, err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
-        if groups is None:
+        token = acc.get("access_token")
+        need_relogin = False
+        groups = None
+        err = ""
+        if token:
+            groups, err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+            if groups is None:
+                need_relogin = True
+        else:
             need_relogin = True
-    else:
-        need_relogin = True
 
-    if need_relogin:
-        token, err_login = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
-        if not token:
-            return {"ok": False, "message": f"登录失败，无法查询分组：{err_login}"}
-        _update_pool_field(pool_id, access_token=token)
-        groups, err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
-        if groups is None:
-            return {"ok": False, "message": f"登录成功但分组查询失败：{err}"}
+        if need_relogin:
+            token, err_login = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            if not token:
+                return {"ok": False, "message": f"登录失败，无法查询分组：{err_login}"}
+            _update_pool_field(pool_id, access_token=token)
+            groups, err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+            if groups is None:
+                return {"ok": False, "message": f"登录成功但分组查询失败：{err}"}
 
-    now = datetime.now().isoformat()
-    _update_pool_field(pool_id, groups=groups, groups_updated_at=now)
-    return {"ok": True, "message": f"分组查询成功，共 {len(groups)} 个分组", "groups": groups, "updated_at": now}
+        now = datetime.now().isoformat()
+        _update_pool_field(pool_id, groups=groups, groups_updated_at=now)
+        return {"ok": True, "message": f"分组查询成功，共 {len(groups)} 个分组", "groups": groups, "updated_at": now}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>/groups", methods=["GET"])
