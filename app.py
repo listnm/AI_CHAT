@@ -1697,7 +1697,52 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
 
     groups = []
 
-    # ==== 先尝试取令牌列表（sub2api/newapi 通用 /api/token 等） ====
+    # ==== 【关键】先拉「可用分组列表」（包含空分组！这才是 /keys 页面下拉的来源）====
+    # 优先使用独立分组接口；后续合并到 all_group_options，确保下拉能列出所有分组（哪怕组里没 key）
+    group_list_endpoints = [
+        f"{base}/api/v1/groups/available",
+        f"{base}/api/groups/available",
+        f"{base}/api/v1/group/available",
+        f"{base}/api/v1/user/groups",
+        f"{base}/api/user/groups",
+        f"{base}/api/v1/keys/groups/options",
+    ]
+    server_group_options = []  # [{id,name}]
+    for url in group_list_endpoints:
+        try:
+            resp = requests.get(url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                arr = None
+                if isinstance(data, dict):
+                    d = data.get("data")
+                    if isinstance(d, list):
+                        arr = d
+                    elif isinstance(d, dict):
+                        arr = d.get("items") or d.get("list") or d.get("groups")
+                    if not arr:
+                        arr = data.get("items") or data.get("list") or data.get("groups")
+                elif isinstance(data, list):
+                    arr = data
+                if isinstance(arr, list) and arr:
+                    out = []
+                    for g in arr:
+                        if not isinstance(g, dict):
+                            continue
+                        gid = g.get("id")
+                        if gid is None or gid == "":
+                            continue
+                        out.append({
+                            "id": gid,
+                            "name": g.get("name") or g.get("title") or (f"分组 #{gid}" if isinstance(gid, (int, float)) else str(gid)),
+                        })
+                    if out:
+                        server_group_options = out
+                        break
+        except Exception:
+            pass
+
+    # ==== 再取令牌列表（sub2api/newapi 通用 /api/token 等） ====
     token_endpoints = [
         f"{base}/api/v1/keys",
         f"{base}/api/token",
@@ -1806,8 +1851,32 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
             group_map[group_key]["tokens"].append(entry)
             group_map[group_key]["count"] += 1
         groups = list(group_map.values())
-        # 把"全部分组选项列表"挂在每个分组块上，方便前端在密钥行渲染切换下拉
-        if group_opt_map:
+        # 合并分组选项：
+        #   1) 优先 server_group_options（来自独立分组接口 /groups/available，包含空分组，和网站下拉一致）
+        #   2) 补充 group_opt_map（从 tokens 的 group 字段反推，避免部分老系统没有独立分组接口时列表为空）
+        merged_opts: dict = {}
+        def _add_opt(o_id, o_name):
+            if o_id is None or o_id == "":
+                return
+            # 统一用字符串做主键（保留原值在 .id 里）
+            k = str(o_id)
+            if k in merged_opts:
+                # 已有，只在缺名时补名字
+                if not merged_opts[k].get("name") and o_name:
+                    merged_opts[k]["name"] = o_name
+                return
+            merged_opts[k] = {"id": o_id, "name": o_name or f"分组 #{o_id}"}
+        for o in server_group_options:
+            _add_opt(o.get("id"), o.get("name"))
+        for o in group_opt_map.values():
+            _add_opt(o.get("id"), o.get("name"))
+        if merged_opts:
+            opts = list(merged_opts.values())
+            for g in groups:
+                if not g.get("is_channel_group"):
+                    g["all_group_options"] = opts
+        elif group_opt_map:
+            # 兜底（老系统，理论不会走到）
             opts = list(group_opt_map.values())
             for g in groups:
                 if not g.get("is_channel_group"):
