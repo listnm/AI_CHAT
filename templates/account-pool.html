@@ -1241,6 +1241,8 @@ function renderList() {
         const chips = groups.slice(0, 3).map(g =>
             `<span class="group-chip">${g.name || '未命名'} · ${g.count || 0}</span>`
         ).join('');
+        const selKey = a.selected_token_key || '';
+        const hasSel = !!(a.selected_group && selKey);
         return `
         <div class="pool-card">
             <div class="pool-card-head">
@@ -1271,6 +1273,23 @@ function renderList() {
                         ${chips || '<span style="font-size:12px;color:var(--text-muted);">点击「分组」按钮查询</span>'}
                     </div>
                 </div>
+                ${hasSel ? `
+                <div style="grid-column: 1 / -1;background:linear-gradient(135deg, rgba(45,212,168,0.12), rgba(99,102,241,0.12));border:1px solid rgba(45,212,168,0.3);border-radius:10px;padding:12px 14px;margin-top:4px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="font-size:13px;font-weight:600;color:var(--accent);">✨ 当前选用</span>
+                        <span class="badge badge-sub2api" style="margin:0;">${escapeHtml(a.selected_group)}</span>
+                        <span style="font-size:12px;color:var(--text-muted);">→</span>
+                        <span style="font-size:13px;font-weight:600;">${escapeHtml(a.selected_token_name || '未命名密钥')}</span>
+                    </div>
+                    <div style="display:flex;gap:6px;align-items:center;">
+                        <code style="flex:1;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(0,0,0,0.04);padding:6px 10px;border-radius:6px;font-size:12px;" title="${escapeHtml(selKey)}">${escapeHtml(selKey.slice(0, 12))}…${escapeHtml(selKey.slice(-8))}</code>
+                        <button class="btn btn-sm" style="padding:6px 12px;font-size:12px;background:var(--accent);color:#fff;border:none;cursor:pointer;" onclick='copyText(${JSON.stringify(selKey)})'>📋 复制Key</button>
+                        <button class="btn btn-sm" style="padding:6px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--text-muted);" onclick="clearSelected('${a.id}')">✕ 清除</button>
+                    </div>
+                </div>` : `
+                <div style="grid-column: 1 / -1;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:10px;padding:10px 14px;margin-top:4px;color:var(--text-muted);font-size:12px;">
+                    💡 尚未选用分组密钥 → 点击「👁 分组详情」→ 在弹窗里找到想要的密钥 → 点「✨ 选用此Key」
+                </div>`}
                 ${a.remark ? `<div style="grid-column: 1 / -1;">
                     <div class="pool-card-field-label">备注</div>
                     <div class="pool-card-field-value">${escapeHtml(a.remark)}</div>
@@ -1410,6 +1429,96 @@ async function copyText(text, hintId) {
 }
 
 /* ============================================================
+ * 选用 / 清除 分组密钥
+ * ============================================================ */
+async function selectToken(accId, groupName, token) {
+    const id = token.id || '';
+    const name = token.name || token.title || `密钥 ${String(id).slice(0, 8) || ''}`;
+    const key = token.key || token.token || '';
+    if (!key) {
+        showMsg('listMsg', '❌ 无法选用此密钥：完整 key 字段为空', 'fail');
+        return;
+    }
+    try {
+        const r = await req(`${API}/accounts/${accId}/select-token`, 'POST', {
+            group_name: groupName,
+            token_id: id,
+            token_name: name,
+            token_key: key,
+        });
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '✅ ' : '❌ ') + (r.message || '操作完成'), r.ok ? 'success' : 'fail');
+        if (r.ok) {
+            // 更新内存状态
+            const acc = state.accounts.find(a => a.id === accId);
+            if (acc) {
+                acc.selected_group = groupName;
+                acc.selected_token_id = id;
+                acc.selected_token_name = name;
+                acc.selected_token_key = key;
+            }
+            renderList();
+            // 弹窗内刷新选中标记
+            refreshModalSelection(accId);
+        }
+    } catch (e) {
+        showMsg('listMsg', '❌ 选用失败：' + (e.message || e), 'fail');
+    }
+}
+
+async function clearSelected(accId) {
+    if (!confirm('确定清除当前账号的选用密钥吗？')) return;
+    try {
+        const r = await req(`${API}/accounts/${accId}/clear-selection`, 'POST');
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '✅ ' : '❌ ') + (r.message || '操作完成'), r.ok ? 'success' : 'fail');
+        if (r.ok) {
+            const acc = state.accounts.find(a => a.id === accId);
+            if (acc) {
+                acc.selected_group = null;
+                acc.selected_token_id = null;
+                acc.selected_token_name = null;
+                acc.selected_token_key = null;
+            }
+            renderList();
+            refreshModalSelection(accId);
+        }
+    } catch (e) {
+        showMsg('listMsg', '❌ 清除失败：' + (e.message || e), 'fail');
+    }
+}
+
+function refreshModalSelection(accId) {
+    // 弹窗存在时，刷新里面的选中标记
+    const modal = document.getElementById('groupsModal');
+    if (!modal || !modal.classList.contains('show')) return;
+    const acc = state.accounts.find(a => a.id === accId);
+    if (!acc) return;
+    const selId = acc.selected_token_id;
+    const selKey = acc.selected_token_key;
+    document.querySelectorAll('.token-item').forEach(el => {
+        el.style.borderLeft = el.style.borderRight = '';
+        el.style.background = '';
+    });
+    // 为当前选中的 token 加高亮 + 更换按钮文案
+    document.querySelectorAll('[data-token-select]').forEach(btn => {
+        const data = btn.dataset;
+        const same = (selId && data.tokenId && data.tokenId === selId)
+            || (selKey && data.tokenKey && data.tokenKey === selKey);
+        if (same) {
+            btn.textContent = '✅ 已选用';
+            btn.style.background = 'var(--success)';
+            const ti = btn.closest('.token-item');
+            if (ti) {
+                ti.style.borderLeft = '3px solid var(--success)';
+                ti.style.background = 'linear-gradient(90deg, rgba(34,197,94,0.08), transparent 50%)';
+            }
+        } else {
+            btn.textContent = '✨ 选用此Key';
+            btn.style.background = 'var(--primary)';
+        }
+    });
+}
+
+/* ============================================================
  * 分组详情弹窗
  * ============================================================ */
 async function showGroups(id) {
@@ -1442,9 +1551,10 @@ async function showGroups(id) {
                 <div>• 🗂️ <b>查询分组</b>：从远程平台拉取该账号下的密钥分组和渠道分组</div>
                 <div>• 👁 <b>分组详情</b>：打开本弹窗，可查看 / 复制具体 Key 或渠道地址</div>
                 <div>• 🗑️ <b>删除</b>：从账号池删除（不会影响远程平台账号本身）</div>
-                <div style="margin-top:6px;font-weight:600;">👉 下方列表中可直接点击「📋 复制Key」获取密钥，无需登录对方网站</div>
+                <div style="margin-top:6px;font-weight:600;">👉 下方列表中可直接「📋 复制Key」或「✨ 选用此Key」，选用后会保存在卡片头部，可随时切换或复制使用，无需再登对方网站</div>
             </div>`;
         body.innerHTML = header + groups.map(g => renderGroupBlock(g, id)).join('');
+        setTimeout(() => refreshModalSelection(id), 30);
     } catch (e) {
         body.innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">加载失败：${e.message || e}</p>`;
     }
@@ -1452,6 +1562,7 @@ async function showGroups(id) {
 
 function renderGroupBlock(g, accId) {
     const isChannel = !!g.is_channel_group;
+    const groupName = g.name || '';
     const items = isChannel
         ? (g.channels || (g.sub_groups ? [] : []))
         : (g.tokens || (g.sub_groups ? [] : []));
@@ -1466,11 +1577,11 @@ function renderGroupBlock(g, accId) {
                     <div style="font-weight:600;font-size:13px;">${escapeHtml(sg.name || '未命名子分组')}</div>
                     <span class="group-block-count">${sg.count || 0}</span>
                 </div>
-                ${(sg.channels || sg.tokens || []).slice(0, 20).map(it => renderItemRow(it, isChannel, accId)).join('')}
+                ${(sg.channels || sg.tokens || []).slice(0, 20).map(it => renderItemRow(it, isChannel, accId, sg.name || groupName)).join('')}
             </div>
         `).join('');
     } else {
-        inner = (items || []).slice(0, 50).map(it => renderItemRow(it, isChannel, accId)).join('');
+        inner = (items || []).slice(0, 50).map(it => renderItemRow(it, isChannel, accId, groupName)).join('');
         if ((items || []).length > 50) {
             inner += `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">仅显示前 50 条，共 ${items.length} 条</div>`;
         }
@@ -1496,7 +1607,7 @@ function nextUid(prefix) {
     return prefix + '_' + _uidCounter + '_' + Date.now().toString(36);
 }
 
-function renderItemRow(it, isChannel, accId) {
+function renderItemRow(it, isChannel, accId, groupName) {
     const name = it.name || it.title || (isChannel ? `渠道 ${it.id || ''}` : `令牌 ${it.id || ''}`);
     let metas = [];
     if (it.type) metas.push(`<span>类型：<code>${escapeHtml(String(it.type))}</code></span>`);
@@ -1530,17 +1641,27 @@ function renderItemRow(it, isChannel, accId) {
     let actions = '';
     if (!isChannel && it.key) {
         const copyUid = nextUid('cp');
+        const selId = JSON.stringify(String(it.id || ''));
+        const selKey = JSON.stringify(String(it.key));
+        const selName = JSON.stringify(String(name));
+        const tokData = JSON.stringify({ id: String(it.id || ''), key: String(it.key), name: String(name), title: String(it.title || '') });
+        const selBtn = `<button class="btn btn-sm" data-token-select="1"
+            data-token-id="${escapeHtml(String(it.id || ''))}"
+            data-token-key="${escapeHtml(String(it.key))}"
+            style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
+            onclick='selectToken(${JSON.stringify(accId)}, ${JSON.stringify(groupName || "")}, ${tokData})'>✨ 选用此Key</button>`;
         actions = `
-        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;">
-            <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
-                    onclick='copyText(${JSON.stringify(String(it.key))}, ${JSON.stringify(copyUid)})'>📋 复制Key</button>
-            <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">点此复制</span>
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;flex-wrap:wrap;justify-content:flex-end;">
+            <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;"
+                    onclick='copyText(${selKey}, ${JSON.stringify(copyUid)})'>📋 复制Key</button>
+            ${selBtn}
+            <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">复制</span>
         </div>`;
     } else if (isChannel && it.base_url) {
         const copyUid = nextUid('cp');
         actions = `
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;">
-            <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
+            <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;"
                     onclick='copyText(${JSON.stringify(String(it.base_url))}, ${JSON.stringify(copyUid)})'>📋 复制地址</button>
             <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">复制</span>
         </div>`;

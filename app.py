@@ -116,6 +116,10 @@ _POOL_ACCOUNTS_DDL = """
         groups_updated_at TEXT,
         remark TEXT,
         status TEXT DEFAULT 'active',
+        selected_group TEXT,
+        selected_token_id TEXT,
+        selected_token_name TEXT,
+        selected_token_key_encrypted TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
@@ -165,6 +169,17 @@ def _init_db():
             conn.execute("ALTER TABLE accounts ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
         except Exception:
             pass  # 列已存在
+        # 兼容旧 pool_accounts：补充新增字段
+        for col_sql in [
+            "ALTER TABLE pool_accounts ADD COLUMN selected_group TEXT",
+            "ALTER TABLE pool_accounts ADD COLUMN selected_token_id TEXT",
+            "ALTER TABLE pool_accounts ADD COLUMN selected_token_name TEXT",
+            "ALTER TABLE pool_accounts ADD COLUMN selected_token_key_encrypted TEXT",
+        ]:
+            try:
+                conn.execute(col_sql)
+            except Exception:
+                pass  # 列已存在
         conn.commit()
     finally:
         conn.close()
@@ -1360,6 +1375,11 @@ def _load_pool_accounts() -> list:
         rows = conn.execute("SELECT * FROM pool_accounts ORDER BY created_at DESC").fetchall()
         result = []
         for row in rows:
+            sel_key_enc = None
+            try:
+                sel_key_enc = row["selected_token_key_encrypted"]
+            except (KeyError, IndexError):
+                sel_key_enc = None
             result.append({
                 "id": row["id"],
                 "pool_type": row["pool_type"],
@@ -1374,6 +1394,10 @@ def _load_pool_accounts() -> list:
                 "groups_updated_at": row["groups_updated_at"],
                 "remark": row["remark"],
                 "status": row["status"],
+                "selected_group": row["selected_group"] if "selected_group" in row.keys() else None,
+                "selected_token_id": row["selected_token_id"] if "selected_token_id" in row.keys() else None,
+                "selected_token_name": row["selected_token_name"] if "selected_token_name" in row.keys() else None,
+                "selected_token_key": _decrypt(sel_key_enc) if sel_key_enc else None,
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
             })
@@ -1390,6 +1414,12 @@ def _find_pool_account(pool_id: str) -> dict | None:
         row = conn.execute("SELECT * FROM pool_accounts WHERE id = ?", (pool_id,)).fetchone()
         if row is None:
             return None
+        sel_key_enc = None
+        try:
+            sel_key_enc = row["selected_token_key_encrypted"]
+        except (KeyError, IndexError):
+            sel_key_enc = None
+        cols = set(row.keys())
         return {
             "id": row["id"],
             "pool_type": row["pool_type"],
@@ -1404,6 +1434,10 @@ def _find_pool_account(pool_id: str) -> dict | None:
             "groups_updated_at": row["groups_updated_at"],
             "remark": row["remark"],
             "status": row["status"],
+            "selected_group": row["selected_group"] if "selected_group" in cols else None,
+            "selected_token_id": row["selected_token_id"] if "selected_token_id" in cols else None,
+            "selected_token_name": row["selected_token_name"] if "selected_token_name" in cols else None,
+            "selected_token_key": _decrypt(sel_key_enc) if sel_key_enc else None,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
@@ -1418,11 +1452,14 @@ def _upsert_pool_account(acc: dict):
     try:
         _ensure_pool_table(conn)
         existing = conn.execute("SELECT id FROM pool_accounts WHERE id = ?", (acc["id"],)).fetchone()
+        sel_key_enc = _encrypt(acc["selected_token_key"]) if acc.get("selected_token_key") else None
         if existing:
             conn.execute(
                 """UPDATE pool_accounts SET pool_type=?, name=?, base_url=?, username=?,
                    password_encrypted=?, access_token_encrypted=?, balance=?, balance_updated_at=?,
-                   groups_json=?, groups_updated_at=?, remark=?, status=?, updated_at=? WHERE id=?""",
+                   groups_json=?, groups_updated_at=?, remark=?, status=?,
+                   selected_group=?, selected_token_id=?, selected_token_name=?, selected_token_key_encrypted=?,
+                   updated_at=? WHERE id=?""",
                 (
                     acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
                     _encrypt(acc["password"]),
@@ -1430,15 +1467,22 @@ def _upsert_pool_account(acc: dict):
                     acc.get("balance"), acc.get("balance_updated_at"),
                     json.dumps(acc.get("groups", []), ensure_ascii=False),
                     acc.get("groups_updated_at"),
-                    acc.get("remark"), acc.get("status", "active"), now, acc["id"]
+                    acc.get("remark"), acc.get("status", "active"),
+                    acc.get("selected_group"),
+                    acc.get("selected_token_id"),
+                    acc.get("selected_token_name"),
+                    sel_key_enc,
+                    now, acc["id"]
                 )
             )
         else:
             conn.execute(
                 """INSERT INTO pool_accounts (id, pool_type, name, base_url, username,
                    password_encrypted, access_token_encrypted, balance, balance_updated_at,
-                   groups_json, groups_updated_at, remark, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   groups_json, groups_updated_at, remark, status,
+                   selected_group, selected_token_id, selected_token_name, selected_token_key_encrypted,
+                   created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     acc["id"], acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
                     _encrypt(acc["password"]),
@@ -1446,7 +1490,12 @@ def _upsert_pool_account(acc: dict):
                     acc.get("balance"), acc.get("balance_updated_at"),
                     json.dumps(acc.get("groups", []), ensure_ascii=False),
                     acc.get("groups_updated_at"),
-                    acc.get("remark"), acc.get("status", "active"), now, now
+                    acc.get("remark"), acc.get("status", "active"),
+                    acc.get("selected_group"),
+                    acc.get("selected_token_id"),
+                    acc.get("selected_token_name"),
+                    sel_key_enc,
+                    now, now
                 )
             )
         conn.commit()
@@ -1484,6 +1533,9 @@ def _update_pool_field(pool_id: str, **fields):
             elif k == "groups":
                 sets.append("groups_json = ?")
                 params.append(json.dumps(v, ensure_ascii=False))
+            elif k == "selected_token_key":
+                sets.append("selected_token_key_encrypted = ?")
+                params.append(_encrypt(v) if v else None)
             else:
                 sets.append(f"{k} = ?")
                 params.append(v)
@@ -2046,7 +2098,70 @@ def api_pool_groups_get(pool_id):
         "ok": True,
         "groups": acc.get("groups") or [],
         "groups_updated_at": acc.get("groups_updated_at"),
+        "selected_group": acc.get("selected_group"),
+        "selected_token_id": acc.get("selected_token_id"),
+        "selected_token_name": acc.get("selected_token_name"),
+        "selected_token_key": acc.get("selected_token_key"),
     }
+
+
+@app.route("/api/pool/accounts/<pool_id>/select-token", methods=["POST"])
+def api_pool_select_token(pool_id):
+    """选择某个分组下的某个密钥作为当前账号的主 Key"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    try:
+        data = request.get_json(silent=True) or {}
+        group_name = data.get("group_name") or ""
+        token_id = data.get("token_id") or ""
+        token_name = data.get("token_name") or ""
+        token_key = data.get("token_key") or ""
+
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
+
+        # 校验 token_key 非空
+        if not token_key:
+            return {"ok": False, "message": "密钥不能为空"}
+
+        _update_pool_field(
+            pool_id,
+            selected_group=group_name or None,
+            selected_token_id=token_id or None,
+            selected_token_name=token_name or None,
+            selected_token_key=token_key,
+        )
+        return {
+            "ok": True,
+            "message": f"已选用分组「{group_name}」→ 密钥「{token_name}」",
+            "selected_group": group_name,
+            "selected_token_name": token_name,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
+
+
+@app.route("/api/pool/accounts/<pool_id>/clear-selection", methods=["POST"])
+def api_pool_clear_selection(pool_id):
+    """清除当前账号的选用密钥"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    try:
+        _update_pool_field(
+            pool_id,
+            selected_group=None,
+            selected_token_id=None,
+            selected_token_name=None,
+            selected_token_key=None,
+        )
+        return {"ok": True, "message": "已清除选用密钥"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/refresh-all", methods=["POST"])
