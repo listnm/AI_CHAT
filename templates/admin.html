@@ -644,13 +644,14 @@
         .conv-search input {
             width: 100%; padding: 9px 14px 9px 34px;
             border: 1px solid var(--border); border-radius: 10px;
-            background: #fff; font-size: 13px; font-family: inherit; color: var(--text);
+            background: var(--bg-secondary); font-size: 13px; font-family: inherit; color: var(--text);
             transition: all .18s ease;
         }
         .conv-search input:focus {
-            outline: none; border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+            outline: none; border-color: var(--border-glow);
+            box-shadow: 0 0 0 3px var(--primary-light);
         }
+        .conv-search input::placeholder { color: var(--text-muted); }
         .conv-search-icon {
             position: absolute; left: 11px; top: 50%;
             transform: translateY(-50%); color: #9ca3af; font-size: 13px;
@@ -660,9 +661,10 @@
         }
         .conv-empty-icon {
             width: 68px; height: 68px; border-radius: 18px;
-            background: linear-gradient(135deg,#eef2ff,#e0e7ff);
+            background: var(--primary-light);
             display: flex; align-items: center; justify-content: center;
             font-size: 30px; margin: 0 auto 14px;
+            border: 1px solid var(--border-glow);
         }
         .conv-empty-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
         .conv-empty-sub { font-size: 12.5px; line-height: 1.6; }
@@ -676,25 +678,26 @@
         .conv-table th {
             padding: 12px 16px;
             text-align: left;
-            font-size: 11.5px;
+            font-size: 11px;
             font-weight: 700;
-            color: var(--text-secondary);
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: var(--border-light);
+            letter-spacing: .1em;
+            background: var(--bg-secondary);
             border-bottom: 2px solid var(--border);
+            font-family: var(--font-mono);
         }
         .conv-table th:first-child { border-top-left-radius: 10px; }
         .conv-table th:last-child { border-top-right-radius: 10px; }
         .conv-table td {
             padding: 12px 16px;
-            border-bottom: 1px solid var(--border-light);
+            border-bottom: 1px solid var(--border);
             color: var(--text-secondary);
             font-size: 13px;
             vertical-align: top;
         }
         .conv-table tbody tr:hover {
-            background: #fafbfc;
+            background: var(--bg-hover);
         }
         .conv-row-main {
             display: flex; align-items: flex-start; gap: 10px;
@@ -747,12 +750,12 @@
             white-space: nowrap;
         }
         .conv-btn.view { color: var(--primary); background: var(--primary-light); }
-        .conv-btn.view:hover { background: #e0e7ff; }
+        .conv-btn.view:hover { background: var(--bg-hover); box-shadow: 0 0 10px var(--accent-glow); }
         .conv-btn.del { color: var(--danger); background: var(--danger-light); }
-        .conv-btn.del:hover { background: #fee2e2; }
+        .conv-btn.del:hover { background: rgba(239, 68, 68, 0.25); }
 
         /* 展开详情行 */
-        .detail-row td { padding: 0; background: #fafbff; }
+        .detail-row td { padding: 0; background: var(--bg-secondary); }
         .detail-wrap { padding: 14px 24px 20px; }
         .detail-title-bar {
             display: flex; align-items: center; justify-content: space-between;
@@ -765,9 +768,9 @@
         }
         .detail-close {
             border: none; background: transparent; cursor: pointer;
-            font-size: 18px; color: #9ca3af; padding: 2px 6px; border-radius: 6px;
+            font-size: 18px; color: var(--text-muted); padding: 2px 6px; border-radius: 6px;
         }
-        .detail-close:hover { background: #e5e7eb; color: var(--text); }
+        .detail-close:hover { background: var(--bg-hover); color: var(--text); }
         .msg-list { display: flex; flex-direction: column; gap: 10px; }
         .msg-item { display: flex; gap: 8px; }
         .msg-item.user { flex-direction: row-reverse; }
@@ -776,19 +779,20 @@
             display: flex; align-items: center; justify-content: center;
             font-size: 13px; color: #fff;
         }
-        .msg-item.user .msg-av { background: linear-gradient(135deg,#6366f1,#8b5cf6); }
-        .msg-item.assistant .msg-av { background: linear-gradient(135deg,#10b981,#059669); }
+        .msg-item.user .msg-av { background: linear-gradient(135deg, #2dd4a8, #14b8a6); }
+        .msg-item.assistant .msg-av { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
         .msg-bubble {
             max-width: 82%; padding: 10px 13px; border-radius: 12px;
             font-size: 13px; line-height: 1.65; color: var(--text);
             white-space: pre-wrap; word-break: break-word;
         }
         .msg-item.user .msg-bubble {
-            background: linear-gradient(135deg,#6366f1,#8b5cf6); color: #fff;
+            background: linear-gradient(135deg, #2dd4a8, #14b8a6); color: #fff;
             border-bottom-right-radius: 4px;
+            box-shadow: 0 0 15px var(--accent-glow);
         }
         .msg-item.assistant .msg-bubble {
-            background: #fff; border: 1px solid var(--border-light);
+            background: var(--bg-card); border: 1px solid var(--border);
             border-bottom-left-radius: 4px;
         }
 
