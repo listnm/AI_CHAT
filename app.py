@@ -1172,10 +1172,11 @@ def proxy_chat_completions():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    # 透传客户端请求的所有参数（max_tokens/top_p/tools/response_format 等），
-    # 只覆盖我们管理的字段。客户端未传 max_tokens 时不设默认值，由上游决定，
-    # 避免强制 4096 截断长回复。
-    _reserved = {"account", "model", "messages", "stream"}
+    # 透传客户端请求的参数（top_p/tools/response_format/frequency_penalty 等），
+    # 但强制丢弃 max_tokens。原因：Trae/Cursor 等客户端默认会传 max_tokens=4096
+    # 之类的小值，透传到上游后回复被截断在约 2000 中文字。丢弃后由上游模型按
+    # 自身上限输出（如 GPT-4o 16K、Claude 8K）。
+    _reserved = {"account", "model", "messages", "stream", "max_tokens"}
     payload = {k: v for k, v in data.items() if k not in _reserved}
     payload["model"] = effective_model
     payload["messages"] = messages
