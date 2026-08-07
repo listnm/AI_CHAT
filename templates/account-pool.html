@@ -991,11 +991,19 @@ async function req(url, method = 'GET', body = null) {
     }
     const text = await r.text();
     // 尝试解析 JSON
-    let data;
+    let data = null;
+    let parseOk = false;
     try {
         data = JSON.parse(text);
+        parseOk = true;
     } catch (e) {
-        // 非 JSON 响应
+        parseOk = false;
+    }
+    // HTTP 错误状态码，优先从 JSON 中提取 message
+    if (!r.ok) {
+        if (parseOk && data && data.message) {
+            throw new Error(data.message);
+        }
         if (r.status === 404) {
             throw new Error('接口不存在（404）——服务端可能未更新，请重启服务');
         }
@@ -1003,15 +1011,22 @@ async function req(url, method = 'GET', body = null) {
             throw new Error('登录已过期，请重新登录管理员');
         }
         if (r.status >= 500) {
-            throw new Error('服务器内部错误（' + r.status + '），请查看服务端日志');
+            // 尝试从 HTML 错误页里提取简短信息
+            let extra = '';
+            if (!parseOk && text) {
+                const m = text.match(/<pre>([\s\S]*?)<\/pre>/);
+                if (m) extra = '：' + m[1].replace(/<[^>]+>/g, '').trim().slice(0, 200);
+                else if (text.length < 300) extra = '：' + text;
+            }
+            throw new Error('服务器内部错误（' + r.status + '）' + extra);
         }
         throw new Error('服务端返回了非 JSON 响应（HTTP ' + r.status + '）：' + text.slice(0, 120));
     }
-    // HTTP 错误状态码但返回了 JSON：提取 message
-    if (!r.ok && data && data.message) {
+    // 成功但返回了 JSON 错误（ok=false）
+    if (parseOk && data && data.ok === false && data.message) {
         throw new Error(data.message);
     }
-    return data;
+    return parseOk ? data : text;
 }
 
 function fmtTime(iso) {
@@ -1084,7 +1099,8 @@ async function addAccount() {
             showMsg('listMsg', r.message || '添加失败', 'fail');
         }
     } catch (e) {
-        showMsg('listMsg', '请求异常：' + e, 'fail');
+        const msg = e && e.message ? e.message : String(e);
+        showMsg('listMsg', '请求异常：' + msg, 'fail');
     } finally {
         btn.disabled = false;
         btn.innerHTML = orig;
@@ -1103,7 +1119,8 @@ async function loadList() {
             renderList();
         }
     } catch (e) {
-        showMsg('listMsg', '加载失败：' + e, 'fail');
+        const msg = e && e.message ? e.message : String(e);
+        showMsg('listMsg', '加载失败：' + msg, 'fail');
     }
 }
 

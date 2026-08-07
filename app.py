@@ -100,52 +100,74 @@ def _get_db():
     return _DBConnection()
 
 
+# 账号池建表 SQL（独立抽取，便于运行时兜底建表）
+_POOL_ACCOUNTS_DDL = """
+    CREATE TABLE IF NOT EXISTS pool_accounts (
+        id TEXT PRIMARY KEY,
+        pool_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        username TEXT NOT NULL,
+        password_encrypted TEXT NOT NULL,
+        access_token_encrypted TEXT,
+        balance REAL,
+        balance_updated_at TEXT,
+        groups_json TEXT DEFAULT '[]',
+        groups_updated_at TEXT,
+        remark TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+"""
+
+_accounts_dll = """
+    CREATE TABLE IF NOT EXISTS accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        api_url TEXT NOT NULL,
+        api_key_encrypted TEXT NOT NULL,
+        model TEXT NOT NULL,
+        latency_ms INTEGER,
+        last_speed_test TEXT,
+        is_default INTEGER NOT NULL DEFAULT 0
+    );
+"""
+
+_conversations_dll = """
+    CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '新对话',
+        messages TEXT NOT NULL DEFAULT '[]',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+"""
+
+
+def _ensure_pool_table(conn):
+    """确保 pool_accounts 表存在（运行时兜底建表，防止 PG 环境遗漏）"""
+    try:
+        conn.execute(_POOL_ACCOUNTS_DDL)
+        conn.commit()
+    except Exception:
+        # 忽略"表已存在"类错误；其它错误由上层处理
+        pass
+
+
 def _init_db():
     """初始化数据库表结构"""
     conn = _get_db()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS accounts (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            api_url TEXT NOT NULL,
-            api_key_encrypted TEXT NOT NULL,
-            model TEXT NOT NULL,
-            latency_ms INTEGER,
-            last_speed_test TEXT,
-            is_default INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE TABLE IF NOT EXISTS conversations (
-            id TEXT PRIMARY KEY,
-            title TEXT NOT NULL DEFAULT '新对话',
-            messages TEXT NOT NULL DEFAULT '[]',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS pool_accounts (
-            id TEXT PRIMARY KEY,
-            pool_type TEXT NOT NULL,
-            name TEXT NOT NULL,
-            base_url TEXT NOT NULL,
-            username TEXT NOT NULL,
-            password_encrypted TEXT NOT NULL,
-            access_token_encrypted TEXT,
-            balance REAL,
-            balance_updated_at TEXT,
-            groups_json TEXT DEFAULT '[]',
-            groups_updated_at TEXT,
-            remark TEXT,
-            status TEXT DEFAULT 'active',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-    """)
-    # 兼容旧表：添加 is_default 列（如果不存在）
     try:
-        conn.execute("ALTER TABLE accounts ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
-    except Exception:
-        pass  # 列已存在
-    conn.commit()
-    conn.close()
+        conn.executescript(_accounts_dll + _conversations_dll + _POOL_ACCOUNTS_DDL)
+        # 兼容旧表：添加 is_default 列（如果不存在）
+        try:
+            conn.execute("ALTER TABLE accounts ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # 列已存在
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ================================================================
@@ -1334,6 +1356,7 @@ def _load_pool_accounts() -> list:
     """从数据库加载所有账号池账号"""
     conn = _get_db()
     try:
+        _ensure_pool_table(conn)
         rows = conn.execute("SELECT * FROM pool_accounts ORDER BY created_at DESC").fetchall()
         result = []
         for row in rows:
@@ -1363,6 +1386,7 @@ def _find_pool_account(pool_id: str) -> dict | None:
     """按 ID 查找账号池账号"""
     conn = _get_db()
     try:
+        _ensure_pool_table(conn)
         row = conn.execute("SELECT * FROM pool_accounts WHERE id = ?", (pool_id,)).fetchone()
         if row is None:
             return None
@@ -1392,6 +1416,7 @@ def _upsert_pool_account(acc: dict):
     conn = _get_db()
     now = datetime.now().isoformat()
     try:
+        _ensure_pool_table(conn)
         existing = conn.execute("SELECT id FROM pool_accounts WHERE id = ?", (acc["id"],)).fetchone()
         if existing:
             conn.execute(
@@ -1433,6 +1458,7 @@ def _delete_pool_account(pool_id: str) -> bool:
     """删除账号池账号"""
     conn = _get_db()
     try:
+        _ensure_pool_table(conn)
         cur = conn.execute("DELETE FROM pool_accounts WHERE id = ?", (pool_id,))
         conn.commit()
         return cur.rowcount > 0
@@ -1445,6 +1471,7 @@ def _update_pool_field(pool_id: str, **fields):
     conn = _get_db()
     now = datetime.now().isoformat()
     try:
+        _ensure_pool_table(conn)
         sets = []
         params = []
         for k, v in fields.items():
