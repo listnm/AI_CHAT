@@ -1152,8 +1152,6 @@ def proxy_chat_completions():
     is_auto = model == "auto"
     messages = data.get("messages", [])
     stream = data.get("stream", False)
-    temperature = data.get("temperature", 0.7)
-    max_tokens = data.get("max_tokens", 4096)
 
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
@@ -1174,13 +1172,14 @@ def proxy_chat_completions():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": effective_model,
-        "messages": messages,
-        "stream": stream,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+    # 透传客户端请求的所有参数（max_tokens/top_p/tools/response_format 等），
+    # 只覆盖我们管理的字段。客户端未传 max_tokens 时不设默认值，由上游决定，
+    # 避免强制 4096 截断长回复。
+    _reserved = {"account", "model", "messages", "stream"}
+    payload = {k: v for k, v in data.items() if k not in _reserved}
+    payload["model"] = effective_model
+    payload["messages"] = messages
+    payload["stream"] = stream
 
     try:
         upstream = requests.post(
