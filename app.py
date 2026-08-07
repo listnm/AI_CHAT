@@ -1482,7 +1482,7 @@ def _upsert_pool_account(acc: dict):
                    groups_json, groups_updated_at, remark, status,
                    selected_group, selected_token_id, selected_token_name, selected_token_key_encrypted,
                    created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     acc["id"], acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
                     _encrypt(acc["password"]),
@@ -1690,9 +1690,16 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 data = resp.json()
                 arr = None
                 if isinstance(data, dict):
-                    arr = data.get("data") or data.get("items") or data.get("list")
-                    if not isinstance(arr, list) and isinstance(data.get("data"), dict):
-                        arr = data["data"].get("items") or data["data"].get("list")
+                    # aliuapi/sub2api 格式: {"code":0,"data":{"items":[...]}}
+                    d = data.get("data")
+                    if isinstance(d, dict):
+                        arr = d.get("items") or d.get("list") or d.get("tokens") or d.get("keys")
+                    elif isinstance(d, list):
+                        arr = d
+                    if not arr:
+                        arr = data.get("items") or data.get("list") or data.get("tokens") or data.get("keys")
+                elif isinstance(data, list):
+                    arr = data
                 if isinstance(arr, list):
                     token_list = arr
                     break
@@ -1721,7 +1728,10 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 for k in ("group_name", "group_id", "channel", "tag", "category", "type"):
                     v = t.get(k)
                     if v is not None and v != "":
-                        group_key = str(v)
+                        if k == "group_id" and isinstance(v, (int, float)):
+                            group_key = f"分组 #{v}"
+                        else:
+                            group_key = str(v)
                         break
             if not group_key:
                 group_key = "默认分组"
@@ -2088,21 +2098,63 @@ def api_pool_groups(pool_id):
 
 @app.route("/api/pool/accounts/<pool_id>/groups", methods=["GET"])
 def api_pool_groups_get(pool_id):
-    """获取已缓存的分组详情（不触发远程查询）"""
+    """获取分组详情：如果本地无缓存或缓存超过 5 分钟，自动登录并拉取远程分组"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    acc = _find_pool_account(pool_id)
-    if not acc:
-        return {"ok": False, "message": "账号不存在"}
-    return {
-        "ok": True,
-        "groups": acc.get("groups") or [],
-        "groups_updated_at": acc.get("groups_updated_at"),
-        "selected_group": acc.get("selected_group"),
-        "selected_token_id": acc.get("selected_token_id"),
-        "selected_token_name": acc.get("selected_token_name"),
-        "selected_token_key": acc.get("selected_token_key"),
-    }
+    try:
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
+
+        groups = acc.get("groups") or []
+        updated_at = acc.get("groups_updated_at")
+        needs_refresh = False
+
+        # 判断是否需要重新拉取：无缓存 / 缓存超过 5 分钟 / 显式 force=1
+        force = request.args.get("force", "").strip() in ("1", "true", "yes")
+        if force or not groups:
+            needs_refresh = True
+        elif updated_at:
+            try:
+                from datetime import datetime as _dt
+                last = _dt.fromisoformat(updated_at)
+                if (_dt.now() - last).total_seconds() > 300:
+                    needs_refresh = True
+            except Exception:
+                needs_refresh = True
+
+        if needs_refresh:
+            # 自动登录获取 token
+            token = acc.get("access_token")
+            if not token:
+                token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+                if not token:
+                    return {"ok": False, "message": f"登录失败：{err}"}
+                _update_pool_field(pool_id, access_token=token)
+
+            # 拉取分组
+            groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+            if groups is None:
+                return {"ok": False, "message": f"分组查询失败：{g_err}"}
+            now = datetime.now().isoformat()
+            _update_pool_field(pool_id, groups=groups, groups_updated_at=now)
+            updated_at = now
+
+        # 重新读取最新数据（包含 selected 等字段）
+        acc = _find_pool_account(pool_id)
+        return {
+            "ok": True,
+            "groups": groups,
+            "groups_updated_at": updated_at,
+            "selected_group": acc.get("selected_group") if acc else None,
+            "selected_token_id": acc.get("selected_token_id") if acc else None,
+            "selected_token_name": acc.get("selected_token_name") if acc else None,
+            "selected_token_key": acc.get("selected_token_key") if acc else None,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>/select-token", methods=["POST"])

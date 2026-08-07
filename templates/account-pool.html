@@ -829,7 +829,7 @@
             <div class="card-header">
                 <div class="card-title"><span class="card-title-icon">➕</span>添加账号</div>
                 <div style="font-size:12px;color:var(--text-muted);font-weight:400;">
-                    添加后按顺序使用：🔐 登录 → 💰 余额 / 🗂️ 分组 → 👁 详情里复制 Key
+                    添加后按顺序使用：🔐 登录 → 💰 余额 / 👁 分组详情里复制或选用 Key
                 </div>
             </div>
             <div class="add-section" id="addSection">
@@ -1227,8 +1227,7 @@ function renderList() {
                 <div class="row-actions">
                     <button class="btn btn-success btn-sm" title="使用账号密码登录远程平台，获取Token" onclick="loginAccount('${a.id}', this)">🔐 Token</button>
                     <button class="btn btn-info btn-sm" title="查询剩余余额/额度" onclick="refreshBalance('${a.id}', this)">💰 余额</button>
-                    <button class="btn btn-primary btn-sm" title="查询密钥/渠道分组并缓存" onclick="refreshGroups('${a.id}', this)">🗂️ 分组</button>
-                    <button class="btn btn-outline btn-sm" title="查看/选择/复制分组里的密钥" onclick="showGroups('${a.id}')">👁 详情</button>
+                    <button class="btn btn-primary btn-sm" title="打开分组详情（自动拉取分组）" onclick="showGroups('${a.id}', this)">👁 分组详情</button>
                     <button class="btn btn-danger btn-sm" title="删除账号" onclick="deleteAccount('${a.id}')">🗑️</button>
                 </div>
             </td>
@@ -1298,8 +1297,7 @@ function renderList() {
             <div class="pool-card-actions">
                 <button class="btn btn-success btn-sm" title="使用账号密码登录远程平台，获取 Token（后续查询余额/分组依赖此 Token）" onclick="loginAccount('${a.id}', this)">🔐 登录获取Token</button>
                 <button class="btn btn-info btn-sm" title="查询当前账号的剩余余额 / 可用额度" onclick="refreshBalance('${a.id}', this)">💰 查询余额</button>
-                <button class="btn btn-primary btn-sm" title="查询该账号下的密钥分组 & 渠道分组，并缓存到本地" onclick="refreshGroups('${a.id}', this)">🗂️ 查询分组</button>
-                <button class="btn btn-outline btn-sm" title="打开分组详情弹窗，查看 / 选择 / 复制分组里的密钥" onclick="showGroups('${a.id}')">👁 分组详情</button>
+                <button class="btn btn-primary btn-sm" title="打开分组详情弹窗（自动登录并拉取分组，可查看/复制/选用密钥）" onclick="showGroups('${a.id}', this)">👁 分组详情</button>
                 <button class="btn btn-danger btn-sm" title="从账号池中删除此账号（不会影响远程平台）" onclick="deleteAccount('${a.id}')">🗑️ 删除</button>
             </div>
         </div>`;
@@ -1521,17 +1519,31 @@ function refreshModalSelection(accId) {
 /* ============================================================
  * 分组详情弹窗
  * ============================================================ */
-async function showGroups(id) {
+async function showGroups(id, btn) {
     const acc = state.accounts.find(a => a.id === id);
     if (!acc) return;
 
+    // 按钮加载状态
+    let origBtn = '';
+    if (btn) {
+        origBtn = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> 加载中';
+    }
+
     document.getElementById('modalTitle').textContent = `${acc.name} - 密钥/渠道分组详情`;
     const body = document.getElementById('modalBody');
-    body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted);"><span class="spinner" style="border-color:var(--primary-light);border-top-color:var(--primary);width:22px;height:22px;"></span></p>';
+    body.innerHTML = `
+        <div style="text-align:center;padding:30px;color:var(--text-muted);">
+            <span class="spinner" style="border-color:var(--primary-light);border-top-color:var(--primary);width:28px;height:28px;"></span>
+            <p style="margin-top:12px;font-size:13px;">正在自动登录并拉取分组数据…</p>
+            <p style="margin-top:4px;font-size:11px;color:var(--text-muted);">首次加载需登录远程平台，请稍候</p>
+        </div>`;
     document.getElementById('groupsModal').classList.add('show');
 
     try {
-        const r = await req(`${API}/accounts/${id}/groups`, 'GET');
+        // GET /groups 现在会自动登录+拉取，force=1 强制刷新
+        const r = await req(`${API}/accounts/${id}/groups?force=1`, 'GET');
         if (!r.ok) throw new Error(r.message || '查询失败');
         const groups = r.groups || [];
         if (!groups.length) {
@@ -1539,24 +1551,34 @@ async function showGroups(id) {
                 <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
                     <span style="font-size:40px;display:block;margin-bottom:12px;">📭</span>
                     <p style="font-size:14px;">暂无分组数据</p>
-                    <p style="font-size:12px;margin-top:4px;">请先点击卡片上的「🗂️ 查询分组」按钮从远程平台拉取</p>
+                    <p style="font-size:12px;margin-top:4px;">该账号下可能还没有创建密钥</p>
                 </div>`;
             return;
         }
+        const updatedStr = r.groups_updated_at ? fmtTime(r.groups_updated_at) : '';
         const header = `
             <div style="padding:10px 14px;margin-bottom:14px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border-light);font-size:12px;line-height:1.8;">
-                <div style="font-weight:600;margin-bottom:4px;">💡 各按钮含义</div>
-                <div>• 🔐 <b>登录获取Token</b>：用账号密码登录 sub2api/newapi，拿到访问令牌（后续所有查询都需要）</div>
-                <div>• 💰 <b>查询余额</b>：查询当前账号剩余余额 / 可用额度</div>
-                <div>• 🗂️ <b>查询分组</b>：从远程平台拉取该账号下的密钥分组和渠道分组</div>
-                <div>• 👁 <b>分组详情</b>：打开本弹窗，可查看 / 复制具体 Key 或渠道地址</div>
-                <div>• 🗑️ <b>删除</b>：从账号池删除（不会影响远程平台账号本身）</div>
-                <div style="margin-top:6px;font-weight:600;">👉 下方列表中可直接「📋 复制Key」或「✨ 选用此Key」，选用后会保存在卡片头部，可随时切换或复制使用，无需再登对方网站</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <span style="font-weight:600;">📡 已从远程拉取 ${groups.length} 个分组</span>
+                    ${updatedStr ? `<span style="color:var(--text-muted);font-size:11px;">更新于 ${updatedStr}</span>` : ''}
+                </div>
+                <div>• 点击每条密钥右侧的 <b>「📋 复制Key」</b> 直接复制完整密钥到剪贴板</div>
+                <div>• 点击 <b>「✨ 选用此Key」</b> 将该密钥设为当前账号的主 Key，保存在卡片头部</div>
+                <div>• 随时可切换到其他分组的密钥，无需登录对方网站</div>
             </div>`;
         body.innerHTML = header + groups.map(g => renderGroupBlock(g, id)).join('');
         setTimeout(() => refreshModalSelection(id), 30);
     } catch (e) {
-        body.innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">加载失败：${e.message || e}</p>`;
+        body.innerHTML = `
+            <div style="text-align:center;padding:30px;">
+                <p style="color:var(--danger);font-size:14px;">❌ 加载失败：${e.message || e}</p>
+                <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="showGroups('${id}', this)">🔄 重试</button>
+            </div>`;
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origBtn;
+        }
     }
 }
 
