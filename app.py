@@ -121,6 +121,23 @@ def _init_db():
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS pool_accounts (
+            id TEXT PRIMARY KEY,
+            pool_type TEXT NOT NULL,
+            name TEXT NOT NULL,
+            base_url TEXT NOT NULL,
+            username TEXT NOT NULL,
+            password_encrypted TEXT NOT NULL,
+            access_token_encrypted TEXT,
+            balance REAL,
+            balance_updated_at TEXT,
+            groups_json TEXT DEFAULT '[]',
+            groups_updated_at TEXT,
+            remark TEXT,
+            status TEXT DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
     """)
     # 兼容旧表：添加 is_default 列（如果不存在）
     try:
@@ -1306,6 +1323,718 @@ def proxy_chat_completions():
             )
         except Exception as e:
             return {"error": {"message": f"Failed to parse upstream response: {str(e)}", "type": "parse_error"}, "ok": False}, 502
+
+
+# ================================================================
+#  Sub2API / NewAPI 账号池（SQLite 存储，密码加密）
+# ================================================================
+
+
+def _load_pool_accounts() -> list:
+    """从数据库加载所有账号池账号"""
+    conn = _get_db()
+    try:
+        rows = conn.execute("SELECT * FROM pool_accounts ORDER BY created_at DESC").fetchall()
+        result = []
+        for row in rows:
+            result.append({
+                "id": row["id"],
+                "pool_type": row["pool_type"],
+                "name": row["name"],
+                "base_url": row["base_url"],
+                "username": row["username"],
+                "password": _decrypt(row["password_encrypted"]),
+                "access_token": _decrypt(row["access_token_encrypted"]) if row["access_token_encrypted"] else None,
+                "balance": row["balance"],
+                "balance_updated_at": row["balance_updated_at"],
+                "groups": json.loads(row["groups_json"]) if row["groups_json"] else [],
+                "groups_updated_at": row["groups_updated_at"],
+                "remark": row["remark"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            })
+        return result
+    finally:
+        conn.close()
+
+
+def _find_pool_account(pool_id: str) -> dict | None:
+    """按 ID 查找账号池账号"""
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT * FROM pool_accounts WHERE id = ?", (pool_id,)).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "pool_type": row["pool_type"],
+            "name": row["name"],
+            "base_url": row["base_url"],
+            "username": row["username"],
+            "password": _decrypt(row["password_encrypted"]),
+            "access_token": _decrypt(row["access_token_encrypted"]) if row["access_token_encrypted"] else None,
+            "balance": row["balance"],
+            "balance_updated_at": row["balance_updated_at"],
+            "groups": json.loads(row["groups_json"]) if row["groups_json"] else [],
+            "groups_updated_at": row["groups_updated_at"],
+            "remark": row["remark"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+    finally:
+        conn.close()
+
+
+def _upsert_pool_account(acc: dict):
+    """新增或更新账号池账号"""
+    conn = _get_db()
+    now = datetime.now().isoformat()
+    try:
+        existing = conn.execute("SELECT id FROM pool_accounts WHERE id = ?", (acc["id"],)).fetchone()
+        if existing:
+            conn.execute(
+                """UPDATE pool_accounts SET pool_type=?, name=?, base_url=?, username=?,
+                   password_encrypted=?, access_token_encrypted=?, balance=?, balance_updated_at=?,
+                   groups_json=?, groups_updated_at=?, remark=?, status=?, updated_at=? WHERE id=?""",
+                (
+                    acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
+                    _encrypt(acc["password"]),
+                    _encrypt(acc["access_token"]) if acc.get("access_token") else None,
+                    acc.get("balance"), acc.get("balance_updated_at"),
+                    json.dumps(acc.get("groups", []), ensure_ascii=False),
+                    acc.get("groups_updated_at"),
+                    acc.get("remark"), acc.get("status", "active"), now, acc["id"]
+                )
+            )
+        else:
+            conn.execute(
+                """INSERT INTO pool_accounts (id, pool_type, name, base_url, username,
+                   password_encrypted, access_token_encrypted, balance, balance_updated_at,
+                   groups_json, groups_updated_at, remark, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    acc["id"], acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
+                    _encrypt(acc["password"]),
+                    _encrypt(acc["access_token"]) if acc.get("access_token") else None,
+                    acc.get("balance"), acc.get("balance_updated_at"),
+                    json.dumps(acc.get("groups", []), ensure_ascii=False),
+                    acc.get("groups_updated_at"),
+                    acc.get("remark"), acc.get("status", "active"), now, now
+                )
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _delete_pool_account(pool_id: str) -> bool:
+    """删除账号池账号"""
+    conn = _get_db()
+    try:
+        cur = conn.execute("DELETE FROM pool_accounts WHERE id = ?", (pool_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _update_pool_field(pool_id: str, **fields):
+    """部分更新账号池字段"""
+    conn = _get_db()
+    now = datetime.now().isoformat()
+    try:
+        sets = []
+        params = []
+        for k, v in fields.items():
+            if k == "password":
+                sets.append("password_encrypted = ?")
+                params.append(_encrypt(v))
+            elif k == "access_token":
+                sets.append("access_token_encrypted = ?")
+                params.append(_encrypt(v) if v else None)
+            elif k == "groups":
+                sets.append("groups_json = ?")
+                params.append(json.dumps(v, ensure_ascii=False))
+            else:
+                sets.append(f"{k} = ?")
+                params.append(v)
+        sets.append("updated_at = ?")
+        params.append(now)
+        params.append(pool_id)
+        sql = f"UPDATE pool_accounts SET {', '.join(sets)} WHERE id = ?"
+        conn.execute(sql, params)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ================================================================
+#  Sub2API / NewAPI 接口调用（登录、余额、密钥分组）
+# ================================================================
+
+
+def _normalize_base_url(url: str) -> str:
+    """规范化 base URL，去掉末尾斜杠"""
+    return url.rstrip("/")
+
+
+def _pool_login(pool_type: str, base_url: str, username: str, password: str) -> tuple[str | None, str]:
+    """
+    登录 sub2api / newapi 获取 access_token
+    返回 (token, error_msg)
+    """
+    base = _normalize_base_url(base_url)
+    # 尝试多种常见的登录端点
+    endpoints = [
+        f"{base}/api/user/login",
+        f"{base}/api/auth/login",
+        f"{base}/api/login",
+        f"{base}/user/login",
+    ]
+    last_error = ""
+    for url in endpoints:
+        try:
+            payload = {"username": username, "password": password}
+            resp = requests.post(url, json=payload, timeout=15)
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    # 兼容多种返回结构：{data:{token}} / {data:{access_token}} / {token} / {access_token}
+                    token = None
+                    if isinstance(data, dict):
+                        d = data.get("data", data)
+                        if isinstance(d, dict):
+                            token = d.get("token") or d.get("access_token") or d.get("Authorization")
+                        if not token:
+                            token = data.get("token") or data.get("access_token")
+                    if token and isinstance(token, str):
+                        # 去掉 Bearer 前缀（如果有）
+                        if token.lower().startswith("bearer "):
+                            token = token[7:]
+                        return token, ""
+                    last_error = f"登录成功但未解析到 token：响应={json.dumps(data)[:200]}"
+                except Exception as e:
+                    last_error = f"登录响应解析失败：{e}"
+            else:
+                last_error = f"HTTP {resp.status_code}：{resp.text[:150]}"
+        except requests.exceptions.ConnectionError:
+            last_error = "无法连接到服务器，请检查 API 地址或网络"
+        except requests.exceptions.Timeout:
+            last_error = "连接超时"
+        except Exception as e:
+            last_error = f"异常：{e}"
+    return None, last_error or "所有登录端点均未返回有效 token"
+
+
+def _pool_get_balance(pool_type: str, base_url: str, token: str) -> tuple[float | None, str]:
+    """
+    查询余额（sub2api / newapi）
+    返回 (balance_value, error_msg)；余额单位通常为 USD 或 CNY，按上游原样返回
+    """
+    base = _normalize_base_url(base_url)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    endpoints = [
+        f"{base}/api/user/self",
+        f"{base}/api/user/info",
+        f"{base}/api/me",
+        f"{base}/user/self",
+    ]
+    last_error = ""
+    for url in endpoints:
+        try:
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                try:
+                    data = resp.json()
+                    if isinstance(data, dict):
+                        d = data.get("data", data)
+                        if isinstance(d, dict):
+                            # 常见字段：balance / quota / credits / available / remaining
+                            for key in ("balance", "quota", "credits", "available", "remaining", "quota_remaining"):
+                                v = d.get(key)
+                                if isinstance(v, (int, float)):
+                                    return float(v), ""
+                                if isinstance(v, str) and v.replace(".", "", 1).isdigit():
+                                    return float(v), ""
+                            # 有些放在更深处
+                            for key in ("user", "info"):
+                                sub = d.get(key)
+                                if isinstance(sub, dict):
+                                    for k2 in ("balance", "quota", "credits", "available", "remaining"):
+                                        v = sub.get(k2)
+                                        if isinstance(v, (int, float)):
+                                            return float(v), ""
+                    last_error = f"未解析到余额字段：响应={json.dumps(data)[:300]}"
+                except Exception as e:
+                    last_error = f"响应解析失败：{e}"
+            else:
+                last_error = f"HTTP {resp.status_code}：{resp.text[:150]}"
+        except Exception as e:
+            last_error = f"异常：{e}"
+    return None, last_error or "未能从任何端点获取余额信息"
+
+
+def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | None, str]:
+    """
+    读取密钥/令牌分组（sub2api 的渠道分组、newapi 的令牌分组）
+    返回 (groups_list, error_msg)
+    """
+    base = _normalize_base_url(base_url)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    groups = []
+
+    # ==== 先尝试取令牌列表（sub2api/newapi 通用 /api/token 等） ====
+    token_endpoints = [
+        f"{base}/api/token",
+        f"{base}/api/tokens",
+        f"{base}/api/keys",
+        f"{base}/api/user/tokens",
+    ]
+    token_list = []
+    last_token_err = ""
+    for url in token_endpoints:
+        try:
+            resp = requests.get(url, headers=headers, timeout=15, params={"p": 1, "page_size": 500})
+            if resp.status_code == 200:
+                data = resp.json()
+                arr = None
+                if isinstance(data, dict):
+                    arr = data.get("data") or data.get("items") or data.get("list")
+                    if not isinstance(arr, list) and isinstance(data.get("data"), dict):
+                        arr = data["data"].get("items") or data["data"].get("list")
+                if isinstance(arr, list):
+                    token_list = arr
+                    break
+                last_token_err = f"令牌列表格式异常：{json.dumps(data)[:200]}"
+            else:
+                last_token_err = f"HTTP {resp.status_code}"
+        except Exception as e:
+            last_token_err = f"异常：{e}"
+
+    # 从令牌列表中提取分组信息
+    if token_list:
+        # 按 group / group_name / channel / tag 字段分组
+        group_map: dict = {}
+        for t in token_list:
+            if not isinstance(t, dict):
+                continue
+            group_key = None
+            for k in ("group", "group_name", "channel", "tag", "category", "type"):
+                v = t.get(k)
+                if v:
+                    group_key = str(v)
+                    break
+            if not group_key:
+                group_key = "默认分组"
+            if group_key not in group_map:
+                group_map[group_key] = {
+                    "name": group_key,
+                    "count": 0,
+                    "tokens": [],
+                }
+            entry = {
+                "id": t.get("id"),
+                "name": t.get("name") or t.get("remark") or t.get("title") or "",
+                "key_preview": (str(t.get("key") or t.get("token") or "")[:16] + "...") if (t.get("key") or t.get("token")) else "",
+                "status": t.get("status") or t.get("enabled") or "active",
+                "created_at": t.get("created_at") or t.get("createdTime") or "",
+                "expired_at": t.get("expired_at") or t.get("expireTime") or "",
+                "used_quota": t.get("used_quota") or t.get("used") or t.get("consume") or 0,
+                "remaining_quota": t.get("remaining_quota") or t.get("remaining") or t.get("quota") or 0,
+            }
+            group_map[group_key]["tokens"].append(entry)
+            group_map[group_key]["count"] += 1
+        groups = list(group_map.values())
+
+    # ==== 再尝试取上游/渠道分组（sub2api 特有的渠道/供应商分组） ====
+    channel_endpoints = [
+        f"{base}/api/channel",
+        f"{base}/api/channels",
+        f"{base}/api/provider",
+        f"{base}/api/providers",
+        f"{base}/api/upstream",
+    ]
+    channel_list = []
+    for url in channel_endpoints:
+        try:
+            resp = requests.get(url, headers=headers, timeout=15, params={"p": 1, "page_size": 500})
+            if resp.status_code == 200:
+                data = resp.json()
+                arr = None
+                if isinstance(data, dict):
+                    arr = data.get("data") or data.get("items") or data.get("list")
+                    if not isinstance(arr, list) and isinstance(data.get("data"), dict):
+                        arr = data["data"].get("items") or data["data"].get("list")
+                if isinstance(arr, list):
+                    channel_list = arr
+                    break
+        except Exception:
+            pass
+
+    if channel_list:
+        channel_group_map: dict = {}
+        for c in channel_list:
+            if not isinstance(c, dict):
+                continue
+            group_key = None
+            for k in ("type", "group", "category", "tag"):
+                v = c.get(k)
+                if v:
+                    group_key = str(v)
+                    break
+            if not group_key:
+                group_key = "默认渠道"
+            if group_key not in channel_group_map:
+                channel_group_map[group_key] = {
+                    "name": group_key,
+                    "count": 0,
+                    "channels": [],
+                }
+            entry = {
+                "id": c.get("id"),
+                "name": c.get("name") or c.get("remark") or c.get("title") or "",
+                "type": c.get("type") or c.get("category") or "",
+                "model": c.get("model") or c.get("models") or "",
+                "base_url": c.get("base_url") or c.get("api_base") or "",
+                "status": c.get("status") or c.get("enabled") or "active",
+                "priority": c.get("priority") or c.get("weight") or 0,
+            }
+            channel_group_map[group_key]["channels"].append(entry)
+            channel_group_map[group_key]["count"] += 1
+
+        # 把渠道分组合并到总 groups（如果存在渠道，则 keys 为"密钥分组"，channels 为"渠道分组"）
+        if groups:
+            # 已有令牌分组 → 渠道分组作为单独一类
+            groups.append({
+                "name": "上游渠道分组",
+                "count": len(channel_list),
+                "sub_groups": list(channel_group_map.values()),
+                "is_channel_group": True,
+            })
+        else:
+            # 没取到令牌分组 → 直接用渠道分组展示
+            groups = list(channel_group_map.values())
+            for g in groups:
+                g["is_channel_group"] = True
+
+    if not groups and not token_list and not channel_list:
+        return None, last_token_err or "未能获取到任何分组信息"
+
+    return groups, ""
+
+
+# ================================================================
+#  账号池页面路由
+# ================================================================
+
+
+@app.route("/acc", methods=["GET"])
+@app.route("/acc/", methods=["GET"])
+def account_pool_page():
+    """账号池管理页面（需要管理员登录）——入口 /acc，好记"""
+    from flask import session as flask_session
+    if not flask_session.get("admin_logged_in"):
+        # 未登录管理员 → 跳转到 admin 登录页
+        return render_template("admin.html", logged_in=False, error="请先登录管理员账号以访问账号池管理")
+    return render_template("account-pool.html")
+
+
+@app.route("/account-pool", methods=["GET"])
+@app.route("/account-pool/", methods=["GET"])
+def account_pool_redirect():
+    """旧入口兼容：永久跳转到新地址 /acc"""
+    from flask import redirect
+    return redirect("/acc", code=301)
+
+
+# ================================================================
+#  账号池 REST API
+# ================================================================
+
+
+def _require_admin():
+    """要求管理员权限"""
+    from flask import session as flask_session
+    return bool(flask_session.get("admin_logged_in"))
+
+
+@app.route("/api/pool/accounts", methods=["GET"])
+def api_pool_list():
+    """获取账号池列表（密码脱敏）"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    accounts = _load_pool_accounts()
+    safe = []
+    for a in accounts:
+        safe.append({
+            "id": a["id"],
+            "pool_type": a["pool_type"],
+            "name": a["name"],
+            "base_url": a["base_url"],
+            "username": a["username"],
+            "password_preview": a["password"][:4] + "****" if a.get("password") else "",
+            "balance": a.get("balance"),
+            "balance_updated_at": a.get("balance_updated_at"),
+            "groups_summary": [
+                {"name": g.get("name"), "count": g.get("count", 0)}
+                for g in (a.get("groups") or [])[:10]
+            ],
+            "groups_count": len(a.get("groups") or []),
+            "groups_updated_at": a.get("groups_updated_at"),
+            "remark": a.get("remark"),
+            "status": a.get("status"),
+            "created_at": a.get("created_at"),
+            "updated_at": a.get("updated_at"),
+        })
+    return {"ok": True, "accounts": safe}
+
+
+@app.route("/api/pool/accounts", methods=["POST"])
+def api_pool_add():
+    """新增账号池账号"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    data = request.get_json(force=True) or {}
+    pool_type = (data.get("pool_type") or "").strip()
+    name = (data.get("name") or "").strip()
+    base_url = (data.get("base_url") or "").strip()
+    username = (data.get("username") or "").strip()
+    password = (data.get("password") or "").strip()
+    remark = (data.get("remark") or "").strip()
+
+    if pool_type not in ("sub2api", "newapi"):
+        return {"ok": False, "message": "账号类型必须是 sub2api 或 newapi"}
+    if not name:
+        return {"ok": False, "message": "请填写名称"}
+    if not base_url:
+        return {"ok": False, "message": "请填写 API 地址"}
+    if not username:
+        return {"ok": False, "message": "请填写用户名"}
+    if not password:
+        return {"ok": False, "message": "请填写密码"}
+
+    acc = {
+        "id": str(uuid.uuid4()),
+        "pool_type": pool_type,
+        "name": name,
+        "base_url": _normalize_base_url(base_url),
+        "username": username,
+        "password": password,
+        "access_token": None,
+        "balance": None,
+        "balance_updated_at": None,
+        "groups": [],
+        "groups_updated_at": None,
+        "remark": remark,
+        "status": "active",
+    }
+    _upsert_pool_account(acc)
+    return {"ok": True, "message": f"账号「{name}」添加成功", "id": acc["id"]}
+
+
+@app.route("/api/pool/accounts/<pool_id>", methods=["PUT"])
+def api_pool_update(pool_id):
+    """修改账号池账号"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    acc = _find_pool_account(pool_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+    data = request.get_json(force=True) or {}
+    fields = {}
+    for k in ("pool_type", "name", "base_url", "username", "password", "remark", "status"):
+        if k in data:
+            v = data[k]
+            if isinstance(v, str):
+                v = v.strip()
+            if k == "base_url" and isinstance(v, str):
+                v = _normalize_base_url(v)
+            if v is not None and v != "":
+                fields[k] = v
+    if not fields:
+        return {"ok": False, "message": "没有提供可更新的字段"}
+    _update_pool_field(pool_id, **fields)
+    return {"ok": True, "message": "账号已更新"}
+
+
+@app.route("/api/pool/accounts/<pool_id>", methods=["DELETE"])
+def api_pool_delete(pool_id):
+    """删除账号池账号"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    ok = _delete_pool_account(pool_id)
+    if not ok:
+        return {"ok": False, "message": "账号不存在"}
+    return {"ok": True, "message": "账号已删除"}
+
+
+@app.route("/api/pool/accounts/<pool_id>/login", methods=["POST"])
+def api_pool_login(pool_id):
+    """对指定账号执行登录，并保存 access_token"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    acc = _find_pool_account(pool_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+    token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+    if not token:
+        return {"ok": False, "message": f"登录失败：{err}"}
+    _update_pool_field(pool_id, access_token=token)
+    return {"ok": True, "message": "登录成功，已保存 Token", "token_preview": token[:16] + "..."}
+
+
+@app.route("/api/pool/accounts/<pool_id>/balance", methods=["POST"])
+def api_pool_balance(pool_id):
+    """查询并保存余额（如未登录或 Token 失效会自动重新登录）"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    acc = _find_pool_account(pool_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+
+    token = acc.get("access_token")
+    need_relogin = False
+    if token:
+        balance, err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
+        if balance is None:
+            need_relogin = True
+    else:
+        need_relogin = True
+
+    if need_relogin:
+        token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+        if not token:
+            return {"ok": False, "message": f"登录失败，无法查询余额：{err}"}
+        _update_pool_field(pool_id, access_token=token)
+        balance, err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
+        if balance is None:
+            return {"ok": False, "message": f"登录成功但余额查询失败：{err}"}
+
+    now = datetime.now().isoformat()
+    _update_pool_field(pool_id, balance=balance, balance_updated_at=now)
+    return {"ok": True, "message": "余额查询成功", "balance": balance, "updated_at": now}
+
+
+@app.route("/api/pool/accounts/<pool_id>/groups", methods=["POST"])
+def api_pool_groups(pool_id):
+    """查询并保存密钥/渠道分组（如未登录会自动登录）"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    acc = _find_pool_account(pool_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+
+    token = acc.get("access_token")
+    need_relogin = False
+    groups = None
+    err = ""
+    if token:
+        groups, err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+        if groups is None:
+            need_relogin = True
+    else:
+        need_relogin = True
+
+    if need_relogin:
+        token, err_login = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+        if not token:
+            return {"ok": False, "message": f"登录失败，无法查询分组：{err_login}"}
+        _update_pool_field(pool_id, access_token=token)
+        groups, err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+        if groups is None:
+            return {"ok": False, "message": f"登录成功但分组查询失败：{err}"}
+
+    now = datetime.now().isoformat()
+    _update_pool_field(pool_id, groups=groups, groups_updated_at=now)
+    return {"ok": True, "message": f"分组查询成功，共 {len(groups)} 个分组", "groups": groups, "updated_at": now}
+
+
+@app.route("/api/pool/accounts/<pool_id>/groups", methods=["GET"])
+def api_pool_groups_get(pool_id):
+    """获取已缓存的分组详情（不触发远程查询）"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    acc = _find_pool_account(pool_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+    return {
+        "ok": True,
+        "groups": acc.get("groups") or [],
+        "groups_updated_at": acc.get("groups_updated_at"),
+    }
+
+
+@app.route("/api/pool/accounts/refresh-all", methods=["POST"])
+def api_pool_refresh_all():
+    """批量刷新所有账号的余额和分组"""
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    accounts = _load_pool_accounts()
+    if not accounts:
+        return {"ok": False, "message": "暂无账号"}
+
+    results = []
+
+    def do_one(acc: dict):
+        r = {"id": acc["id"], "name": acc["name"], "pool_type": acc["pool_type"]}
+        # 登录
+        token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+        if not token:
+            r["login_ok"] = False
+            r["login_err"] = err
+            results.append(r)
+            return
+        r["login_ok"] = True
+        # 余额
+        balance, b_err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
+        if balance is not None:
+            r["balance"] = balance
+            r["balance_ok"] = True
+        else:
+            r["balance_ok"] = False
+            r["balance_err"] = b_err
+        # 分组
+        groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+        if groups is not None:
+            r["groups_count"] = len(groups)
+            r["groups_ok"] = True
+        else:
+            r["groups_ok"] = False
+            r["groups_err"] = g_err
+        # 保存
+        now = datetime.now().isoformat()
+        fields = {"access_token": token}
+        if balance is not None:
+            fields["balance"] = balance
+            fields["balance_updated_at"] = now
+        if groups is not None:
+            fields["groups"] = groups
+            fields["groups_updated_at"] = now
+        try:
+            _update_pool_field(acc["id"], **fields)
+            r["saved"] = True
+        except Exception as e:
+            r["saved"] = False
+            r["save_err"] = str(e)
+        results.append(r)
+
+    threads = []
+    for acc in accounts:
+        t = threading.Thread(target=do_one, args=(acc,))
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join()
+
+    success = sum(1 for r in results if r.get("saved"))
+    return {
+        "ok": True,
+        "message": f"批量刷新完成：成功 {success}/{len(results)}",
+        "results": results,
+    }
 
 
 def _migrate_old_data():

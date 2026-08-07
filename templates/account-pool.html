@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>账号池管理 - Sub2API / NewAPI</title>
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('theme') || 'light';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch(e) {}
+        })();
+    </script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #eef2ff;
+            --success: #10b981;
+            --success-light: #ecfdf5;
+            --danger: #ef4444;
+            --danger-light: #fef2f2;
+            --warning: #f59e0b;
+            --warning-light: #fffbeb;
+            --info: #0ea5e9;
+            --info-light: #f0f9ff;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --border: #e5e7eb;
+            --border-light: #f3f4f6;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --header-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --input-bg: #fafbfc;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+            color-scheme: light;
+        }
+
+        /* ===== 深色模式 ===== */
+        [data-theme="dark"] {
+            --primary: #2dd4a8;
+            --primary-hover: #26b891;
+            --primary-light: rgba(45, 212, 168, 0.12);
+            --success: #2dd4a8;
+            --success-light: rgba(45, 212, 168, 0.12);
+            --danger: #f87171;
+            --danger-light: rgba(248, 113, 113, 0.12);
+            --warning: #fbbf24;
+            --warning-light: rgba(251, 191, 36, 0.12);
+            --info: #38bdf8;
+            --info-light: rgba(56, 189, 248, 0.12);
+            --text: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e2d3d;
+            --border-light: #1a2435;
+            --bg: #0a0f14;
+            --card: #141d2a;
+            --header-grad: linear-gradient(135deg, #0f1620 0%, #141d2a 100%);
+            --input-bg: #0f1620;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.3);
+            color-scheme: dark;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ===== 顶部导航 ===== */
+        .admin-header {
+            background: var(--header-grad);
+            padding: 20px 24px;
+            color: white;
+            border-bottom: 1px solid var(--border);
+        }
+        .admin-header-inner {
+            max-width: 1280px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .admin-title {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .admin-title-icon {
+            width: 36px; height: 36px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .admin-nav {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .admin-nav a {
+            color: rgba(255,255,255,0.9);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+        .admin-nav a:hover { color: white; }
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+
+        /* ===== 容器 ===== */
+        .container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* ===== 卡片 ===== */
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-light);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title-icon {
+            font-size: 20px;
+        }
+
+        /* ===== 统计概览卡片 ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: var(--card);
+            border-radius: 14px;
+            padding: 18px 20px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-sm);
+        }
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text);
+            line-height: 1.2;
+        }
+        .stat-value .unit {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            margin-left: 4px;
+        }
+        .stat-icon {
+            float: right;
+            font-size: 32px;
+            opacity: 0.35;
+        }
+        .stat-sub {
+            margin-top: 6px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .stat-card.total { border-left: 4px solid var(--primary); }
+        .stat-card.balance { border-left: 4px solid var(--success); }
+        .stat-card.sub2api { border-left: 4px solid var(--info); }
+        .stat-card.newapi { border-left: 4px solid var(--warning); }
+
+        /* ===== 按钮 ===== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            text-decoration: none;
+            line-height: 1.4;
+            min-height: 36px;
+            font-family: inherit;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+        .btn-success { background: var(--success); color: white; }
+        .btn-success:hover:not(:disabled) {
+            background: #059669;
+            box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+        }
+        .btn-outline {
+            background: var(--card);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-outline:hover:not(:disabled) {
+            background: var(--border-light);
+            color: var(--text);
+        }
+        .btn-info { background: var(--info); color: white; }
+        .btn-info:hover:not(:disabled) {
+            box-shadow: 0 4px 12px rgba(14,165,233,0.3);
+        }
+        .btn-sm { padding: 6px 12px; font-size: 12px; min-height: 30px; }
+        .btn-lg { padding: 12px 24px; font-size: 15px; min-height: 44px; }
+        .btn-block { width: 100%; }
+
+        /* ===== 输入框 ===== */
+        .input, .select, .textarea {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            background: var(--input-bg);
+            color: var(--text);
+            transition: all 0.2s;
+            outline: none;
+        }
+        .textarea { resize: vertical; min-height: 80px; }
+        .input:focus, .select:focus, .textarea:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        .input::placeholder { color: var(--text-muted); }
+        .input-mono {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+        }
+
+        /* ===== 表单 ===== */
+        .form-group { margin-bottom: 16px; }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .form-row .form-group { flex: 1; min-width: 160px; margin-bottom: 0; }
+
+        /* ===== 标签/徽章 ===== */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .badge-sub2api { background: var(--info-light); color: var(--info); }
+        .badge-newapi { background: var(--warning-light); color: var(--warning); }
+        .badge-active { background: var(--success-light); color: var(--success); }
+        .badge-inactive { background: var(--border-light); color: var(--text-muted); }
+        .balance-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .balance-badge.high { background: var(--success-light); color: var(--success); }
+        .balance-badge.mid { background: var(--warning-light); color: var(--warning); }
+        .balance-badge.low { background: var(--danger-light); color: var(--danger); }
+        .balance-badge.none { background: var(--border-light); color: var(--text-muted); font-weight: 500; }
+
+        /* ===== 工具栏 ===== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .toolbar-right { margin-left: auto; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .search-box {
+            position: relative;
+            min-width: 220px;
+        }
+        .search-box input {
+            padding-left: 36px;
+        }
+        .search-box::before {
+            content: '🔍';
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 13px;
+            opacity: 0.6;
+        }
+
+        /* ===== 添加账号表单区域 ===== */
+        .add-section {
+            background: var(--border-light);
+            border-radius: 14px;
+            padding: 20px 22px;
+            margin-bottom: 24px;
+        }
+        .add-section.collapsed .add-form { display: none; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+            margin-bottom: 14px;
+        }
+        .section-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-toggle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            transition: transform 0.2s;
+        }
+        .add-section.collapsed .section-toggle { transform: rotate(-90deg); }
+        .type-tabs {
+            display: inline-flex;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 16px;
+        }
+        .type-tab {
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            background: transparent;
+            font-family: inherit;
+        }
+        .type-tab.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* ===== 账号列表表格 ===== */
+        .pool-table-wrap {
+            overflow-x: auto;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+        }
+        .pool-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 14px;
+        }
+        .pool-table thead { background: var(--border-light); }
+        .pool-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+            white-space: nowrap;
+        }
+        .pool-table td {
+            padding: 14px 16px;
+            vertical-align: middle;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .pool-table tbody tr { transition: background 0.2s; }
+        .pool-table tbody tr:hover { background: var(--input-bg); }
+        .pool-name {
+            font-weight: 700;
+            color: var(--text);
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .pool-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pool-meta code {
+            font-family: 'SF Mono', Monaco, monospace;
+            background: var(--border-light);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .group-chips {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            max-width: 320px;
+        }
+        .group-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 9px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .group-chip.more {
+            background: var(--border-light);
+            color: var(--text-muted);
+        }
+        .updated-time {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        .row-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        /* ===== 手机端卡片视图 ===== */
+        .pool-cards {
+            display: none;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .pool-card {
+            background: var(--card);
+            border-radius: 14px;
+            padding: 18px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-sm);
+        }
+        .pool-card-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .pool-card-body {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 16px;
+            margin-bottom: 14px;
+        }
+        .pool-card-field-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .pool-card-field-value {
+            font-size: 13px;
+            color: var(--text);
+            word-break: break-all;
+        }
+        .pool-card-actions {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+
+        /* ===== 消息提示 ===== */
+        .msg {
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+        .msg-success { display: block; background: var(--success-light); color: #065f46; border: 1px solid #a7f3d0; }
+        .msg-fail { display: block; background: var(--danger-light); color: #991b1b; border: 1px solid #fecaca; }
+        .msg-info { display: block; background: var(--primary-light); color: #3730a3; border: 1px solid #c7d2fe; }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ===== 空状态 ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+        .empty-state-text { font-size: 15px; margin-bottom: 8px; }
+        .empty-state-sub { font-size: 12px; }
+
+        /* ===== 分组详情弹窗 ===== */
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        .modal-mask.show { display: flex; }
+        .modal {
+            background: var(--card);
+            border-radius: 18px;
+            width: 100%;
+            max-width: 820px;
+            max-height: 85vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow-lg);
+        }
+        .modal-head {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .modal-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-close {
+            background: transparent;
+            border: none;
+            font-size: 22px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 8px;
+        }
+        .modal-close:hover { background: var(--border-light); color: var(--text); }
+        .modal-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-foot {
+            padding: 16px 24px;
+            border-top: 1px solid var(--border-light);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .group-block {
+            background: var(--border-light);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+        .group-block-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .group-block-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .group-block-count {
+            background: var(--primary);
+            color: white;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .token-item {
+            background: var(--card);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 6px;
+            border: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .token-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .token-item-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+        }
+        .token-item-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .token-item-meta code {
+            background: var(--border-light);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 10.5px;
+        }
+        .quota-bar {
+            width: 120px;
+            height: 6px;
+            background: var(--border-light);
+            border-radius: 3px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .quota-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--primary));
+            border-radius: 3px;
+        }
+
+        /* ===== 加载中样式 ===== */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.35);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+            .admin-header { padding: 16px; }
+            .admin-header-inner { flex-direction: column; align-items: stretch; }
+            .admin-nav { justify-content: space-between; }
+            .card { padding: 16px; border-radius: 14px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .stat-value { font-size: 20px; }
+            .form-row { flex-direction: column; gap: 12px; }
+            .form-row .form-group { width: 100%; min-width: auto; }
+            .pool-table-wrap { display: none; }
+            .pool-cards { display: flex; }
+            .pool-card-body { grid-template-columns: 1fr; }
+            .pool-card-actions { grid-template-columns: repeat(2, 1fr); }
+            .toolbar-right { margin-left: 0; width: 100%; }
+            .search-box { min-width: 100%; flex: 1; }
+            .modal { max-height: 92vh; border-radius: 14px; }
+            .modal-head, .modal-body, .modal-foot { padding-left: 16px; padding-right: 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 顶部导航 -->
+    <div class="admin-header">
+        <div class="admin-header-inner">
+            <div class="admin-title">
+                <div class="admin-title-icon">🗂️</div>
+                <span>Sub2API / NewAPI 账号池管理</span>
+            </div>
+            <div class="admin-nav">
+                <a href="/admin">⚙️ 管理后台</a>
+                <a href="/">← 返回首页</a>
+                <button class="logout-btn" id="themeToggle" type="button" title="切换深浅模式">🌙</button>
+                <form method="post" action="/admin/logout" style="margin:0;">
+                    <button class="logout-btn" type="submit">退出</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- 消息提示 -->
+        <div id="pageMsg" class="msg"></div>
+
+        <!-- 统计概览 -->
+        <div class="stats-grid">
+            <div class="stat-card total">
+                <span class="stat-icon">🗂️</span>
+                <div class="stat-label">账号总数</div>
+                <div class="stat-value" id="statTotal">0<span class="unit">个</span></div>
+                <div class="stat-sub" id="statTotalSub">暂无账号</div>
+            </div>
+            <div class="stat-card balance">
+                <span class="stat-icon">💰</span>
+                <div class="stat-label">总余额</div>
+                <div class="stat-value" id="statBalance">--<span class="unit"></span></div>
+                <div class="stat-sub" id="statBalanceSub">--</div>
+            </div>
+            <div class="stat-card sub2api">
+                <span class="stat-icon">🔗</span>
+                <div class="stat-label">Sub2API</div>
+                <div class="stat-value" id="statSub">0<span class="unit">个</span></div>
+                <div class="stat-sub" id="statSubSub">--</div>
+            </div>
+            <div class="stat-card newapi">
+                <span class="stat-icon">🔌</span>
+                <div class="stat-label">NewAPI</div>
+                <div class="stat-value" id="statNew">0<span class="unit">个</span></div>
+                <div class="stat-sub" id="statNewSub">--</div>
+            </div>
+        </div>
+
+        <!-- 添加账号 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="card-title-icon">➕</span>添加账号</div>
+            </div>
+            <div class="add-section" id="addSection">
+                <div class="section-header" onclick="toggleAddSection()">
+                    <div class="section-title">
+                        <span>📝 填写账号信息</span>
+                    </div>
+                    <span class="section-toggle">▼</span>
+                </div>
+                <div class="add-form">
+                    <div class="type-tabs">
+                        <button class="type-tab active" data-type="sub2api" onclick="switchType('sub2api')">🔗 Sub2API</button>
+                        <button class="type-tab" data-type="newapi" onclick="switchType('newapi')">🔌 NewAPI</button>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">名称 <span style="color:var(--danger)">*</span></label>
+                            <input type="text" id="newName" class="input" placeholder="如：我的 sub2api 主号">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Base URL <span style="color:var(--danger)">*</span></label>
+                            <input type="url" id="newBase" class="input input-mono" placeholder="https://your-sub2api.com">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">用户名 <span style="color:var(--danger)">*</span></label>
+                            <input type="text" id="newUser" class="input" placeholder="admin / your@email.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">密码 <span style="color:var(--danger)">*</span></label>
+                            <input type="password" id="newPass" class="input input-mono" placeholder="登录密码">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">备注</label>
+                            <input type="text" id="newRemark" class="input" placeholder="选填">
+                        </div>
+                        <div class="form-group" style="max-width:240px;">
+                            <label class="form-label">&nbsp;</label>
+                            <button class="btn btn-primary btn-block btn-lg" id="addBtn" onclick="addAccount()">✨ 添加账号</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 账号列表 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><span class="card-title-icon">📋</span>账号列表</div>
+                <div id="listMsg" class="msg" style="margin-bottom:0;"></div>
+            </div>
+
+            <div class="toolbar">
+                <button class="btn btn-success" onclick="refreshAll(this)">
+                    🔄 批量刷新全部
+                </button>
+                <div class="toolbar-right">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="搜索名称 / URL / 用户名..." oninput="renderList()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 电脑端表格 -->
+            <div class="pool-table-wrap">
+                <table class="pool-table">
+                    <thead>
+                        <tr>
+                            <th style="min-width:240px;">账号</th>
+                            <th>余额</th>
+                            <th style="min-width:260px;">密钥 / 渠道分组</th>
+                            <th style="min-width:260px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="poolTbody">
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 手机端卡片 -->
+            <div class="pool-cards" id="poolCards"></div>
+
+            <div id="emptyState" class="empty-state" style="display:none;">
+                <span class="empty-state-icon">📭</span>
+                <p class="empty-state-text">暂无账号</p>
+                <p class="empty-state-sub">请先在上方添加 Sub2API 或 NewAPI 账号</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分组详情弹窗 -->
+    <div class="modal-mask" id="groupsModal">
+        <div class="modal">
+            <div class="modal-head">
+                <div class="modal-title">
+                    <span>🗂️</span>
+                    <span id="modalTitle">分组详情</span>
+                </div>
+                <button class="modal-close" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- 动态内容 -->
+            </div>
+            <div class="modal-foot">
+                <button class="btn btn-outline" onclick="closeModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+/* ============================================================
+ * 全局状态
+ * ============================================================ */
+const API = '/api/pool';
+let state = { accounts: [], addType: 'sub2api' };
+
+/* ============================================================
+ * 主题切换
+ * ============================================================ */
+(function initTheme() {
+    const btn = document.getElementById('themeToggle');
+    function apply() {
+        const cur = document.documentElement.getAttribute('data-theme') || 'light';
+        btn.textContent = cur === 'dark' ? '☀️' : '🌙';
+        btn.title = cur === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+    }
+    apply();
+    btn.onclick = () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'light';
+        const next = cur === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        apply();
+    };
+})();
+
+/* ============================================================
+ * 工具函数
+ * ============================================================ */
+function showMsg(id, text, type = 'info') {
+    const el = document.getElementById(id);
+    el.className = 'msg msg-' + type;
+    el.textContent = text;
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.className = 'msg'; }, 4000);
+}
+
+async function req(url, method = 'GET', body = null) {
+    const opt = {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+    };
+    if (body) opt.body = JSON.stringify(body);
+    const r = await fetch(url, opt);
+    return await r.json();
+}
+
+function fmtTime(iso) {
+    if (!iso) return '--';
+    try {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } catch { return iso; }
+}
+
+function balanceBadge(val) {
+    if (val === null || val === undefined || isNaN(val)) {
+        return '<span class="balance-badge none">-- 未查询</span>';
+    }
+    const cls = val > 10 ? 'high' : (val > 1 ? 'mid' : 'low');
+    return `<span class="balance-badge ${cls}">💰 ${Number(val).toFixed(2)}</span>`;
+}
+
+function typeBadge(type) {
+    if (type === 'sub2api') return '<span class="badge badge-sub2api">🔗 Sub2API</span>';
+    if (type === 'newapi') return '<span class="badge badge-newapi">🔌 NewAPI</span>';
+    return '';
+}
+
+function toggleAddSection() {
+    document.getElementById('addSection').classList.toggle('collapsed');
+}
+
+function switchType(t) {
+    state.addType = t;
+    document.querySelectorAll('.type-tab').forEach(el => {
+        el.classList.toggle('active', el.dataset.type === t);
+    });
+}
+
+/* ============================================================
+ * 添加账号
+ * ============================================================ */
+async function addAccount() {
+    const btn = document.getElementById('addBtn');
+    const name = document.getElementById('newName').value.trim();
+    const base = document.getElementById('newBase').value.trim();
+    const user = document.getElementById('newUser').value.trim();
+    const pass = document.getElementById('newPass').value;
+    const remark = document.getElementById('newRemark').value.trim();
+
+    if (!name) return showMsg('listMsg', '请填写名称', 'fail');
+    if (!base) return showMsg('listMsg', '请填写 Base URL', 'fail');
+    if (!user) return showMsg('listMsg', '请填写用户名', 'fail');
+    if (!pass) return showMsg('listMsg', '请填写密码', 'fail');
+
+    btn.disabled = true;
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner"></span> 添加中...';
+
+    try {
+        const r = await req(API + '/accounts', 'POST', {
+            pool_type: state.addType, name, base_url: base,
+            username: user, password: pass, remark,
+        });
+        if (r.ok) {
+            showMsg('pageMsg', r.message, 'success');
+            document.getElementById('newName').value = '';
+            document.getElementById('newPass').value = '';
+            document.getElementById('newRemark').value = '';
+            await loadList();
+        } else {
+            showMsg('listMsg', r.message || '添加失败', 'fail');
+        }
+    } catch (e) {
+        showMsg('listMsg', '请求异常：' + e, 'fail');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+    }
+}
+
+/* ============================================================
+ * 加载 & 渲染列表
+ * ============================================================ */
+async function loadList() {
+    try {
+        const r = await req(API + '/accounts');
+        if (r.ok) {
+            state.accounts = r.accounts || [];
+            renderStats();
+            renderList();
+        }
+    } catch (e) {
+        showMsg('listMsg', '加载失败：' + e, 'fail');
+    }
+}
+
+function renderStats() {
+    const list = state.accounts;
+    document.getElementById('statTotal').innerHTML = `${list.length}<span class="unit">个</span>`;
+    const active = list.filter(a => a.status === 'active').length;
+    document.getElementById('statTotalSub').textContent = active ? `其中 ${active} 个启用中` : '点击上方添加';
+
+    const balances = list.map(a => a.balance).filter(v => typeof v === 'number' && !isNaN(v));
+    const totalBal = balances.reduce((s, v) => s + v, 0);
+    if (balances.length) {
+        document.getElementById('statBalance').innerHTML = `${totalBal.toFixed(2)}`;
+        document.getElementById('statBalanceSub').textContent = `已查询 ${balances.length}/${list.length} 个账号`;
+    } else {
+        document.getElementById('statBalance').innerHTML = `--`;
+        document.getElementById('statBalanceSub').textContent = '暂无余额数据';
+    }
+
+    const sub = list.filter(a => a.pool_type === 'sub2api');
+    const subBal = sub.map(a => a.balance).filter(v => typeof v === 'number');
+    document.getElementById('statSub').innerHTML = `${sub.length}<span class="unit">个</span>`;
+    document.getElementById('statSubSub').textContent = subBal.length
+        ? `余额合计 ${subBal.reduce((s,v)=>s+v,0).toFixed(2)}` : '点击「刷新」查询';
+
+    const nw = list.filter(a => a.pool_type === 'newapi');
+    const nwBal = nw.map(a => a.balance).filter(v => typeof v === 'number');
+    document.getElementById('statNew').innerHTML = `${nw.length}<span class="unit">个</span>`;
+    document.getElementById('statNewSub').textContent = nwBal.length
+        ? `余额合计 ${nwBal.reduce((s,v)=>s+v,0).toFixed(2)}` : '点击「刷新」查询';
+}
+
+function filterAccounts() {
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    if (!q) return state.accounts;
+    return state.accounts.filter(a =>
+        (a.name || '').toLowerCase().includes(q) ||
+        (a.base_url || '').toLowerCase().includes(q) ||
+        (a.username || '').toLowerCase().includes(q) ||
+        (a.remark || '').toLowerCase().includes(q)
+    );
+}
+
+function renderList() {
+    const list = filterAccounts();
+    const empty = document.getElementById('emptyState');
+    const tbody = document.getElementById('poolTbody');
+    const cards = document.getElementById('poolCards');
+
+    if (!state.accounts.length) {
+        empty.style.display = 'block';
+        tbody.innerHTML = '';
+        cards.innerHTML = '';
+        return;
+    }
+    empty.style.display = 'none';
+
+    if (!list.length) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:40px;color:var(--text-muted);">没有匹配的账号</td></tr>`;
+        cards.innerHTML = '';
+        return;
+    }
+
+    // 表格
+    tbody.innerHTML = list.map(a => {
+        const groups = a.groups_summary || [];
+        const more = (a.groups_count || 0) - groups.length;
+        const chips = groups.map(g =>
+            `<span class="group-chip">${g.name || '未命名'} · ${g.count || 0}</span>`
+        ).join('');
+        const moreChip = more > 0 ? `<span class="group-chip more">+${more} 更多</span>` : '';
+
+        return `
+        <tr>
+            <td>
+                <div class="pool-name">
+                    ${typeBadge(a.pool_type)}
+                    ${escapeHtml(a.name)}
+                </div>
+                <div class="pool-meta">
+                    <code>${escapeHtml(a.username)}</code>
+                    <code title="${escapeHtml(a.base_url)}">${escapeHtml(truncate(a.base_url, 38))}</code>
+                    ${a.remark ? `<span>📝 ${escapeHtml(truncate(a.remark, 20))}</span>` : ''}
+                </div>
+            </td>
+            <td>
+                <div>${balanceBadge(a.balance)}</div>
+                <div class="updated-time">${a.balance_updated_at ? '更新于 ' + fmtTime(a.balance_updated_at) : '尚未查询'}</div>
+            </td>
+            <td>
+                <div class="group-chips">
+                    ${chips || '<span style="font-size:12px;color:var(--text-muted);">暂无分组数据</span>'}
+                    ${moreChip}
+                </div>
+                <div class="updated-time">
+                    ${a.groups_count ? `${a.groups_count} 个分组` : ''}
+                    ${a.groups_updated_at ? ' · 更新于 ' + fmtTime(a.groups_updated_at) : ''}
+                </div>
+            </td>
+            <td>
+                <div class="row-actions">
+                    <button class="btn btn-success btn-sm" onclick="loginAccount('${a.id}', this)">🔐 登录</button>
+                    <button class="btn btn-info btn-sm" onclick="refreshBalance('${a.id}', this)">💰 余额</button>
+                    <button class="btn btn-primary btn-sm" onclick="refreshGroups('${a.id}', this)">🗂️ 分组</button>
+                    <button class="btn btn-outline btn-sm" onclick="showGroups('${a.id}')">👁 详情</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}')">🗑️</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+
+    // 卡片（手机）
+    cards.innerHTML = list.map(a => {
+        const groups = a.groups_summary || [];
+        const chips = groups.slice(0, 3).map(g =>
+            `<span class="group-chip">${g.name || '未命名'} · ${g.count || 0}</span>`
+        ).join('');
+        return `
+        <div class="pool-card">
+            <div class="pool-card-head">
+                <div>
+                    <div class="pool-name" style="margin-bottom:6px;">
+                        ${typeBadge(a.pool_type)}
+                        ${escapeHtml(a.name)}
+                    </div>
+                    <div class="pool-meta">
+                        <code>${escapeHtml(a.username)}</code>
+                        <code>${escapeHtml(truncate(a.base_url, 30))}</code>
+                    </div>
+                </div>
+                ${balanceBadge(a.balance)}
+            </div>
+            <div class="pool-card-body">
+                <div>
+                    <div class="pool-card-field-label">余额更新</div>
+                    <div class="pool-card-field-value">${a.balance_updated_at ? fmtTime(a.balance_updated_at) : '--'}</div>
+                </div>
+                <div>
+                    <div class="pool-card-field-label">分组</div>
+                    <div class="pool-card-field-value">${a.groups_count ? a.groups_count + ' 个' : '暂无数据'}</div>
+                </div>
+                <div style="grid-column: 1 / -1;">
+                    <div class="pool-card-field-label">密钥 / 渠道分组</div>
+                    <div class="group-chips" style="margin-top:4px;">
+                        ${chips || '<span style="font-size:12px;color:var(--text-muted);">点击「分组」按钮查询</span>'}
+                    </div>
+                </div>
+                ${a.remark ? `<div style="grid-column: 1 / -1;">
+                    <div class="pool-card-field-label">备注</div>
+                    <div class="pool-card-field-value">${escapeHtml(a.remark)}</div>
+                </div>` : ''}
+            </div>
+            <div class="pool-card-actions">
+                <button class="btn btn-success btn-sm" onclick="loginAccount('${a.id}', this)">🔐 登录</button>
+                <button class="btn btn-info btn-sm" onclick="refreshBalance('${a.id}', this)">💰 余额</button>
+                <button class="btn btn-primary btn-sm" onclick="refreshGroups('${a.id}', this)">🗂️ 分组</button>
+                <button class="btn btn-outline btn-sm" onclick="showGroups('${a.id}')">👁 详情</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}')">🗑️ 删除</button>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+function truncate(s, n) {
+    if (!s) return '';
+    s = String(s);
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}
+
+/* ============================================================
+ * 单个账号操作
+ * ============================================================ */
+async function withBtn(btn, fn) {
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 处理中';
+    try {
+        await fn();
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
+    }
+}
+
+async function loginAccount(id, btn) {
+    await withBtn(btn, async () => {
+        const r = await req(`${API}/accounts/${id}/login`, 'POST');
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
+        if (r.ok) await loadList();
+    });
+}
+
+async function refreshBalance(id, btn) {
+    await withBtn(btn, async () => {
+        const r = await req(`${API}/accounts/${id}/balance`, 'POST');
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
+        if (r.ok) await loadList();
+    });
+}
+
+async function refreshGroups(id, btn) {
+    await withBtn(btn, async () => {
+        const r = await req(`${API}/accounts/${id}/groups`, 'POST');
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
+        if (r.ok) await loadList();
+    });
+}
+
+async function deleteAccount(id) {
+    if (!confirm('确定删除此账号？此操作不可撤销')) return;
+    const r = await req(`${API}/accounts/${id}`, 'DELETE');
+    showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
+    if (r.ok) await loadList();
+}
+
+async function refreshAll(btn) {
+    if (!state.accounts.length) return showMsg('listMsg', '暂无账号可刷新', 'fail');
+    await withBtn(btn, async () => {
+        const r = await req(`${API}/accounts/refresh-all`, 'POST');
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
+        await loadList();
+    });
+}
+
+/* ============================================================
+ * 分组详情弹窗
+ * ============================================================ */
+async function showGroups(id) {
+    const acc = state.accounts.find(a => a.id === id);
+    if (!acc) return;
+
+    document.getElementById('modalTitle').textContent = `${acc.name} - 密钥/渠道分组详情`;
+    const body = document.getElementById('modalBody');
+    body.innerHTML = '<p style="text-align:center;padding:30px;color:var(--text-muted);"><span class="spinner" style="border-color:var(--primary-light);border-top-color:var(--primary);width:22px;height:22px;"></span></p>';
+    document.getElementById('groupsModal').classList.add('show');
+
+    try {
+        const r = await req(`${API}/accounts/${id}/groups`, 'GET');
+        if (!r.ok) throw new Error(r.message || '查询失败');
+        const groups = r.groups || [];
+        if (!groups.length) {
+            body.innerHTML = `
+                <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
+                    <span style="font-size:40px;display:block;margin-bottom:12px;">📭</span>
+                    <p style="font-size:14px;">暂无分组数据</p>
+                    <p style="font-size:12px;margin-top:4px;">请先点击「🗂️ 分组」按钮从远程查询</p>
+                </div>`;
+            return;
+        }
+        body.innerHTML = groups.map(g => renderGroupBlock(g)).join('');
+    } catch (e) {
+        body.innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">加载失败：${e.message || e}</p>`;
+    }
+}
+
+function renderGroupBlock(g) {
+    const isChannel = !!g.is_channel_group;
+    const items = isChannel
+        ? (g.channels || (g.sub_groups ? [] : []))
+        : (g.tokens || (g.sub_groups ? [] : []));
+    const subGroups = g.sub_groups || null;
+
+    let inner = '';
+    if (subGroups && subGroups.length) {
+        // 嵌套分组：渠道分组 → 子分组
+        inner = subGroups.map(sg => `
+            <div style="margin-bottom:10px;background:var(--card);border-radius:8px;padding:10px 12px;border:1px solid var(--border-light);">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <div style="font-weight:600;font-size:13px;">${escapeHtml(sg.name || '未命名子分组')}</div>
+                    <span class="group-block-count">${sg.count || 0}</span>
+                </div>
+                ${(sg.channels || sg.tokens || []).slice(0, 20).map(it => renderItemRow(it, isChannel)).join('')}
+            </div>
+        `).join('');
+    } else {
+        inner = (items || []).slice(0, 50).map(it => renderItemRow(it, isChannel)).join('');
+        if ((items || []).length > 50) {
+            inner += `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">仅显示前 50 条，共 ${items.length} 条</div>`;
+        }
+    }
+
+    return `
+    <div class="group-block">
+        <div class="group-block-head">
+            <div class="group-block-title">
+                ${isChannel ? '📡' : '🔑'}
+                ${escapeHtml(g.name || '未命名分组')}
+                ${isChannel ? '<span class="badge badge-sub2api" style="margin-left:6px;">渠道</span>' : '<span class="badge badge-newapi" style="margin-left:6px;">密钥</span>'}
+            </div>
+            <span class="group-block-count">${g.count || (items || []).length || 0}</span>
+        </div>
+        ${inner || '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">此分组下暂无条目</div>'}
+    </div>`;
+}
+
+function renderItemRow(it, isChannel) {
+    const name = it.name || it.title || (isChannel ? `渠道 ${it.id || ''}` : `令牌 ${it.id || ''}`);
+    let metas = [];
+    if (it.type) metas.push(`<span>类型：<code>${escapeHtml(String(it.type))}</code></span>`);
+    if (it.model) metas.push(`<span>模型：<code>${escapeHtml(truncate(String(it.model), 30))}</code></span>`);
+    if (it.base_url) metas.push(`<span>上游：<code>${escapeHtml(truncate(String(it.base_url), 28))}</code></span>`);
+    if (it.key_preview) metas.push(`<span>Key：<code>${escapeHtml(it.key_preview)}</code></span>`);
+    if (it.status !== undefined && it.status !== null && it.status !== 'active' && it.status !== true) {
+        metas.push(`<span style="color:var(--danger);">状态：${escapeHtml(String(it.status))}</span>`);
+    }
+
+    // 配额条（仅密钥用）
+    let quotaBar = '';
+    if (!isChannel) {
+        const used = Number(it.used_quota) || 0;
+        const remain = Number(it.remaining_quota) || 0;
+        const total = used + remain;
+        if (total > 0) {
+            const pct = Math.min(100, Math.max(0, (remain / total) * 100));
+            quotaBar = `
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                    <div class="quota-bar"><div class="quota-bar-fill" style="width:${pct}%;"></div></div>
+                    <span style="font-size:10px;color:var(--text-muted);">剩余 ${remain.toFixed(0)} / 总量 ${total.toFixed(0)}</span>
+                </div>`;
+        }
+    }
+
+    return `
+    <div class="token-item">
+        <div class="token-item-info">
+            <div class="token-item-name">${escapeHtml(String(name))}</div>
+            <div class="token-item-meta">${metas.join('') || (it.id ? `<code>ID: ${escapeHtml(String(it.id))}</code>` : '')}</div>
+        </div>
+        ${quotaBar}
+    </div>`;
+}
+
+function closeModal() {
+    document.getElementById('groupsModal').classList.remove('show');
+}
+document.getElementById('groupsModal').addEventListener('click', (e) => {
+    if (e.target.id === 'groupsModal') closeModal();
+});
+
+/* ============================================================
+ * 启动
+ * ============================================================ */
+loadList();
+</script>
+</body>
+</html>
