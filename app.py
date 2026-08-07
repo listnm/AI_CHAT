@@ -260,6 +260,9 @@ def normalize_api_url(url: str) -> str:
 @app.route("/")
 def index():
     """渲染主页面"""
+    from flask import session as flask_session
+    # 前端用户自动标记为已登录（仅限对话 API，不能访问 /admin）
+    flask_session["user_logged_in"] = True
     return render_template("index.html")
 
 
