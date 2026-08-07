@@ -310,10 +310,27 @@ def admin():
     convs = _load_conversations()
     conv_summary = []
     for c in convs:
+        msgs = c.get("messages", [])
+        preview = ""
+        if msgs:
+            # 取最后一条消息作为预览（最多 100 字符）
+            last = msgs[-1]
+            content = last.get("content", "")
+            if isinstance(content, list):
+                for part in content:
+                    if part.get("type") == "text":
+                        content = part.get("text", "")
+                        break
+                else:
+                    content = ""
+            content = str(content).replace("\r", " ").replace("\n", " ").strip()
+            preview = ("[AI] " if last.get("role") == "assistant" else "[我] ") + content[:100]
         conv_summary.append({
             "id": c["id"],
             "title": c.get("title", "新对话"),
-            "msg_count": len(c.get("messages", [])),
+            "msg_count": len(msgs),
+            "preview": preview,
+            "messages_json": json.dumps(msgs, ensure_ascii=False),
             "created_at": c.get("created_at", ""),
             "updated_at": c.get("updated_at", ""),
         })
