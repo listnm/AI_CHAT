@@ -62,7 +62,7 @@
             width: 280px; flex-shrink: 0;
             background: #fafbfc;
             border-right: 1px solid #eef0f3;
-            display: flex; flex-direction: column; min-height: 0;
+            display: flex; flex-direction: column; min-height: 0; height: 100%;
             transition: width .22s ease;
         }
         .sidebar.collapsed { width: 0; border-right: none; overflow: hidden; }
@@ -127,7 +127,7 @@
             letter-spacing: .05em; text-transform: uppercase; flex-shrink: 0;
         }
         .sidebar-convs {
-            flex: 1; overflow-y: auto; overflow-y: overlay;
+            flex: 1 1 0; overflow-y: auto; overflow-x: hidden;
             padding: 2px 10px 12px;
             -webkit-overflow-scrolling: touch; min-height: 0;
         }
@@ -282,7 +282,7 @@
 
         /* ------ 聊天区容器 ------ */
         .chat-wrap {
-            flex: 1; overflow-y: auto; overflow-y: overlay;
+            flex: 1 1 0; overflow-y: auto; overflow-x: hidden;
             -webkit-overflow-scrolling: touch; min-height: 0;
             scroll-behavior: smooth;
             background:
