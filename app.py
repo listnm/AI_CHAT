@@ -1732,10 +1732,16 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                         gid = g.get("id")
                         if gid is None or gid == "":
                             continue
-                        out.append({
-                            "id": gid,
-                            "name": g.get("name") or g.get("title") or (f"分组 #{gid}" if isinstance(gid, (int, float)) else str(gid)),
-                        })
+                        gname = g.get("name") or g.get("title") or (f"分组 #{gid}" if isinstance(gid, (int, float)) else str(gid))
+                        item = {"id": gid, "name": gname}
+                        # 倍率字段：有的话一起带，供前端选项里显示
+                        for fld, key in (("rate_multiplier", "rate_multiplier"),
+                                         ("peak_rate_multiplier", "peak_rate_multiplier"),
+                                         ("peak_rate_enabled", "peak_rate_enabled"),
+                                         ("platform", "platform")):
+                            if fld in g:
+                                item[key] = g[fld]
+                        out.append(item)
                     if out:
                         server_group_options = out
                         break
@@ -1851,25 +1857,80 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
             group_map[group_key]["tokens"].append(entry)
             group_map[group_key]["count"] += 1
         groups = list(group_map.values())
+
+        # 把每个分组块自身挂上倍率/平台信息（给分组标题旁显示）
+        # 优先用 server_group_options（独立接口拉的，一定有完整 rate_multiplier），其次用单条 key 里 group dict 的 rate_multiplier
+        def _merge_rate_to_group(g_block, src_dict):
+            if not isinstance(src_dict, dict):
+                return
+            for fld in ("rate_multiplier", "peak_rate_multiplier", "peak_rate_enabled",
+                        "peak_start", "peak_end", "platform", "status", "description"):
+                if fld in src_dict and fld not in g_block:
+                    g_block[fld] = src_dict[fld]
+        # 先建 id→server_group 的索引
+        srv_by_id: dict = {}
+        for o in server_group_options:
+            iid = o.get("id")
+            if iid is not None and iid != "":
+                srv_by_id[str(iid)] = o
+        # 给每个 keys 分组块补元信息
+        for g in groups:
+            if g.get("is_channel_group"):
+                continue
+            # 按分组名匹配（老系统无group_id场景兜底）
+            matched = None
+            # 取该分组第一个 token 的 _group_id 来匹配
+            first_tk = (g.get("tokens") or [None])[0]
+            gid_candidates = []
+            if isinstance(first_tk, dict) and first_tk.get("_group_id") is not None:
+                gid_candidates.append(str(first_tk["_group_id"]))
+            # 也按名字找一次（大小写/空白敏感，命中就算）
+            name2srvs = {s.get("name", ""): s for s in server_group_options}
+            if g.get("name") in name2srvs:
+                matched = name2srvs[g["name"]]
+            # 再按 id 找
+            for cid in gid_candidates:
+                if cid in srv_by_id:
+                    matched = srv_by_id[cid]
+                    break
+            if matched:
+                _merge_rate_to_group(g, matched)
+            # 再用第一个 token 的原始 group dict（从 keys 里带出来的）兜底
+            if isinstance(first_tk, dict) and isinstance(first_tk.get("_raw_group"), dict):
+                _merge_rate_to_group(g, first_tk["_raw_group"])
+
         # 合并分组选项：
         #   1) 优先 server_group_options（来自独立分组接口 /groups/available，包含空分组，和网站下拉一致）
         #   2) 补充 group_opt_map（从 tokens 的 group 字段反推，避免部分老系统没有独立分组接口时列表为空）
         merged_opts: dict = {}
-        def _add_opt(o_id, o_name):
+        def _add_opt(o):
+            if not isinstance(o, dict):
+                return
+            o_id = o.get("id")
             if o_id is None or o_id == "":
                 return
+            o_name = o.get("name")
             # 统一用字符串做主键（保留原值在 .id 里）
             k = str(o_id)
             if k in merged_opts:
-                # 已有，只在缺名时补名字
-                if not merged_opts[k].get("name") and o_name:
-                    merged_opts[k]["name"] = o_name
+                # 已有：缺字段时补（尤其是倍率）
+                exist = merged_opts[k]
+                if not exist.get("name") and o_name:
+                    exist["name"] = o_name
+                for fld in ("rate_multiplier", "peak_rate_multiplier", "peak_rate_enabled", "peak_start", "peak_end", "platform"):
+                    if fld in o and fld not in exist:
+                        exist[fld] = o[fld]
                 return
-            merged_opts[k] = {"id": o_id, "name": o_name or f"分组 #{o_id}"}
+            entry = {"id": o_id, "name": o_name or f"分组 #{o_id}"}
+            for fld in ("rate_multiplier", "peak_rate_multiplier", "peak_rate_enabled", "peak_start", "peak_end", "platform"):
+                if fld in o:
+                    entry[fld] = o[fld]
+            merged_opts[k] = entry
         for o in server_group_options:
-            _add_opt(o.get("id"), o.get("name"))
+            _add_opt(o)
+        # 从 keys 反推的 group_opt_map：里面其实只有 id/name，但如果原始 group dict 里带倍率也已经进过 server_group_options 了
         for o in group_opt_map.values():
-            _add_opt(o.get("id"), o.get("name"))
+            _add_opt(o)
         if merged_opts:
             opts = list(merged_opts.values())
             for g in groups:
@@ -2268,7 +2329,13 @@ def api_pool_groups(pool_id):
 
         now = datetime.now().isoformat()
         _update_pool_field(pool_id, groups=groups, groups_updated_at=now)
-        return {"ok": True, "message": f"分组查询成功，共 {len(groups)} 个分组", "groups": groups, "updated_at": now}
+        all_options = []
+        for g in groups:
+            opts = g.get("all_group_options") if isinstance(g, dict) else None
+            if isinstance(opts, list) and opts:
+                all_options = opts
+                break
+        return {"ok": True, "message": f"分组查询成功，共 {len(groups)} 个分组", "groups": groups, "group_options": all_options, "updated_at": now}
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -2329,9 +2396,17 @@ def api_pool_groups_get(pool_id):
 
         # 重新读取最新数据（包含 selected 等字段）
         acc = _find_pool_account(pool_id)
+        # 把「全部分组选项」抽出来放顶层，避免前端在 groups 里循环找（渠道分组不会挂 all_group_options）
+        all_options = []
+        for g in groups:
+            opts = g.get("all_group_options") if isinstance(g, dict) else None
+            if isinstance(opts, list) and opts:
+                all_options = opts
+                break
         return {
             "ok": True,
             "groups": groups,
+            "group_options": all_options,
             "groups_updated_at": updated_at,
             "selected_group": acc.get("selected_group") if acc else None,
             "selected_token_id": acc.get("selected_token_id") if acc else None,

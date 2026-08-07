@@ -1706,12 +1706,19 @@ async function showGroups(id, btn) {
         if (!r.ok) throw new Error(r.message || '查询失败');
         const groups = r.groups || [];
         // 保存分组选项列表（用于"切换分组"下拉）
+        // 优先用响应顶层的 group_options（已从后端聚合好，带倍率），其次从第一个有 all_group_options 的块里取
         if (!state._groupOpts) state._groupOpts = {};
-        for (const g of groups) {
-            if (g && g.all_group_options && g.all_group_options.length) {
-                state._groupOpts[id] = g.all_group_options;
-                break;
+        let opts = r.group_options;
+        if (!(opts && opts.length)) {
+            for (const g of groups) {
+                if (g && g.all_group_options && g.all_group_options.length) {
+                    opts = g.all_group_options;
+                    break;
+                }
             }
+        }
+        if (opts && opts.length) {
+            state._groupOpts[id] = opts;
         }
         if (!groups.length) {
             body.innerHTML = `
@@ -1733,7 +1740,7 @@ async function showGroups(id, btn) {
                 <div>• 点击 <b>「✨ 选用此Key」</b> 将该密钥设为当前账号的主 Key，保存在卡片头部</div>
                 <div>• 随时可切换到其他分组的密钥，无需登录对方网站</div>
             </div>`;
-        body.innerHTML = header + groups.map(g => renderGroupBlock(g, id)).join('');
+        body.innerHTML = header + groups.map(g => renderGroupBlock(g, !!g.is_channel_group, id)).join('');
         setTimeout(() => refreshModalSelection(id), 30);
     } catch (e) {
         body.innerHTML = `
@@ -1749,31 +1756,74 @@ async function showGroups(id, btn) {
     }
 }
 
-function renderGroupBlock(g, accId) {
-    const isChannel = !!g.is_channel_group;
-    const groupName = g.name || '';
-    const items = isChannel
-        ? (g.channels || (g.sub_groups ? [] : []))
-        : (g.tokens || (g.sub_groups ? [] : []));
-    const subGroups = g.sub_groups || null;
+let _uidCounter = 0;
+function nextUid(prefix) {
+    _uidCounter += 1;
+    return prefix + '_' + _uidCounter + '_' + Date.now().toString(36);
+}
 
-    let inner = '';
-    if (subGroups && subGroups.length) {
-        // 嵌套分组：渠道分组 → 子分组
-        inner = subGroups.map(sg => `
-            <div style="margin-bottom:10px;background:var(--card);border-radius:8px;padding:10px 12px;border:1px solid var(--border-light);">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <div style="font-weight:600;font-size:13px;">${escapeHtml(sg.name || '未命名子分组')}</div>
-                    <span class="group-block-count">${sg.count || 0}</span>
-                </div>
-                ${(sg.channels || sg.tokens || []).slice(0, 20).map(it => renderItemRow(it, isChannel, accId, sg.name || groupName)).join('')}
-            </div>
-        `).join('');
-    } else {
-        inner = (items || []).slice(0, 50).map(it => renderItemRow(it, isChannel, accId, groupName)).join('');
-        if ((items || []).length > 50) {
-            inner += `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">仅显示前 50 条，共 ${items.length} 条</div>`;
+/* 格式化倍率文本：返回类似「0.07x」「1x 高峰(18:00-22:00)=2x」这种 */
+function formatRateLabel(g) {
+    if (!g) return '';
+    const parts = [];
+    const rm = Number(g.rate_multiplier);
+    if (!Number.isNaN(rm) && rm > 0) {
+        // 去掉末尾多余 0：0.07 -> "0.07"，1.0 -> "1"
+        parts.push(Number.isInteger(rm) ? `${rm}x` : `${parseFloat(rm.toPrecision(6))}x`);
+    }
+    // 高峰倍率（如果启用且有值且和常规倍率不一样）
+    if (g.peak_rate_enabled) {
+        const pm = Number(g.peak_rate_multiplier);
+        if (!Number.isNaN(pm) && pm > 0 && pm !== rm) {
+            const pLabel = Number.isInteger(pm) ? `${pm}x` : `${parseFloat(pm.toPrecision(6))}x`;
+            const range = (g.peak_start && g.peak_end) ? `(${String(g.peak_start).slice(0,5)}-${String(g.peak_end).slice(0,5)})` : '';
+            parts.push(`高峰${range}=${pLabel}`);
         }
+    }
+    if (!parts.length) return '';
+    return parts.join(' · ');
+}
+
+function renderGroupBlock(g, isChannel, accId) {
+    // 分组标题旁的倍率徽章（仅非渠道、有倍率时显示）
+    let rateBadge = '';
+    if (!isChannel) {
+        const label = formatRateLabel(g);
+        if (label) {
+            rateBadge = `<span class="badge badge-newapi" style="margin-left:6px;background:rgba(45,212,168,.12);color:var(--accent);border:1px solid rgba(45,212,168,.25);">${escapeHtml(label)}</span>`;
+        }
+        // platform 小徽章也顺手挂上
+        if (g.platform) {
+            rateBadge += `<span class="badge badge-newapi" style="margin-left:5px;background:transparent;color:var(--text-muted);border:1px dashed var(--border);">${escapeHtml(String(g.platform))}</span>`;
+        }
+    }
+
+    const items = isChannel ? (g.channels || []) : (g.tokens || []);
+    let inner = '';
+    const subGroups = (g.sub_groups || []);
+    // 子分组
+    for (const sg of subGroups) {
+        const isCh = isChannel || !!sg.is_channel_group || ((sg.channels && sg.channels.length) && !(sg.tokens && sg.tokens.length));
+        const sgItems = (isCh ? (sg.channels || []) : (sg.tokens || []));
+        const sgRateBadge = (!isCh && formatRateLabel(sg)) ?
+            `<span class="badge badge-newapi" style="margin-left:6px;background:rgba(45,212,168,.12);color:var(--accent);border:1px solid rgba(45,212,168,.25);">${escapeHtml(formatRateLabel(sg))}</span>` : '';
+        inner += `
+        <div class="group-block" style="margin-left:12px;border-left:2px dashed var(--border);border-radius:6px 14px 14px 6px;">
+            <div class="group-block-head">
+                <div class="group-block-title">
+                    ${isCh ? '📡' : '🔑'}
+                    ${escapeHtml(sg.name || '未命名子分组')}
+                    ${sgRateBadge}
+                </div>
+                <span class="group-block-count">${sg.count || sgItems.length || 0}</span>
+            </div>
+            ${(sgItems || []).slice(0, 20).map(it => renderItemRow(it, isCh, accId, sg.name || g.name || '')).join('')}
+        </div>`;
+    }
+    // 本分组直接挂的条目
+    inner += (items || []).slice(0, 20).map(it => renderItemRow(it, isChannel, accId, g.name || '')).join('');
+    if ((items || []).length > 50) {
+        inner += `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">仅显示前 50 条，共 ${items.length} 条</div>`;
     }
 
     return `
@@ -1782,18 +1832,13 @@ function renderGroupBlock(g, accId) {
             <div class="group-block-title">
                 ${isChannel ? '📡' : '🔑'}
                 ${escapeHtml(g.name || '未命名分组')}
+                ${rateBadge}
                 ${isChannel ? '<span class="badge badge-sub2api" style="margin-left:6px;">渠道</span>' : '<span class="badge badge-newapi" style="margin-left:6px;">密钥</span>'}
             </div>
             <span class="group-block-count">${g.count || (items || []).length || 0}</span>
         </div>
         ${inner || '<div style="color:var(--text-muted);font-size:12px;padding:8px 0;">此分组下暂无条目</div>'}
     </div>`;
-}
-
-let _uidCounter = 0;
-function nextUid(prefix) {
-    _uidCounter += 1;
-    return prefix + '_' + _uidCounter + '_' + Date.now().toString(36);
 }
 
 function renderItemRow(it, isChannel, accId, groupName) {
@@ -1837,11 +1882,16 @@ function renderItemRow(it, isChannel, accId, groupName) {
             // 用字符串比较，确保数字ID也能命中
             const curGidStr = curGid == null ? '' : String(curGid);
             const sgUid = nextUid('sg');
-            const gOptions = ['<option value="">— 切分组 —</option>']
+            const gOptions = ['<option value="">— 切分组（含倍率） —</option>']
                 .concat(opts.map(o => {
                     const oidStr = o.id == null ? '' : String(o.id);
                     const sel = (curGidStr !== '' && oidStr === curGidStr) ? ' selected' : '';
-                    return `<option value="${escapeHtml(oidStr || o.name || '')}" data-gname="${escapeHtml(String(o.name || ''))}"${sel}>${escapeHtml(String(o.name || o.id || '未命名分组'))}</option>`;
+                    const rate = formatRateLabel(o);
+                    const plat = o.platform ? `  [${String(o.platform)}]` : '';
+                    const display = rate
+                        ? `${String(o.name || o.id || '未命名分组')}  · ${rate}${plat}`
+                        : `${String(o.name || o.id || '未命名分组')}${plat}`;
+                    return `<option value="${escapeHtml(oidStr || o.name || '')}" data-gname="${escapeHtml(String(o.name || ''))}"${sel}>${escapeHtml(display)}</option>`;
                 })).join('');
             groupSwitcher = `
             <div style="flex-shrink:0;margin-left:6px;">
@@ -1851,7 +1901,7 @@ function renderItemRow(it, isChannel, accId, groupName) {
                     data-cur-group="${escapeHtml(curGidStr)}"
                     title="把该密钥移动到另一个分组（直接调用远程 PUT /api/v1/keys/{id}）"
                     onchange="handleMoveGroup(this)"
-                    style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:12px;cursor:pointer;max-width:170px;">
+                    style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:12px;cursor:pointer;min-width:240px;max-width:360px;">
                     ${gOptions}
                 </select>
             </div>`;
