@@ -136,11 +136,10 @@
         .sidebar-convs:hover::-webkit-scrollbar-thumb { background: #d1d5db; }
 
         .conv-item {
-            display: flex; align-items: center; gap: 10px;
+            display: flex; align-items: flex-start; gap: 10px;
             padding: 10px 11px; border-radius: 9px; cursor: pointer;
-            font-size: 13.5px; color: #374151; margin-bottom: 2px;
+            color: #374151; margin-bottom: 2px;
             transition: background-color .15s ease; position: relative;
-            min-height: 40px;
         }
         .conv-item:hover { background: #eef0f3; }
         .conv-item.active {
@@ -151,19 +150,29 @@
         .conv-icon {
             width: 18px; height: 18px; flex-shrink: 0; color: #9ca3af;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px;
+            font-size: 14px; margin-top: 2px;
         }
         .conv-item.active .conv-icon { color: #6366f1; }
+        .conv-main { flex: 1; min-width: 0; }
+        .conv-title-row { display: flex; align-items: center; gap: 6px; }
         .conv-title {
             flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            min-width: 0; line-height: 1.35; font-weight: 450;
+            min-width: 0; line-height: 1.35; font-size: 13.5px; font-weight: 450;
         }
         .conv-item.active .conv-title { font-weight: 550; }
+        .conv-time {
+            font-size: 10.5px; color: #9ca3af; flex-shrink: 0; white-space: nowrap;
+        }
+        .conv-preview {
+            font-size: 12px; color: #9ca3af; line-height: 1.4; margin-top: 2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
         .conv-del {
             width: 22px; height: 22px; border-radius: 6px; border: none;
             background: transparent; color: #9ca3af; cursor: pointer;
             display: none; align-items: center; justify-content: center;
             flex-shrink: 0; font-size: 14px; transition: all .15s ease;
+            margin-top: 1px;
         }
         .conv-item:hover .conv-del { display: flex; }
         .conv-del:hover { background: #fee2e2; color: #dc2626; }
@@ -1534,10 +1543,30 @@ function renderConversationList(keyword = "") {
             else if (sameYear) tLabel = d.toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
             else tLabel = d.toLocaleDateString("zh-CN", { year: "numeric", month: "short", day: "numeric" });
         }
+        // 生成最后一条消息预览
+        let preview = "";
+        const msgs = c.messages || [];
+        if (msgs.length) {
+            const last = msgs[msgs.length - 1];
+            if (last.role === "user") {
+                preview = typeof last.content === "string" ? last.content :
+                    (last.content.find ? (last.content.find(x => x.type === "text")?.text || "") : "");
+                preview = "我: " + preview;
+            } else {
+                preview = typeof last.content === "string" ? last.content : "";
+                preview = "AI: " + preview;
+            }
+            preview = preview.replace(/[#*`\n\r]/g, " ").trim().slice(0, 40);
+        }
         return `<div class="conv-item ${active?'active':''}" data-id="${c.id}">
             <span class="conv-icon">💬</span>
-            <span class="conv-title">${escHtml(c.title || "新对话")}</span>
-            <span style="font-size:10.5px;color:#9ca3af;flex-shrink:0;padding:0 2px;">${tLabel}</span>
+            <div class="conv-main">
+                <div class="conv-title-row">
+                    <span class="conv-title">${escHtml(c.title || "新对话")}</span>
+                    <span class="conv-time">${tLabel}</span>
+                </div>
+                ${preview ? `<div class="conv-preview">${escHtml(preview)}</div>` : ""}
+            </div>
             <span class="conv-del" data-id="${c.id}" title="删除">×</span>
         </div>`;
     }).join("");
@@ -1609,6 +1638,7 @@ function saveCurrentConversation() {
         }
     }
     saveConversations();
+    renderConversationList(searchInput.value);
 }
 
 /* ================================================================
@@ -1766,6 +1796,7 @@ async function doSend() {
         };
         conversations.unshift(c); saveConversations();
         currentConvId = c.id;
+        renderConversationList(searchInput.value);
     }
 
     const hasFiles = uploadedFiles.length > 0;
