@@ -1182,8 +1182,9 @@ def proxy_chat_completions():
     payload["stream"] = stream
 
     try:
+        # 超时放宽到 600s，Trae/Cursor 等 Agent 工具单轮可能涉及多步推理
         upstream = requests.post(
-            api_url, headers=headers, json=payload, stream=stream, timeout=120,
+            api_url, headers=headers, json=payload, stream=stream, timeout=600,
         )
         upstream.raise_for_status()
         # 强制 UTF-8 编码，防止上游 SSE 未指定 charset 导致中文乱码
@@ -1202,10 +1203,10 @@ def proxy_chat_completions():
         return {"error": {"message": str(e), "type": "connection_error"}, "ok": False}, 502
 
     if stream:
-        # 流式响应
+        # 流式响应（严格 OpenAI 兼容：只输出 data: 行，不注入任何自定义事件，
+        # 否则 Trae/Cursor 等客户端会把注入的内容误判为模型输出，导致工具调用
+        # 解析失败、上下文被污染、模型显得"弱智"）
         def generate():
-            # 先发送账号信息事件
-            yield f"event: provider\ndata: {json.dumps(provider_info, ensure_ascii=False)}\n\n"
             # 直接透传原始字节，避免 decode_unicode 截断多字节 UTF-8 字符导致中文乱码
             buffer = b""
             for chunk in upstream.iter_content(chunk_size=None):
@@ -1243,18 +1244,23 @@ def proxy_chat_completions():
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",
                 "Connection": "keep-alive",
+                # 账号信息通过响应头透出，不污染 SSE 流
+                "X-Provider-Name": provider_info.get("name", ""),
+                "X-Provider-Model": provider_info.get("effective_model", ""),
             }
         )
     else:
-        # 非流式响应
+        # 非流式响应（严格 OpenAI 兼容：不注入 _provider 等非标准字段，
+        # 否则部分 SDK 严格校验会报错；信息改用响应头透出）
         try:
             resp_data = upstream.json()
-            # 注入 _provider 信息
-            resp_data["_provider"] = provider_info
-            # 确保非流式响应也使用 UTF-8
             return app.response_class(
                 response=json.dumps(resp_data, ensure_ascii=False),
                 mimetype="application/json; charset=utf-8",
+                headers={
+                    "X-Provider-Name": provider_info.get("name", ""),
+                    "X-Provider-Model": provider_info.get("effective_model", ""),
+                }
             )
         except Exception as e:
             return {"error": {"message": f"Failed to parse upstream response: {str(e)}", "type": "parse_error"}, "ok": False}, 502
