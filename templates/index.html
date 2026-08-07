@@ -1517,6 +1517,12 @@ function loadConversations() {
 }
 function saveConversations() { localStorage.setItem("conversations", JSON.stringify(conversations)); }
 
+// 流式过程中轻量更新侧栏预览（只刷 DOM，不写 localStorage，不 push 消息）
+function updateConvPreview(convId, previewText) {
+    const el = conversationList.querySelector(`.conv-item[data-id="${convId}"] .conv-preview`);
+    if (el) el.textContent = previewText;
+}
+
 function renderConversationList(keyword = "") {
     if (!conversations.length) {
         conversationList.innerHTML = `<div style="padding:28px 14px;text-align:center;color:#9ca3af;font-size:13px;line-height:1.7;">
@@ -1824,6 +1830,8 @@ async function doSend() {
     const textForUI = typeof userMsgContent === "string" ? userMsgContent :
         (userMsgContent.find ? userMsgContent.find(x => x.type === "text")?.text || "" : "");
     addUserMessageDOM(textForUI, hasFiles ? uploadedFiles.slice() : []);
+    // 用户消息发出后立即保存并刷新侧栏（标题、预览、时间）
+    saveCurrentConversation(sendConvId, sendMessages);
 
     messageInput.value = ""; autoResize();
     uploadedFiles = []; previewBar.classList.remove("active"); previewBar.innerHTML = "";
@@ -1881,6 +1889,7 @@ async function doSend() {
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let lastSidebarUpdateLen = 0;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -1911,6 +1920,11 @@ async function doSend() {
                 } catch {
                     if (dc.trim()) { fullContent += dc; contentEl.innerHTML = formatMsgContent(fullContent); scrollToBottom(); }
                 }
+            }
+            // 流式过程中节流更新侧栏预览（每新增约 50 字符更新一次，只刷 DOM 不存消息）
+            if (fullContent.length - lastSidebarUpdateLen >= 50) {
+                lastSidebarUpdateLen = fullContent.length;
+                updateConvPreview(sendConvId, "AI: " + fullContent.replace(/[#*`\n\r]/g, " ").trim().slice(0, 40));
             }
         }
         if (buffer.trim() && buffer.trim().startsWith("data: ")) {
