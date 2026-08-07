@@ -984,7 +984,24 @@ async function req(url, method = 'GET', body = null) {
     };
     if (body) opt.body = JSON.stringify(body);
     const r = await fetch(url, opt);
-    return await r.json();
+    const text = await r.text();
+    // 尝试解析 JSON，失败时给出有意义的错误
+    let data;
+    try {
+        data = JSON.parse(text);
+    } catch (e) {
+        if (r.status === 404) {
+            throw new Error('接口不存在（404）——服务端可能未更新，请重启服务');
+        }
+        if (r.status === 401) {
+            throw new Error('登录已过期，请重新登录管理员');
+        }
+        if (r.status >= 500) {
+            throw new Error('服务器内部错误（' + r.status + '）');
+        }
+        throw new Error('服务端返回了非 JSON 响应（HTTP ' + r.status + '）：' + text.slice(0, 120));
+    }
+    return data;
 }
 
 function fmtTime(iso) {
