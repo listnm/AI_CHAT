@@ -828,6 +828,9 @@
         <div class="card">
             <div class="card-header">
                 <div class="card-title"><span class="card-title-icon">➕</span>添加账号</div>
+                <div style="font-size:12px;color:var(--text-muted);font-weight:400;">
+                    添加后按顺序使用：🔐 登录 → 💰 余额 / 🗂️ 分组 → 👁 详情里复制 Key
+                </div>
             </div>
             <div class="add-section" id="addSection">
                 <div class="section-header" onclick="toggleAddSection()">
@@ -883,7 +886,7 @@
             </div>
 
             <div class="toolbar">
-                <button class="btn btn-success" onclick="refreshAll(this)">
+                <button class="btn btn-success" title="对所有账号依次执行：登录、查询余额、查询分组（并发执行，速度更快）" onclick="refreshAll(this)">
                     🔄 批量刷新全部
                 </button>
                 <div class="toolbar-right">
@@ -1222,11 +1225,11 @@ function renderList() {
             </td>
             <td>
                 <div class="row-actions">
-                    <button class="btn btn-success btn-sm" onclick="loginAccount('${a.id}', this)">🔐 登录</button>
-                    <button class="btn btn-info btn-sm" onclick="refreshBalance('${a.id}', this)">💰 余额</button>
-                    <button class="btn btn-primary btn-sm" onclick="refreshGroups('${a.id}', this)">🗂️ 分组</button>
-                    <button class="btn btn-outline btn-sm" onclick="showGroups('${a.id}')">👁 详情</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}')">🗑️</button>
+                    <button class="btn btn-success btn-sm" title="使用账号密码登录远程平台，获取Token" onclick="loginAccount('${a.id}', this)">🔐 Token</button>
+                    <button class="btn btn-info btn-sm" title="查询剩余余额/额度" onclick="refreshBalance('${a.id}', this)">💰 余额</button>
+                    <button class="btn btn-primary btn-sm" title="查询密钥/渠道分组并缓存" onclick="refreshGroups('${a.id}', this)">🗂️ 分组</button>
+                    <button class="btn btn-outline btn-sm" title="查看/选择/复制分组里的密钥" onclick="showGroups('${a.id}')">👁 详情</button>
+                    <button class="btn btn-danger btn-sm" title="删除账号" onclick="deleteAccount('${a.id}')">🗑️</button>
                 </div>
             </td>
         </tr>`;
@@ -1274,11 +1277,11 @@ function renderList() {
                 </div>` : ''}
             </div>
             <div class="pool-card-actions">
-                <button class="btn btn-success btn-sm" onclick="loginAccount('${a.id}', this)">🔐 登录</button>
-                <button class="btn btn-info btn-sm" onclick="refreshBalance('${a.id}', this)">💰 余额</button>
-                <button class="btn btn-primary btn-sm" onclick="refreshGroups('${a.id}', this)">🗂️ 分组</button>
-                <button class="btn btn-outline btn-sm" onclick="showGroups('${a.id}')">👁 详情</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}')">🗑️ 删除</button>
+                <button class="btn btn-success btn-sm" title="使用账号密码登录远程平台，获取 Token（后续查询余额/分组依赖此 Token）" onclick="loginAccount('${a.id}', this)">🔐 登录获取Token</button>
+                <button class="btn btn-info btn-sm" title="查询当前账号的剩余余额 / 可用额度" onclick="refreshBalance('${a.id}', this)">💰 查询余额</button>
+                <button class="btn btn-primary btn-sm" title="查询该账号下的密钥分组 & 渠道分组，并缓存到本地" onclick="refreshGroups('${a.id}', this)">🗂️ 查询分组</button>
+                <button class="btn btn-outline btn-sm" title="打开分组详情弹窗，查看 / 选择 / 复制分组里的密钥" onclick="showGroups('${a.id}')">👁 分组详情</button>
+                <button class="btn btn-danger btn-sm" title="从账号池中删除此账号（不会影响远程平台）" onclick="deleteAccount('${a.id}')">🗑️ 删除</button>
             </div>
         </div>`;
     }).join('');
@@ -1313,42 +1316,97 @@ async function withBtn(btn, fn) {
 
 async function loginAccount(id, btn) {
     await withBtn(btn, async () => {
-        const r = await req(`${API}/accounts/${id}/login`, 'POST');
-        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
-        if (r.ok) await loadList();
+        try {
+            const r = await req(`${API}/accounts/${id}/login`, 'POST');
+            showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '✅ 登录成功：' : '❌ 登录失败：') + (r.message || ''), r.ok ? 'success' : 'fail');
+            if (r.ok) await loadList();
+        } catch (e) {
+            showMsg('listMsg', '❌ 登录失败：' + (e.message || e), 'fail');
+        }
     });
 }
 
 async function refreshBalance(id, btn) {
     await withBtn(btn, async () => {
-        const r = await req(`${API}/accounts/${id}/balance`, 'POST');
-        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
-        if (r.ok) await loadList();
+        try {
+            const r = await req(`${API}/accounts/${id}/balance`, 'POST');
+            showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '💰 余额查询成功：' : '❌ 余额查询失败：') + (r.message || ''), r.ok ? 'success' : 'fail');
+            if (r.ok) await loadList();
+        } catch (e) {
+            showMsg('listMsg', '❌ 余额查询失败：' + (e.message || e), 'fail');
+        }
     });
 }
 
 async function refreshGroups(id, btn) {
     await withBtn(btn, async () => {
-        const r = await req(`${API}/accounts/${id}/groups`, 'POST');
-        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
-        if (r.ok) await loadList();
+        try {
+            const r = await req(`${API}/accounts/${id}/groups`, 'POST');
+            showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '🗂️ 分组查询成功：' : '❌ 分组查询失败：') + (r.message || ''), r.ok ? 'success' : 'fail');
+            if (r.ok) await loadList();
+        } catch (e) {
+            showMsg('listMsg', '❌ 分组查询失败：' + (e.message || e), 'fail');
+        }
     });
 }
 
 async function deleteAccount(id) {
     if (!confirm('确定删除此账号？此操作不可撤销')) return;
-    const r = await req(`${API}/accounts/${id}`, 'DELETE');
-    showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
-    if (r.ok) await loadList();
+    try {
+        const r = await req(`${API}/accounts/${id}`, 'DELETE');
+        showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '🗑️ 删除成功：' : '❌ 删除失败：') + (r.message || ''), r.ok ? 'success' : 'fail');
+        if (r.ok) await loadList();
+    } catch (e) {
+        showMsg('listMsg', '❌ 删除失败：' + (e.message || e), 'fail');
+    }
 }
 
 async function refreshAll(btn) {
     if (!state.accounts.length) return showMsg('listMsg', '暂无账号可刷新', 'fail');
     await withBtn(btn, async () => {
-        const r = await req(`${API}/accounts/refresh-all`, 'POST');
-        showMsg(r.ok ? 'pageMsg' : 'listMsg', r.message, r.ok ? 'success' : 'fail');
-        await loadList();
+        try {
+            const r = await req(`${API}/accounts/refresh-all`, 'POST');
+            showMsg(r.ok ? 'pageMsg' : 'listMsg', (r.ok ? '🔄 批量刷新完成：' : '❌ 批量刷新失败：') + (r.message || ''), r.ok ? 'success' : 'fail');
+            await loadList();
+        } catch (e) {
+            showMsg('listMsg', '❌ 批量刷新失败：' + (e.message || e), 'fail');
+        }
     });
+}
+
+/* ============================================================
+ * 复制到剪贴板
+ * ============================================================ */
+async function copyText(text, hintId) {
+    let ok = false;
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            ok = true;
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+    } catch { ok = false; }
+    if (hintId) {
+        const el = document.getElementById(hintId);
+        if (el) {
+            const orig = el.textContent;
+            el.textContent = ok ? '已复制 ✓' : '复制失败';
+            el.style.color = ok ? 'var(--success)' : 'var(--danger)';
+            setTimeout(() => {
+                el.textContent = orig;
+                el.style.color = '';
+            }, 1500);
+        }
+    }
+    return ok;
 }
 
 /* ============================================================
@@ -1372,17 +1430,27 @@ async function showGroups(id) {
                 <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
                     <span style="font-size:40px;display:block;margin-bottom:12px;">📭</span>
                     <p style="font-size:14px;">暂无分组数据</p>
-                    <p style="font-size:12px;margin-top:4px;">请先点击「🗂️ 分组」按钮从远程查询</p>
+                    <p style="font-size:12px;margin-top:4px;">请先点击卡片上的「🗂️ 查询分组」按钮从远程平台拉取</p>
                 </div>`;
             return;
         }
-        body.innerHTML = groups.map(g => renderGroupBlock(g)).join('');
+        const header = `
+            <div style="padding:10px 14px;margin-bottom:14px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border-light);font-size:12px;line-height:1.8;">
+                <div style="font-weight:600;margin-bottom:4px;">💡 各按钮含义</div>
+                <div>• 🔐 <b>登录获取Token</b>：用账号密码登录 sub2api/newapi，拿到访问令牌（后续所有查询都需要）</div>
+                <div>• 💰 <b>查询余额</b>：查询当前账号剩余余额 / 可用额度</div>
+                <div>• 🗂️ <b>查询分组</b>：从远程平台拉取该账号下的密钥分组和渠道分组</div>
+                <div>• 👁 <b>分组详情</b>：打开本弹窗，可查看 / 复制具体 Key 或渠道地址</div>
+                <div>• 🗑️ <b>删除</b>：从账号池删除（不会影响远程平台账号本身）</div>
+                <div style="margin-top:6px;font-weight:600;">👉 下方列表中可直接点击「📋 复制Key」获取密钥，无需登录对方网站</div>
+            </div>`;
+        body.innerHTML = header + groups.map(g => renderGroupBlock(g, id)).join('');
     } catch (e) {
         body.innerHTML = `<p style="color:var(--danger);text-align:center;padding:20px;">加载失败：${e.message || e}</p>`;
     }
 }
 
-function renderGroupBlock(g) {
+function renderGroupBlock(g, accId) {
     const isChannel = !!g.is_channel_group;
     const items = isChannel
         ? (g.channels || (g.sub_groups ? [] : []))
@@ -1398,11 +1466,11 @@ function renderGroupBlock(g) {
                     <div style="font-weight:600;font-size:13px;">${escapeHtml(sg.name || '未命名子分组')}</div>
                     <span class="group-block-count">${sg.count || 0}</span>
                 </div>
-                ${(sg.channels || sg.tokens || []).slice(0, 20).map(it => renderItemRow(it, isChannel)).join('')}
+                ${(sg.channels || sg.tokens || []).slice(0, 20).map(it => renderItemRow(it, isChannel, accId)).join('')}
             </div>
         `).join('');
     } else {
-        inner = (items || []).slice(0, 50).map(it => renderItemRow(it, isChannel)).join('');
+        inner = (items || []).slice(0, 50).map(it => renderItemRow(it, isChannel, accId)).join('');
         if ((items || []).length > 50) {
             inner += `<div style="text-align:center;padding:8px;color:var(--text-muted);font-size:12px;">仅显示前 50 条，共 ${items.length} 条</div>`;
         }
@@ -1422,7 +1490,13 @@ function renderGroupBlock(g) {
     </div>`;
 }
 
-function renderItemRow(it, isChannel) {
+let _uidCounter = 0;
+function nextUid(prefix) {
+    _uidCounter += 1;
+    return prefix + '_' + _uidCounter + '_' + Date.now().toString(36);
+}
+
+function renderItemRow(it, isChannel, accId) {
     const name = it.name || it.title || (isChannel ? `渠道 ${it.id || ''}` : `令牌 ${it.id || ''}`);
     let metas = [];
     if (it.type) metas.push(`<span>类型：<code>${escapeHtml(String(it.type))}</code></span>`);
@@ -1431,6 +1505,9 @@ function renderItemRow(it, isChannel) {
     if (it.key_preview) metas.push(`<span>Key：<code>${escapeHtml(it.key_preview)}</code></span>`);
     if (it.status !== undefined && it.status !== null && it.status !== 'active' && it.status !== true) {
         metas.push(`<span style="color:var(--danger);">状态：${escapeHtml(String(it.status))}</span>`);
+    }
+    if (it.expired_at) {
+        metas.push(`<span>过期：<code>${escapeHtml(truncate(String(it.expired_at), 16))}</code></span>`);
     }
 
     // 配额条（仅密钥用）
@@ -1442,11 +1519,31 @@ function renderItemRow(it, isChannel) {
         if (total > 0) {
             const pct = Math.min(100, Math.max(0, (remain / total) * 100));
             quotaBar = `
-                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:160px;">
                     <div class="quota-bar"><div class="quota-bar-fill" style="width:${pct}%;"></div></div>
                     <span style="font-size:10px;color:var(--text-muted);">剩余 ${remain.toFixed(0)} / 总量 ${total.toFixed(0)}</span>
                 </div>`;
         }
+    }
+
+    // 操作按钮：如果有完整 key，提供复制、选用功能
+    let actions = '';
+    if (!isChannel && it.key) {
+        const copyUid = nextUid('cp');
+        actions = `
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;">
+            <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
+                    onclick='copyText(${JSON.stringify(String(it.key))}, ${JSON.stringify(copyUid)})'>📋 复制Key</button>
+            <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">点此复制</span>
+        </div>`;
+    } else if (isChannel && it.base_url) {
+        const copyUid = nextUid('cp');
+        actions = `
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;">
+            <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
+                    onclick='copyText(${JSON.stringify(String(it.base_url))}, ${JSON.stringify(copyUid)})'>📋 复制地址</button>
+            <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">复制</span>
+        </div>`;
     }
 
     return `
@@ -1456,6 +1553,7 @@ function renderItemRow(it, isChannel) {
             <div class="token-item-meta">${metas.join('') || (it.id ? `<code>ID: ${escapeHtml(String(it.id))}</code>` : '')}</div>
         </div>
         ${quotaBar}
+        ${actions}
     </div>`;
 }
 

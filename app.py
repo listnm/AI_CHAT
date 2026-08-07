@@ -1683,6 +1683,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 "id": t.get("id"),
                 "name": t.get("name") or t.get("remark") or t.get("title") or "",
                 "key_preview": (str(t.get("key") or t.get("token") or "")[:16] + "...") if (t.get("key") or t.get("token")) else "",
+                "key": t.get("key") or t.get("token") or "",  # 完整密钥，供前端复制
                 "status": t.get("status") or t.get("enabled") or "active",
                 "created_at": t.get("created_at") or t.get("createdTime") or "",
                 "expired_at": t.get("expired_at") or t.get("expireTime") or t.get("expires_at") or "",
