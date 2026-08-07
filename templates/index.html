@@ -1589,6 +1589,8 @@ function renderConversationList(keyword = "") {
             const id = btn.dataset.id;
             conversations = conversations.filter(c => c.id !== id);
             saveConversations();
+            // 同步删除到后端
+            fetch(`/api/conversations/${id}`, { method: "DELETE" }).catch(() => {});
             if (currentConvId === id) { currentConvId = null; messages = []; clearMessages(); showWelcome(true); headerTitle.textContent = ""; }
             renderConversationList(searchInput.value);
             showToast("对话已删除");
@@ -1649,6 +1651,24 @@ function saveCurrentConversation(convId, msgs) {
     }
     saveConversations();
     renderConversationList(searchInput.value);
+    // 同步到后端数据库（异步，不阻塞 UI）
+    syncConversationToServer(convId, msgs);
+}
+
+// 同步对话到后端
+async function syncConversationToServer(convId, msgs) {
+    try {
+        // 清理消息里的 _files 字段（不需要存后端）
+        const cleanMsgs = msgs.map(m => {
+            const cp = { role: m.role, content: m.content };
+            return cp;
+        });
+        await fetch(`/api/conversations/${convId}/messages`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: cleanMsgs }),
+        });
+    } catch (e) { /* 静默失败，不影响前端使用 */ }
 }
 
 /* ================================================================

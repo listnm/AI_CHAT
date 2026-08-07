@@ -853,9 +853,9 @@ def _save_conversations(convs: list):
 
 
 def _cleanup_old_conversations():
-    """删除超过 24 小时的对话"""
+    """删除超过 30 天的对话"""
     now = datetime.now()
-    cutoff = (now - timedelta(hours=24)).isoformat()
+    cutoff = (now - timedelta(days=30)).isoformat()
     conn = _get_db()
     try:
         conn.execute("DELETE FROM conversations WHERE updated_at < ?", (cutoff,))
