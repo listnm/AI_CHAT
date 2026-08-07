@@ -1488,6 +1488,7 @@ def _pool_login(pool_type: str, base_url: str, username: str, password: str) -> 
     base = _normalize_base_url(base_url)
     # 尝试多种常见的登录端点
     endpoints = [
+        f"{base}/api/v1/auth/login",
         f"{base}/api/user/login",
         f"{base}/api/auth/login",
         f"{base}/api/login",
@@ -1496,7 +1497,12 @@ def _pool_login(pool_type: str, base_url: str, username: str, password: str) -> 
     last_error = ""
     for url in endpoints:
         try:
-            payload = {"username": username, "password": password}
+            # 适配不同平台：Qingflow 用 email 字段，标准 newapi 用 username
+            is_v1 = "/api/v1/" in url
+            if is_v1 and "@" in username:
+                payload = {"email": username, "password": password}
+            else:
+                payload = {"username": username, "password": password}
             resp = requests.post(url, json=payload, timeout=15)
             if resp.status_code == 200:
                 try:
@@ -1536,6 +1542,8 @@ def _pool_get_balance(pool_type: str, base_url: str, token: str) -> tuple[float 
     base = _normalize_base_url(base_url)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     endpoints = [
+        f"{base}/api/v1/auth/me",
+        f"{base}/api/v1/user/profile",
         f"{base}/api/user/self",
         f"{base}/api/user/info",
         f"{base}/api/me",
@@ -1588,6 +1596,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
 
     # ==== 先尝试取令牌列表（sub2api/newapi 通用 /api/token 等） ====
     token_endpoints = [
+        f"{base}/api/v1/keys",
         f"{base}/api/token",
         f"{base}/api/tokens",
         f"{base}/api/keys",
@@ -1616,17 +1625,25 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
 
     # 从令牌列表中提取分组信息
     if token_list:
-        # 按 group / group_name / channel / tag 字段分组
+        # 按 group / group_name / group_id / channel / tag 字段分组
         group_map: dict = {}
         for t in token_list:
             if not isinstance(t, dict):
                 continue
             group_key = None
-            for k in ("group", "group_name", "channel", "tag", "category", "type"):
-                v = t.get(k)
-                if v:
-                    group_key = str(v)
-                    break
+            # 优先检查 group 字段：可能是 dict（含 name）或字符串
+            group_val = t.get("group")
+            if isinstance(group_val, dict):
+                group_key = group_val.get("name") or group_val.get("title") or str(group_val.get("id") or "")
+            elif group_val is not None and group_val != "":
+                group_key = str(group_val)
+            # 再检查其他分组字段
+            if not group_key:
+                for k in ("group_name", "group_id", "channel", "tag", "category", "type"):
+                    v = t.get(k)
+                    if v is not None and v != "":
+                        group_key = str(v)
+                        break
             if not group_key:
                 group_key = "默认分组"
             if group_key not in group_map:
@@ -1641,8 +1658,8 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 "key_preview": (str(t.get("key") or t.get("token") or "")[:16] + "...") if (t.get("key") or t.get("token")) else "",
                 "status": t.get("status") or t.get("enabled") or "active",
                 "created_at": t.get("created_at") or t.get("createdTime") or "",
-                "expired_at": t.get("expired_at") or t.get("expireTime") or "",
-                "used_quota": t.get("used_quota") or t.get("used") or t.get("consume") or 0,
+                "expired_at": t.get("expired_at") or t.get("expireTime") or t.get("expires_at") or "",
+                "used_quota": t.get("used_quota") or t.get("used") or t.get("consume") or t.get("quota_used") or 0,
                 "remaining_quota": t.get("remaining_quota") or t.get("remaining") or t.get("quota") or 0,
             }
             group_map[group_key]["tokens"].append(entry)
@@ -1651,6 +1668,8 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
 
     # ==== 再尝试取上游/渠道分组（sub2api 特有的渠道/供应商分组） ====
     channel_endpoints = [
+        f"{base}/api/v1/admin/channels",
+        f"{base}/api/v1/channel",
         f"{base}/api/channel",
         f"{base}/api/channels",
         f"{base}/api/provider",
