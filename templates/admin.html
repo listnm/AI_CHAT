@@ -1282,6 +1282,11 @@
                         <span class="conv-search-icon">🔍</span>
                         <input type="text" id="convSearch" placeholder="搜索对话标题 / 预览内容...">
                     </div>
+                    {% if conversations %}
+                    <button class="conv-btn del" id="clearAllConvBtn" style="flex-shrink:0;">
+                        <span>🗑</span>清空全部
+                    </button>
+                    {% endif %}
                 </div>
             </div>
 
@@ -1898,6 +1903,30 @@
             const noResultEl = document.getElementById('convNoResult');
             const allRows = document.querySelectorAll('.conv-data-row');
             if (!searchInput || !allRows.length) return;
+
+            // 清空全部对话
+            const clearAllBtn = document.getElementById('clearAllConvBtn');
+            if (clearAllBtn) {
+                clearAllBtn.addEventListener('click', async () => {
+                    if (!confirm('⚠️ 确定要清空全部对话吗？\n\n此操作将删除所有对话记录，且不可恢复！')) return;
+                    if (!confirm('再次确认：真的要删除全部对话吗？')) return;
+                    btnLoading(clearAllBtn, '⏳ 清空中');
+                    try {
+                        const resp = await fetch('/api/conversations', { method: 'DELETE' });
+                        const result = await resp.json().catch(() => ({}));
+                        if (resp.ok && result.ok) {
+                            showAdminMsg('已清空全部 ' + (result.deleted_count || 0) + ' 条对话', 'ok');
+                            setTimeout(() => location.reload(), 800);
+                        } else {
+                            showAdminMsg('清空失败：' + (result.message || '未知错误'), 'fail');
+                        }
+                    } catch (err) {
+                        showAdminMsg('清空失败：' + err.message, 'fail');
+                    } finally {
+                        btnDone(clearAllBtn);
+                    }
+                });
+            }
 
             // 搜索过滤
             searchInput.addEventListener('input', () => {

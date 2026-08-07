@@ -943,6 +943,17 @@ def api_conversations_delete(conv_id):
     return {"ok": True, "message": "对话已删除"}
 
 
+@app.route("/api/conversations", methods=["DELETE"])
+def api_conversations_delete_all():
+    """清空全部对话"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
+    convs = _load_conversations()
+    count = len(convs)
+    _save_conversations([])
+    return {"ok": True, "message": "所有对话已清空", "deleted_count": count}
+
+
 @app.route("/api/conversations/<conv_id>/messages", methods=["PUT"])
 def api_conversations_save_messages(conv_id):
     """保存对话的消息列表"""
