@@ -1785,30 +1785,35 @@ def api_pool_list():
     """获取账号池列表（密码脱敏）"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    accounts = _load_pool_accounts()
-    safe = []
-    for a in accounts:
-        safe.append({
-            "id": a["id"],
-            "pool_type": a["pool_type"],
-            "name": a["name"],
-            "base_url": a["base_url"],
-            "username": a["username"],
-            "password_preview": a["password"][:4] + "****" if a.get("password") else "",
-            "balance": a.get("balance"),
-            "balance_updated_at": a.get("balance_updated_at"),
-            "groups_summary": [
-                {"name": g.get("name"), "count": g.get("count", 0)}
-                for g in (a.get("groups") or [])[:10]
-            ],
-            "groups_count": len(a.get("groups") or []),
-            "groups_updated_at": a.get("groups_updated_at"),
-            "remark": a.get("remark"),
-            "status": a.get("status"),
-            "created_at": a.get("created_at"),
-            "updated_at": a.get("updated_at"),
-        })
-    return {"ok": True, "accounts": safe}
+    try:
+        accounts = _load_pool_accounts()
+        safe = []
+        for a in accounts:
+            safe.append({
+                "id": a["id"],
+                "pool_type": a["pool_type"],
+                "name": a["name"],
+                "base_url": a["base_url"],
+                "username": a["username"],
+                "password_preview": a["password"][:4] + "****" if a.get("password") else "",
+                "balance": a.get("balance"),
+                "balance_updated_at": a.get("balance_updated_at"),
+                "groups_summary": [
+                    {"name": g.get("name"), "count": g.get("count", 0)}
+                    for g in (a.get("groups") or [])[:10]
+                ],
+                "groups_count": len(a.get("groups") or []),
+                "groups_updated_at": a.get("groups_updated_at"),
+                "remark": a.get("remark"),
+                "status": a.get("status"),
+                "created_at": a.get("created_at"),
+                "updated_at": a.get("updated_at"),
+            })
+        return {"ok": True, "accounts": safe}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts", methods=["POST"])
@@ -1816,42 +1821,47 @@ def api_pool_add():
     """新增账号池账号"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    data = request.get_json(force=True) or {}
-    pool_type = (data.get("pool_type") or "").strip()
-    name = (data.get("name") or "").strip()
-    base_url = (data.get("base_url") or "").strip()
-    username = (data.get("username") or "").strip()
-    password = (data.get("password") or "").strip()
-    remark = (data.get("remark") or "").strip()
+    try:
+        data = request.get_json(force=True) or {}
+        pool_type = (data.get("pool_type") or "").strip()
+        name = (data.get("name") or "").strip()
+        base_url = (data.get("base_url") or "").strip()
+        username = (data.get("username") or "").strip()
+        password = (data.get("password") or "").strip()
+        remark = (data.get("remark") or "").strip()
 
-    if pool_type not in ("sub2api", "newapi"):
-        return {"ok": False, "message": "账号类型必须是 sub2api 或 newapi"}
-    if not name:
-        return {"ok": False, "message": "请填写名称"}
-    if not base_url:
-        return {"ok": False, "message": "请填写 API 地址"}
-    if not username:
-        return {"ok": False, "message": "请填写用户名"}
-    if not password:
-        return {"ok": False, "message": "请填写密码"}
+        if pool_type not in ("sub2api", "newapi"):
+            return {"ok": False, "message": "账号类型必须是 sub2api 或 newapi"}
+        if not name:
+            return {"ok": False, "message": "请填写名称"}
+        if not base_url:
+            return {"ok": False, "message": "请填写 API 地址"}
+        if not username:
+            return {"ok": False, "message": "请填写用户名"}
+        if not password:
+            return {"ok": False, "message": "请填写密码"}
 
-    acc = {
-        "id": str(uuid.uuid4()),
-        "pool_type": pool_type,
-        "name": name,
-        "base_url": _normalize_base_url(base_url),
-        "username": username,
-        "password": password,
-        "access_token": None,
-        "balance": None,
-        "balance_updated_at": None,
-        "groups": [],
-        "groups_updated_at": None,
-        "remark": remark,
-        "status": "active",
-    }
-    _upsert_pool_account(acc)
-    return {"ok": True, "message": f"账号「{name}」添加成功", "id": acc["id"]}
+        acc = {
+            "id": str(uuid.uuid4()),
+            "pool_type": pool_type,
+            "name": name,
+            "base_url": _normalize_base_url(base_url),
+            "username": username,
+            "password": password,
+            "access_token": None,
+            "balance": None,
+            "balance_updated_at": None,
+            "groups": [],
+            "groups_updated_at": None,
+            "remark": remark,
+            "status": "active",
+        }
+        _upsert_pool_account(acc)
+        return {"ok": True, "message": f"账号「{name}」添加成功", "id": acc["id"]}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>", methods=["PUT"])
@@ -1859,24 +1869,29 @@ def api_pool_update(pool_id):
     """修改账号池账号"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    acc = _find_pool_account(pool_id)
-    if not acc:
-        return {"ok": False, "message": "账号不存在"}
-    data = request.get_json(force=True) or {}
-    fields = {}
-    for k in ("pool_type", "name", "base_url", "username", "password", "remark", "status"):
-        if k in data:
-            v = data[k]
-            if isinstance(v, str):
-                v = v.strip()
-            if k == "base_url" and isinstance(v, str):
-                v = _normalize_base_url(v)
-            if v is not None and v != "":
-                fields[k] = v
-    if not fields:
-        return {"ok": False, "message": "没有提供可更新的字段"}
-    _update_pool_field(pool_id, **fields)
-    return {"ok": True, "message": "账号已更新"}
+    try:
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
+        data = request.get_json(force=True) or {}
+        fields = {}
+        for k in ("pool_type", "name", "base_url", "username", "password", "remark", "status"):
+            if k in data:
+                v = data[k]
+                if isinstance(v, str):
+                    v = v.strip()
+                if k == "base_url" and isinstance(v, str):
+                    v = _normalize_base_url(v)
+                if v is not None and v != "":
+                    fields[k] = v
+        if not fields:
+            return {"ok": False, "message": "没有提供可更新的字段"}
+        _update_pool_field(pool_id, **fields)
+        return {"ok": True, "message": "账号已更新"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>", methods=["DELETE"])
@@ -1884,10 +1899,15 @@ def api_pool_delete(pool_id):
     """删除账号池账号"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    ok = _delete_pool_account(pool_id)
-    if not ok:
-        return {"ok": False, "message": "账号不存在"}
-    return {"ok": True, "message": "账号已删除"}
+    try:
+        ok = _delete_pool_account(pool_id)
+        if not ok:
+            return {"ok": False, "message": "账号不存在"}
+        return {"ok": True, "message": "账号已删除"}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 @app.route("/api/pool/accounts/<pool_id>/login", methods=["POST"])
@@ -2006,69 +2026,74 @@ def api_pool_refresh_all():
     """批量刷新所有账号的余额和分组"""
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    accounts = _load_pool_accounts()
-    if not accounts:
-        return {"ok": False, "message": "暂无账号"}
+    try:
+        accounts = _load_pool_accounts()
+        if not accounts:
+            return {"ok": False, "message": "暂无账号"}
 
-    results = []
+        results = []
 
-    def do_one(acc: dict):
-        r = {"id": acc["id"], "name": acc["name"], "pool_type": acc["pool_type"]}
-        # 登录
-        token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
-        if not token:
-            r["login_ok"] = False
-            r["login_err"] = err
+        def do_one(acc: dict):
+            r = {"id": acc["id"], "name": acc["name"], "pool_type": acc["pool_type"]}
+            # 登录
+            token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            if not token:
+                r["login_ok"] = False
+                r["login_err"] = err
+                results.append(r)
+                return
+            r["login_ok"] = True
+            # 余额
+            balance, b_err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
+            if balance is not None:
+                r["balance"] = balance
+                r["balance_ok"] = True
+            else:
+                r["balance_ok"] = False
+                r["balance_err"] = b_err
+            # 分组
+            groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+            if groups is not None:
+                r["groups_count"] = len(groups)
+                r["groups_ok"] = True
+            else:
+                r["groups_ok"] = False
+                r["groups_err"] = g_err
+            # 保存
+            now = datetime.now().isoformat()
+            fields = {"access_token": token}
+            if balance is not None:
+                fields["balance"] = balance
+                fields["balance_updated_at"] = now
+            if groups is not None:
+                fields["groups"] = groups
+                fields["groups_updated_at"] = now
+            try:
+                _update_pool_field(acc["id"], **fields)
+                r["saved"] = True
+            except Exception as e:
+                r["saved"] = False
+                r["save_err"] = str(e)
             results.append(r)
-            return
-        r["login_ok"] = True
-        # 余额
-        balance, b_err = _pool_get_balance(acc["pool_type"], acc["base_url"], token)
-        if balance is not None:
-            r["balance"] = balance
-            r["balance_ok"] = True
-        else:
-            r["balance_ok"] = False
-            r["balance_err"] = b_err
-        # 分组
-        groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
-        if groups is not None:
-            r["groups_count"] = len(groups)
-            r["groups_ok"] = True
-        else:
-            r["groups_ok"] = False
-            r["groups_err"] = g_err
-        # 保存
-        now = datetime.now().isoformat()
-        fields = {"access_token": token}
-        if balance is not None:
-            fields["balance"] = balance
-            fields["balance_updated_at"] = now
-        if groups is not None:
-            fields["groups"] = groups
-            fields["groups_updated_at"] = now
-        try:
-            _update_pool_field(acc["id"], **fields)
-            r["saved"] = True
-        except Exception as e:
-            r["saved"] = False
-            r["save_err"] = str(e)
-        results.append(r)
 
-    threads = []
-    for acc in accounts:
-        t = threading.Thread(target=do_one, args=(acc,))
-        threads.append(t)
-        t.start()
-    for t in threads:
-        t.join()
+        threads = []
+        for acc in accounts:
+            t = threading.Thread(target=do_one, args=(acc,))
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join()
 
-    success = sum(1 for r in results if r.get("saved"))
-    return {
-        "ok": True,
-        "message": f"批量刷新完成：成功 {success}/{len(results)}",
-        "results": results,
-    }
+        success = sum(1 for r in results if r.get("saved"))
+        return {
+            "ok": True,
+            "message": f"批量刷新完成：成功 {success}/{len(results)}",
+            "results": results,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
 def _migrate_old_data():

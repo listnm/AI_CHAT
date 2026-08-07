@@ -983,7 +983,12 @@ async function req(url, method = 'GET', body = null) {
         headers: { 'Content-Type': 'application/json' },
     };
     if (body) opt.body = JSON.stringify(body);
-    const r = await fetch(url, opt);
+    let r;
+    try {
+        r = await fetch(url, opt);
+    } catch (e) {
+        throw new Error('无法连接服务器，请检查网络或服务是否运行（' + e.message + '）');
+    }
     const text = await r.text();
     // 尝试解析 JSON
     let data;
