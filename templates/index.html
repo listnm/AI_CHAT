@@ -1595,6 +1595,7 @@ searchInput.oninput = (e) => renderConversationList(e.target.value);
 convNewBtn.onclick = createNewConversation;
 
 function createNewConversation() {
+    if (isStreaming) doStop();
     const now = new Date().toISOString();
     const c = {
         id: (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)),
@@ -1611,6 +1612,7 @@ function createNewConversation() {
 }
 
 function switchConversation(convId) {
+    if (isStreaming) doStop();
     const c = conversations.find(x => x.id === convId); if (!c) { showToast("对话不存在"); return; }
     currentConvId = convId; messages = c.messages || [];
     headerTitle.textContent = c.title && c.title !== "新对话" ? c.title : "";
@@ -1620,20 +1622,22 @@ function switchConversation(convId) {
     sidebar.classList.remove("open"); sidebarMask.classList.remove("active");
 }
 
-function saveCurrentConversation() {
-    if (!currentConvId || messages.length === 0) return;
-    const c = conversations.find(x => x.id === currentConvId);
+function saveCurrentConversation(convId, msgs) {
+    convId = convId || currentConvId;
+    msgs = msgs || messages;
+    if (!convId || msgs.length === 0) return;
+    const c = conversations.find(x => x.id === convId);
     if (!c) {
         const now = new Date().toISOString();
-        const newC = { id: currentConvId, title: "新对话", messages: [], created_at: now, updated_at: now };
+        const newC = { id: convId, title: "新对话", messages: [], created_at: now, updated_at: now };
         conversations.unshift(newC);
     }
-    const cc = conversations.find(x => x.id === currentConvId); if (!cc) return;
-    cc.messages = messages; cc.updated_at = new Date().toISOString();
-    for (const m of messages) {
+    const cc = conversations.find(x => x.id === convId); if (!cc) return;
+    cc.messages = msgs; cc.updated_at = new Date().toISOString();
+    for (const m of msgs) {
         if (m.role === "user" && typeof m.content === "string" && m.content.trim()) {
             cc.title = m.content.slice(0, 28);
-            headerTitle.textContent = cc.title;
+            if (convId === currentConvId) headerTitle.textContent = cc.title;
             break;
         }
     }
@@ -1812,7 +1816,10 @@ async function doSend() {
     } else userMsgContent = text;
 
     const userMsgRecord = { role: "user", content: userMsgContent, _files: hasFiles ? uploadedFiles.slice() : undefined };
-    messages.push(userMsgRecord);
+    // 捕获发起请求时的对话 ID 和消息数组引用，防止切换对话后串内容
+    const sendConvId = currentConvId;
+    const sendMessages = messages;
+    sendMessages.push(userMsgRecord);
     showWelcome(false);
     const textForUI = typeof userMsgContent === "string" ? userMsgContent :
         (userMsgContent.find ? userMsgContent.find(x => x.type === "text")?.text || "" : "");
@@ -1840,7 +1847,7 @@ async function doSend() {
         api_url: selected.api_url, api_key: selected.api_key, model: selected.model,
         messages: [
             { role: "system", content: "你是一个有帮助的AI助手。" },
-            ...messages.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
+            ...sendMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
             { role: "user", content: userMsgContent },
         ],
     };
@@ -1926,13 +1933,13 @@ async function doSend() {
             if (!contentEl.classList.contains("msg-error")) contentEl.innerHTML = formatMsgContent(fullContent);
             else contentEl.textContent = fullContent;
         }
-        if (fullContent.trim()) messages.push({ role: "assistant", content: fullContent });
+        if (fullContent.trim()) sendMessages.push({ role: "assistant", content: fullContent });
         else {
             if (contentEl) { contentEl.textContent = "（未收到有效回复，请检查 API 配置）"; contentEl.className = "msg-content msg-error"; }
-            messages.push({ role: "assistant", content: "⚠️ 未收到有效回复，请检查 API 配置" });
+            sendMessages.push({ role: "assistant", content: "⚠️ 未收到有效回复，请检查 API 配置" });
         }
         scrollToBottom();
-        saveCurrentConversation();
+        saveCurrentConversation(sendConvId, sendMessages);
     } catch (err) {
         if (loadingRow && loadingRow.parentNode) loadingRow.remove();
         const errTxt = err.name === "AbortError" ? (fullContent.trim() ? fullContent : "（已停止生成）") : (err.message || "请求失败");
@@ -1958,10 +1965,10 @@ async function doSend() {
         }
         if (!(err.name === "AbortError" && !fullContent.trim())) {
             const recorded = err.name === "AbortError" && fullContent.trim() ? fullContent : "⚠️ " + errTxt;
-            messages.push({ role: "assistant", content: recorded });
+            sendMessages.push({ role: "assistant", content: recorded });
         }
         scrollToBottom();
-        if (!(err.name === "AbortError" && !fullContent.trim()) && currentConvId) saveCurrentConversation();
+        if (!(err.name === "AbortError" && !fullContent.trim()) && sendConvId) saveCurrentConversation(sendConvId, sendMessages);
     } finally {
         clearTimeout(tmId);
         isStreaming = false; currentAbortController = null;
