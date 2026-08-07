@@ -1183,9 +1183,12 @@ def proxy_chat_completions():
     payload["stream"] = stream
 
     try:
-        # 超时放宽到 600s，Trae/Cursor 等 Agent 工具单轮可能涉及多步推理
+        # timeout 用元组 (connect_timeout, read_timeout)：
+        # - 连接建立 30s 足够
+        # - 单次读 chunk 600s（流式时相邻 chunk 之间的间隔通常很小，但长输出
+        #   时上游可能间隔较久才推下一块）
         upstream = requests.post(
-            api_url, headers=headers, json=payload, stream=stream, timeout=600,
+            api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
         )
         upstream.raise_for_status()
         # 强制 UTF-8 编码，防止上游 SSE 未指定 charset 导致中文乱码
@@ -1210,9 +1213,13 @@ def proxy_chat_completions():
         def generate():
             # 直接透传原始字节，避免 decode_unicode 截断多字节 UTF-8 字符导致中文乱码
             buffer = b""
+            chunk_count = 0
+            byte_count = 0
             for chunk in upstream.iter_content(chunk_size=None):
                 if not chunk:
                     continue
+                chunk_count += 1
+                byte_count += len(chunk)
                 buffer += chunk
                 while b"\n" in buffer:
                     line, buffer = buffer.split(b"\n", 1)
@@ -1222,11 +1229,14 @@ def proxy_chat_completions():
                     if line.startswith(b"data: "):
                         data_content = line[6:]
                         if data_content.strip() == b"[DONE]":
+                            print(f"[proxy-stream] done: chunks={chunk_count} bytes={byte_count}", flush=True)
                             yield "data: [DONE]\n\n"
                             return
                         yield b"data: " + data_content + b"\n\n"
                     elif line.startswith(b":"):
                         continue
+            # 循环正常结束（上游关闭连接但没发 [DONE]）
+            print(f"[proxy-stream] upstream closed without [DONE]: chunks={chunk_count} bytes={byte_count} buf_tail={buffer[:80]!r}", flush=True)
             if buffer.strip():
                 if buffer.startswith(b"data: "):
                     dc = buffer[6:]
