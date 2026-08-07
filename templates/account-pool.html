@@ -1269,9 +1269,10 @@ function renderList() {
                 <div style="grid-column: 1 / -1;">
                     <div class="pool-card-field-label">密钥 / 渠道分组</div>
                     <div class="group-chips" style="margin-top:4px;">
-                        ${chips || '<span style="font-size:12px;color:var(--text-muted);">点击「分组」按钮查询</span>'}
+                        ${chips || '<span style="font-size:12px;color:var(--text-muted);">点击「分组详情」按钮查询</span>'}
                     </div>
                 </div>
+                ${_renderGroupPicker(a)}
                 ${hasSel ? `
                 <div style="grid-column: 1 / -1;background:linear-gradient(135deg, rgba(45,212,168,0.12), rgba(99,102,241,0.12));border:1px solid rgba(45,212,168,0.3);border-radius:10px;padding:12px 14px;margin-top:4px;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
@@ -1282,12 +1283,12 @@ function renderList() {
                     </div>
                     <div style="display:flex;gap:6px;align-items:center;">
                         <code style="flex:1;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(0,0,0,0.04);padding:6px 10px;border-radius:6px;font-size:12px;" title="${escapeHtml(selKey)}">${escapeHtml(selKey.slice(0, 12))}…${escapeHtml(selKey.slice(-8))}</code>
-                        <button class="btn btn-sm" style="padding:6px 12px;font-size:12px;background:var(--accent);color:#fff;border:none;cursor:pointer;" onclick='copyText(${JSON.stringify(selKey)})'>📋 复制Key</button>
+                        <button class="btn btn-sm" style="padding:6px 12px;font-size:12px;background:var(--accent);color:#fff;border:none;cursor:pointer;" data-copy-text="${escapeHtml(selKey)}" onclick="handleCopy(this)">📋 复制Key</button>
                         <button class="btn btn-sm" style="padding:6px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--text-muted);" onclick="clearSelected('${a.id}')">✕ 清除</button>
                     </div>
                 </div>` : `
                 <div style="grid-column: 1 / -1;background:var(--bg-secondary);border:1px dashed var(--border);border-radius:10px;padding:10px 14px;margin-top:4px;color:var(--text-muted);font-size:12px;">
-                    💡 尚未选用分组密钥 → 点击「👁 分组详情」→ 在弹窗里找到想要的密钥 → 点「✨ 选用此Key」
+                    💡 尚未选用分组密钥 → 可在上方下拉选择分组和密钥，或点击「👁 分组详情」查看全部再选择
                 </div>`}
                 ${a.remark ? `<div style="grid-column: 1 / -1;">
                     <div class="pool-card-field-label">备注</div>
@@ -1302,6 +1303,142 @@ function renderList() {
             </div>
         </div>`;
     }).join('');
+}
+
+/* ============================================================
+ * 卡片级下拉选择器：选分组 → 选密钥 → 一键选用
+ * ============================================================ */
+function _renderGroupPicker(a) {
+    const groups = (a.groups || []).filter(g => !g.is_channel_group && ((g.tokens || []).length > 0 || (g.sub_groups || []).length > 0));
+    if (!groups.length) {
+        return ''; // 没有缓存分组时不显示选择器
+    }
+    const accId = a.id;
+
+    // Flat tokens list: walk sub_groups if any
+    const allTokensByGroup = []; // [{groupName, tokens:[{...}]}]
+    groups.forEach(g => {
+        const gName = g.name || '未命名分组';
+        if (g.sub_groups && g.sub_groups.length) {
+            g.sub_groups.forEach(sg => {
+                const sgName = `${gName} / ${sg.name || '子分组'}`;
+                if ((sg.tokens || []).length) {
+                    allTokensByGroup.push({ groupName: sgName, tokens: sg.tokens });
+                }
+            });
+        } else if ((g.tokens || []).length) {
+            allTokensByGroup.push({ groupName: gName, tokens: g.tokens });
+        }
+    });
+    if (!allTokensByGroup.length) return '';
+
+    const pickerUid = nextUid('pick');
+    const groupSelectId = 'gsel_' + pickerUid;
+    const tokenSelectId = 'tsel_' + pickerUid;
+    const confirmBtnId = 'btn_' + pickerUid;
+
+    // 缓存到全局状态，后续 onchange 用
+    if (!state._pickerData) state._pickerData = {};
+    state._pickerData[pickerUid] = allTokensByGroup;
+
+    // 分组下拉
+    const groupOptions = ['<option value="">— 选择分组（共' + allTokensByGroup.length + '）—</option>']
+        .concat(allTokensByGroup.map((g, i) => {
+            const sel = (a.selected_group && a.selected_group === g.groupName) ? ' selected' : '';
+            return `<option value="${i}"${sel}>${escapeHtml(g.groupName)} · ${g.tokens.length} 条密钥</option>`;
+        })).join('');
+
+    // 初始化时填充密钥下拉
+    let defaultGroupIdx = -1;
+    if (a.selected_group) {
+        defaultGroupIdx = allTokensByGroup.findIndex(g => g.groupName === a.selected_group);
+    }
+    if (defaultGroupIdx < 0) defaultGroupIdx = 0;
+    const tokenList = allTokensByGroup[defaultGroupIdx] ? allTokensByGroup[defaultGroupIdx].tokens : [];
+    const tokenOptions = ['<option value="">— 选择密钥 —</option>']
+        .concat(tokenList.map((t, i) => {
+            const name = t.name || t.title || `密钥 ${t.id || (i + 1)}`;
+            const sel = (a.selected_token_id && String(a.selected_token_id) === String(t.id)) ? ' selected' : '';
+            const remain = t.remaining_quota != null ? ` (剩余${Number(t.remaining_quota).toFixed(0)})` : '';
+            return `<option value="${i}" data-token-id="${escapeHtml(String(t.id || ''))}" data-token-key="${escapeHtml(String(t.key || ''))}" data-token-name="${escapeHtml(String(name))}"${sel}>${escapeHtml(name)}${remain}</option>`;
+        })).join('');
+
+    return `
+    <div style="grid-column: 1 / -1;padding:10px 12px;margin-top:4px;background:rgba(99,102,241,0.05);border:1px solid rgba(99,102,241,0.2);border-radius:10px;">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:600;">🎯 快速选用：选择分组 → 选择密钥 → 一键选用</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:6px;align-items:end;">
+            <select id="${groupSelectId}" data-picker-uid="${pickerUid}" data-acc-id="${escapeHtml(accId)}"
+                onchange="onPickerGroupChange(this)"
+                style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;cursor:pointer;">
+                ${groupOptions}
+            </select>
+            <select id="${tokenSelectId}" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;cursor:pointer;">
+                ${tokenOptions}
+            </select>
+            <button id="${confirmBtnId}" class="btn btn-primary btn-sm"
+                data-group-select-id="${escapeHtml(groupSelectId)}"
+                data-token-select-id="${escapeHtml(tokenSelectId)}"
+                data-acc-id="${escapeHtml(accId)}"
+                style="padding:8px 14px;font-size:13px;"
+                onclick="onPickerConfirm(this)">✨ 选用</button>
+        </div>
+    </div>`;
+}
+
+// 分组下拉变化：同步刷新密钥下拉
+function onPickerGroupChange(sel) {
+    const uid = sel.getAttribute('data-picker-uid');
+    const accId = sel.getAttribute('data-acc-id');
+    const groupIdx = parseInt(sel.value, 10);
+    const pickerData = (state._pickerData && state._pickerData[uid]) || [];
+    const tokens = pickerData[groupIdx] ? pickerData[groupIdx].tokens : [];
+
+    // 查找同一行里的 token select（按 id 前缀）
+    const tokenSel = document.getElementById(sel.id.replace(/^gsel_/, 'tsel_'));
+    if (!tokenSel) return;
+
+    const acc = state.accounts.find(a => a.id === accId);
+    const options = ['<option value="">— 选择密钥 —</option>']
+        .concat(tokens.map((t, i) => {
+            const name = t.name || t.title || `密钥 ${t.id || (i + 1)}`;
+            const sel = (acc && acc.selected_token_id && String(acc.selected_token_id) === String(t.id)) ? ' selected' : '';
+            const remain = t.remaining_quota != null ? ` (剩余${Number(t.remaining_quota).toFixed(0)})` : '';
+            return `<option value="${i}" data-token-id="${escapeHtml(String(t.id || ''))}" data-token-key="${escapeHtml(String(t.key || ''))}" data-token-name="${escapeHtml(String(name))}"${sel}>${escapeHtml(name)}${remain}</option>`;
+        })).join('');
+    tokenSel.innerHTML = options;
+}
+
+// 点击「选用」按钮：从两个 select + dataset 里取值并调用 selectToken
+function onPickerConfirm(btn) {
+    const accId = btn.getAttribute('data-acc-id');
+    const gSel = document.getElementById(btn.getAttribute('data-group-select-id'));
+    const tSel = document.getElementById(btn.getAttribute('data-token-select-id'));
+    if (!gSel || !tSel) return;
+
+    // 分组名
+    const gIdx = parseInt(gSel.value, 10);
+    if (isNaN(gIdx) || gIdx < 0 || !gSel.selectedOptions || !gSel.selectedOptions[0]) {
+        showMsg('listMsg', '❌ 请先选择分组', 'fail');
+        return;
+    }
+    const uid = gSel.getAttribute('data-picker-uid');
+    const all = (state._pickerData && state._pickerData[uid]) || [];
+    const groupName = all[gIdx] ? all[gIdx].groupName : '';
+
+    // 密钥
+    if (!tSel.value || !tSel.selectedOptions || !tSel.selectedOptions[0]) {
+        showMsg('listMsg', '❌ 请选择该分组下要使用的密钥', 'fail');
+        return;
+    }
+    const opt = tSel.selectedOptions[0];
+    const tokenId = opt.getAttribute('data-token-id') || '';
+    const tokenKey = opt.getAttribute('data-token-key') || '';
+    const tokenName = opt.getAttribute('data-token-name') || '';
+    if (!tokenKey) {
+        showMsg('listMsg', '❌ 此密钥缺少完整的 key 字段，请改用分组详情里复制', 'fail');
+        return;
+    }
+    selectToken(accId, groupName, { id: tokenId, key: tokenKey, name: tokenName });
 }
 
 function escapeHtml(s) {
@@ -1484,6 +1621,28 @@ async function clearSelected(accId) {
     }
 }
 
+/* ============================================================
+ * 安全助手：用 dataset 替代 inline JSON 字符串，避免引号特殊字符问题
+ * ============================================================ */
+function handleCopy(btn) {
+    const text = btn.getAttribute('data-copy-text') || '';
+    const hint = btn.getAttribute('data-copy-hint') || '';
+    return copyText(text, hint);
+}
+
+function handleSelectToken(btn) {
+    const accId = btn.getAttribute('data-acc-id') || '';
+    const groupName = btn.getAttribute('data-group-name') || '';
+    const tokenId = btn.getAttribute('data-token-id') || '';
+    const tokenKey = btn.getAttribute('data-token-key') || '';
+    const tokenName = btn.getAttribute('data-token-name') || '';
+    if (!accId || !tokenKey) {
+        showMsg('listMsg', '❌ 参数缺失：账号或密钥为空', 'fail');
+        return;
+    }
+    return selectToken(accId, groupName, { id: tokenId, key: tokenKey, name: tokenName });
+}
+
 function refreshModalSelection(accId) {
     // 弹窗存在时，刷新里面的选中标记
     const modal = document.getElementById('groupsModal');
@@ -1663,19 +1822,20 @@ function renderItemRow(it, isChannel, accId, groupName) {
     let actions = '';
     if (!isChannel && it.key) {
         const copyUid = nextUid('cp');
-        const selId = JSON.stringify(String(it.id || ''));
-        const selKey = JSON.stringify(String(it.key));
-        const selName = JSON.stringify(String(name));
-        const tokData = JSON.stringify({ id: String(it.id || ''), key: String(it.key), name: String(name), title: String(it.title || '') });
         const selBtn = `<button class="btn btn-sm" data-token-select="1"
+            data-acc-id="${escapeHtml(accId)}"
+            data-group-name="${escapeHtml(groupName || '')}"
             data-token-id="${escapeHtml(String(it.id || ''))}"
             data-token-key="${escapeHtml(String(it.key))}"
+            data-token-name="${escapeHtml(String(name))}"
             style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
-            onclick='selectToken(${JSON.stringify(accId)}, ${JSON.stringify(groupName || "")}, ${tokData})'>✨ 选用此Key</button>`;
+            onclick="handleSelectToken(this)">✨ 选用此Key</button>`;
         actions = `
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;flex-wrap:wrap;justify-content:flex-end;">
             <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;"
-                    onclick='copyText(${selKey}, ${JSON.stringify(copyUid)})'>📋 复制Key</button>
+                    data-copy-text="${escapeHtml(String(it.key))}"
+                    data-copy-hint="${escapeHtml(copyUid)}"
+                    onclick="handleCopy(this)">📋 复制Key</button>
             ${selBtn}
             <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">复制</span>
         </div>`;
@@ -1684,7 +1844,9 @@ function renderItemRow(it, isChannel, accId, groupName) {
         actions = `
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;">
             <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;"
-                    onclick='copyText(${JSON.stringify(String(it.base_url))}, ${JSON.stringify(copyUid)})'>📋 复制地址</button>
+                    data-copy-text="${escapeHtml(String(it.base_url))}"
+                    data-copy-hint="${escapeHtml(copyUid)}"
+                    onclick="handleCopy(this)">📋 复制地址</button>
             <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">复制</span>
         </div>`;
     }
