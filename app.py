@@ -149,38 +149,52 @@ _conversations_dll = """
 """
 
 
+_POOL_NEW_COLUMNS_DDL = [
+    "ALTER TABLE pool_accounts ADD COLUMN selected_group TEXT",
+    "ALTER TABLE pool_accounts ADD COLUMN selected_token_id TEXT",
+    "ALTER TABLE pool_accounts ADD COLUMN selected_token_name TEXT",
+    "ALTER TABLE pool_accounts ADD COLUMN selected_token_key_encrypted TEXT",
+]
+
+
 def _ensure_pool_table(conn):
-    """确保 pool_accounts 表存在（运行时兜底建表，防止 PG 环境遗漏）"""
+    """确保 pool_accounts 表存在 + 所有新列齐全（运行时兜底，防止 PG 多 worker 环境遗漏迁移）"""
+    migrated = False
     try:
         conn.execute(_POOL_ACCOUNTS_DDL)
-        conn.commit()
+        migrated = True
     except Exception:
-        # 忽略"表已存在"类错误；其它错误由上层处理
+        # 表已存在类错误（PG 的 "relation already exists" 等），忽略，继续补列
         pass
+    # 兼容旧 pool_accounts：补充新增字段（无论表是否新建都走一遍，已存在则 except 跳过）
+    for col_sql in _POOL_NEW_COLUMNS_DDL:
+        try:
+            conn.execute(col_sql)
+            migrated = True
+        except Exception:
+            pass  # 列已存在
+    if migrated:
+        try:
+            conn.commit()
+        except Exception:
+            pass
 
 
 def _init_db():
     """初始化数据库表结构"""
     conn = _get_db()
     try:
-        conn.executescript(_accounts_dll + _conversations_dll + _POOL_ACCOUNTS_DDL)
-        # 兼容旧表：添加 is_default 列（如果不存在）
+        try:
+            conn.executescript(_accounts_dll + _conversations_dll)
+        except Exception:
+            pass
+        _ensure_pool_table(conn)
+        # 兼容旧 accounts 表：添加 is_default 列（如果不存在）
         try:
             conn.execute("ALTER TABLE accounts ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
         except Exception:
             pass  # 列已存在
-        # 兼容旧 pool_accounts：补充新增字段
-        for col_sql in [
-            "ALTER TABLE pool_accounts ADD COLUMN selected_group TEXT",
-            "ALTER TABLE pool_accounts ADD COLUMN selected_token_id TEXT",
-            "ALTER TABLE pool_accounts ADD COLUMN selected_token_name TEXT",
-            "ALTER TABLE pool_accounts ADD COLUMN selected_token_key_encrypted TEXT",
-        ]:
-            try:
-                conn.execute(col_sql)
-            except Exception:
-                pass  # 列已存在
-        conn.commit()
     finally:
         conn.close()
 
@@ -1573,43 +1587,53 @@ def _pool_login(pool_type: str, base_url: str, username: str, password: str) -> 
         f"{base}/api/login",
         f"{base}/user/login",
     ]
+    # payload 候选：不同平台对字段名、大小写、username/email 要求不同，都试一遍
+    payloads = [
+        {"username": username, "password": password},
+        {"email": username, "password": password},
+        {"Username": username, "Password": password},
+        {"Email": username, "Password": password},
+        {"email": username, "password": password, "username": username},
+    ]
     last_error = ""
     for url in endpoints:
-        try:
-            # 适配不同平台：Qingflow 用 email 字段，标准 newapi 用 username
-            is_v1 = "/api/v1/" in url
-            if is_v1 and "@" in username:
-                payload = {"email": username, "password": password}
-            else:
-                payload = {"username": username, "password": password}
-            resp = requests.post(url, json=payload, timeout=15)
-            if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                    # 兼容多种返回结构：{data:{token}} / {data:{access_token}} / {token} / {access_token}
-                    token = None
-                    if isinstance(data, dict):
-                        d = data.get("data", data)
-                        if isinstance(d, dict):
-                            token = d.get("token") or d.get("access_token") or d.get("Authorization")
-                        if not token:
-                            token = data.get("token") or data.get("access_token")
-                    if token and isinstance(token, str):
-                        # 去掉 Bearer 前缀（如果有）
-                        if token.lower().startswith("bearer "):
-                            token = token[7:]
-                        return token, ""
-                    last_error = f"登录成功但未解析到 token：响应={json.dumps(data)[:200]}"
-                except Exception as e:
-                    last_error = f"登录响应解析失败：{e}"
-            else:
-                last_error = f"HTTP {resp.status_code}：{resp.text[:150]}"
-        except requests.exceptions.ConnectionError:
-            last_error = "无法连接到服务器，请检查 API 地址或网络"
-        except requests.exceptions.Timeout:
-            last_error = "连接超时"
-        except Exception as e:
-            last_error = f"异常：{e}"
+        for payload in payloads:
+            try:
+                resp = requests.post(url, json=payload, timeout=15)
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        token = None
+                        if isinstance(data, dict):
+                            d = data.get("data", data)
+                            if isinstance(d, dict):
+                                token = d.get("token") or d.get("access_token") or d.get("Authorization") or d.get("Token") or d.get("AccessToken")
+                            if not token:
+                                token = data.get("token") or data.get("access_token") or data.get("Authorization") or data.get("Token") or data.get("AccessToken")
+                        if token and isinstance(token, str):
+                            if token.lower().startswith("bearer "):
+                                token = token[7:]
+                            return token, ""
+                        last_error = f"登录成功但未解析到 token：响应={json.dumps(data)[:200]}"
+                    except Exception as e:
+                        last_error = f"登录响应解析失败：{e}"
+                else:
+                    body = resp.text[:150]
+                    try:
+                        jr = resp.json()
+                        if isinstance(jr, dict):
+                            m = jr.get("message") or jr.get("msg") or jr.get("error")
+                            if m:
+                                body = str(m)
+                    except Exception:
+                        pass
+                    last_error = f"HTTP {resp.status_code}：{body}"
+            except requests.exceptions.ConnectionError:
+                last_error = "无法连接到服务器，请检查 API 地址或网络"
+            except requests.exceptions.Timeout:
+                last_error = "连接超时"
+            except Exception as e:
+                last_error = f"异常：{e}"
     return None, last_error or "所有登录端点均未返回有效 token"
 
 
@@ -1685,7 +1709,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
     last_token_err = ""
     for url in token_endpoints:
         try:
-            resp = requests.get(url, headers=headers, timeout=15, params={"p": 1, "page_size": 500})
+            resp = requests.get(url, headers=headers, timeout=6, params={"p": 1, "page_size": 500})
             if resp.status_code == 200:
                 data = resp.json()
                 arr = None
@@ -1704,6 +1728,10 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                     token_list = arr
                     break
                 last_token_err = f"令牌列表格式异常：{json.dumps(data)[:200]}"
+            elif resp.status_code in (401, 403):
+                last_token_err = f"HTTP {resp.status_code}（Token 可能失效）"
+                # 401/403 就不用再试后面的 endpoint 了，一样会 401
+                break
             else:
                 last_token_err = f"HTTP {resp.status_code}"
         except Exception as e:
@@ -1713,14 +1741,20 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
     if token_list:
         # 按 group / group_name / group_id / channel / tag 字段分组
         group_map: dict = {}
+        # 收集全部分组选项（用于切换分组下拉）：group_id(原始) -> group_name
+        group_opt_map: dict = {}
         for t in token_list:
             if not isinstance(t, dict):
                 continue
             group_key = None
-            # 优先检查 group 字段：可能是 dict（含 name）或字符串
+            # 提取原始 group_id（用于 PUT /api/v1/keys/{id} 切分组），优先级：group.id > group_id > group(字符串则无ID)
             group_val = t.get("group")
+            raw_group_id = None
+            raw_group_name = None
             if isinstance(group_val, dict):
-                group_key = group_val.get("name") or group_val.get("title") or str(group_val.get("id") or "")
+                raw_group_id = group_val.get("id")
+                raw_group_name = group_val.get("name") or group_val.get("title")
+                group_key = raw_group_name or str(raw_group_id or "")
             elif group_val is not None and group_val != "":
                 group_key = str(group_val)
             # 再检查其他分组字段
@@ -1728,13 +1762,27 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 for k in ("group_name", "group_id", "channel", "tag", "category", "type"):
                     v = t.get(k)
                     if v is not None and v != "":
-                        if k == "group_id" and isinstance(v, (int, float)):
-                            group_key = f"分组 #{v}"
+                        if k == "group_id":
+                            if raw_group_id is None:
+                                raw_group_id = v
+                            if isinstance(v, (int, float)):
+                                group_key = f"分组 #{v}"
+                            else:
+                                group_key = str(v)
                         else:
                             group_key = str(v)
+                        if k == "group_name" and raw_group_name is None:
+                            raw_group_name = str(v)
                         break
             if not group_key:
                 group_key = "默认分组"
+            # 注册分组选项（用原始 group_id 做 key，缺省用 group_key）
+            opt_key = raw_group_id if raw_group_id is not None and raw_group_id != "" else group_key
+            if opt_key not in group_opt_map:
+                group_opt_map[opt_key] = {
+                    "id": raw_group_id if raw_group_id is not None else group_key,
+                    "name": raw_group_name or group_key,
+                }
             if group_key not in group_map:
                 group_map[group_key] = {
                     "name": group_key,
@@ -1751,10 +1799,19 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 "expired_at": t.get("expired_at") or t.get("expireTime") or t.get("expires_at") or "",
                 "used_quota": t.get("used_quota") or t.get("used") or t.get("consume") or t.get("quota_used") or 0,
                 "remaining_quota": t.get("remaining_quota") or t.get("remaining") or t.get("quota") or 0,
+                # 保存原始 group_id，供切换分组 API 传参
+                "_group_id": raw_group_id if raw_group_id is not None else group_key,
+                "_group_name": raw_group_name or group_key,
             }
             group_map[group_key]["tokens"].append(entry)
             group_map[group_key]["count"] += 1
         groups = list(group_map.values())
+        # 把"全部分组选项列表"挂在每个分组块上，方便前端在密钥行渲染切换下拉
+        if group_opt_map:
+            opts = list(group_opt_map.values())
+            for g in groups:
+                if not g.get("is_channel_group"):
+                    g["all_group_options"] = opts
 
     # ==== 再尝试取上游/渠道分组（sub2api 特有的渠道/供应商分组） ====
     channel_endpoints = [
@@ -1769,7 +1826,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
     channel_list = []
     for url in channel_endpoints:
         try:
-            resp = requests.get(url, headers=headers, timeout=15, params={"p": 1, "page_size": 500})
+            resp = requests.get(url, headers=headers, timeout=3, params={"p": 1, "page_size": 500})
             if resp.status_code == 200:
                 data = resp.json()
                 arr = None
@@ -1833,6 +1890,59 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
         return None, last_token_err or "未能获取到任何分组信息"
 
     return groups, ""
+
+
+def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, target_group_id) -> tuple[bool, str]:
+    """
+    修改某个密钥的所属分组（调用远程 PUT /api/v1/keys/{id}）
+    返回 (ok, msg)
+    """
+    base = _normalize_base_url(base_url)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # 不同系统支持的字段名可能不同：group_id / group
+    payload_candidates = [
+        {"group_id": target_group_id},
+        {"group": target_group_id},
+        {"group_id": target_group_id, "group": target_group_id},
+    ]
+    endpoints = [
+        f"{base}/api/v1/keys/{key_id}",
+        f"{base}/api/keys/{key_id}",
+        f"{base}/api/v1/token/{key_id}",
+        f"{base}/api/token/{key_id}",
+    ]
+
+    last_err = ""
+    for url in endpoints:
+        for payload in payload_candidates:
+            try:
+                resp = requests.put(url, headers=headers, json=payload, timeout=15)
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                        if isinstance(data, dict):
+                            code = data.get("code")
+                            if code is None or code == 0 or str(code) == "200" or code is True:
+                                return True, "修改成功"
+                            msg = data.get("message") or data.get("msg") or f"code={code}"
+                            last_err = f"返回异常：{msg}"
+                            continue
+                    except Exception:
+                        # 200 但非 JSON 也算成功
+                        return True, "修改成功（HTTP 200）"
+                else:
+                    # 也尝试 PATCH
+                    try:
+                        resp2 = requests.patch(url, headers=headers, json=payload, timeout=15)
+                        if resp2.status_code == 200:
+                            return True, "修改成功（PATCH）"
+                        last_err = f"HTTP {resp.status_code} / PATCH {resp2.status_code}"
+                    except Exception as e2:
+                        last_err = f"HTTP {resp.status_code} / PATCH异常 {e2}"
+            except Exception as e:
+                last_err = f"异常：{e}"
+    return False, last_err or "未能调用修改分组接口"
 
 
 # ================================================================
@@ -2126,14 +2236,22 @@ def api_pool_groups_get(pool_id):
         if needs_refresh:
             # 自动登录获取 token
             token = acc.get("access_token")
+            relogged_in = False
             if not token:
                 token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
                 if not token:
                     return {"ok": False, "message": f"登录失败：{err}"}
                 _update_pool_field(pool_id, access_token=token)
+                relogged_in = True
 
             # 拉取分组
             groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
+            # 若拉取失败且本次没有重登（说明 token 可能过期）→ 强制再登录一次再拉
+            if groups is None and not relogged_in:
+                token2, err2 = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+                if token2:
+                    _update_pool_field(pool_id, access_token=token2)
+                    groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token2)
             if groups is None:
                 return {"ok": False, "message": f"分组查询失败：{g_err}"}
             now = datetime.now().isoformat()
@@ -2189,6 +2307,74 @@ def api_pool_select_token(pool_id):
             "message": f"已选用分组「{group_name}」→ 密钥「{token_name}」",
             "selected_group": group_name,
             "selected_token_name": token_name,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
+
+
+@app.route("/api/pool/accounts/<pool_id>/keys/<key_id>/move-group", methods=["POST"])
+def api_pool_key_move_group(pool_id, key_id):
+    """
+    修改某个密钥的所属分组：转发 PUT /api/v1/keys/{id} {group_id}
+    body: {"target_group_id": ..., "target_group_name": 可选}
+    """
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    try:
+        data = request.get_json(silent=True) or {}
+        target_group_id = data.get("target_group_id")
+        target_group_name = data.get("target_group_name") or ""
+        if target_group_id is None or target_group_id == "":
+            return {"ok": False, "message": "缺少目标分组ID（target_group_id）"}
+
+        acc = _find_pool_account(pool_id)
+        if not acc:
+            return {"ok": False, "message": "账号不存在"}
+
+        # 如未登录先登录一次
+        token = acc.get("access_token")
+        need_relogin = False
+        msg = ""
+        if token:
+            ok, err = _pool_update_key_group(acc["pool_type"], acc["base_url"], token, key_id, target_group_id)
+            if not ok:
+                # Token 可能失效 → 尝试重新登录
+                if "401" in err or "HTTP 4" in err:
+                    need_relogin = True
+                else:
+                    msg = err
+        else:
+            need_relogin = True
+
+        if need_relogin:
+            token2, err_login = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            if not token2:
+                return {"ok": False, "message": f"登录失败，无法修改分组：{err_login}"}
+            _update_pool_field(pool_id, access_token=token2)
+            ok2, err2 = _pool_update_key_group(acc["pool_type"], acc["base_url"], token2, key_id, target_group_id)
+            if not ok2:
+                return {"ok": False, "message": f"远程修改分组失败：{err2}"}
+        elif msg:
+            return {"ok": False, "message": f"远程修改分组失败：{msg}"}
+
+        # 成功后立即刷新分组缓存，保证前端下次看到的是新分组
+        groups_new, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token or token2)
+        now = datetime.now().isoformat()
+        if groups_new is not None:
+            _update_pool_field(pool_id, groups=groups_new, groups_updated_at=now)
+        else:
+            # 刷新失败没关系，标记一下下次要强制刷新
+            _update_pool_field(pool_id, groups_updated_at="")
+
+        name_hint = target_group_name or str(target_group_id)
+        return {
+            "ok": True,
+            "message": f"已将密钥 #{key_id} 移动到分组「{name_hint}」",
+            "target_group_id": target_group_id,
+            "target_group_name": target_group_name,
+            "refreshed_groups": groups_new is not None,
         }
     except Exception as e:
         import traceback

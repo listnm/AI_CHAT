@@ -1705,6 +1705,14 @@ async function showGroups(id, btn) {
         const r = await req(`${API}/accounts/${id}/groups?force=1`, 'GET');
         if (!r.ok) throw new Error(r.message || '查询失败');
         const groups = r.groups || [];
+        // 保存分组选项列表（用于"切换分组"下拉）
+        if (!state._groupOpts) state._groupOpts = {};
+        for (const g of groups) {
+            if (g && g.all_group_options && g.all_group_options.length) {
+                state._groupOpts[id] = g.all_group_options;
+                break;
+            }
+        }
         if (!groups.length) {
             body.innerHTML = `
                 <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
@@ -1818,9 +1826,37 @@ function renderItemRow(it, isChannel, accId, groupName) {
         }
     }
 
-    // 操作按钮：如果有完整 key，提供复制、选用功能
+    // 操作按钮：如果有完整 key，提供复制、选用功能，以及"切换该key分组"的下拉
     let actions = '';
+    let groupSwitcher = '';
     if (!isChannel && it.key) {
+        // ====== 切换分组下拉（核心新功能）======
+        const opts = (state._groupOpts && state._groupOpts[accId]) || null;
+        if (opts && opts.length) {
+            const curGid = it._group_id; // 可能是 number / string
+            // 用字符串比较，确保数字ID也能命中
+            const curGidStr = curGid == null ? '' : String(curGid);
+            const sgUid = nextUid('sg');
+            const gOptions = ['<option value="">— 切分组 —</option>']
+                .concat(opts.map(o => {
+                    const oidStr = o.id == null ? '' : String(o.id);
+                    const sel = (curGidStr !== '' && oidStr === curGidStr) ? ' selected' : '';
+                    return `<option value="${escapeHtml(oidStr || o.name || '')}" data-gname="${escapeHtml(String(o.name || ''))}"${sel}>${escapeHtml(String(o.name || o.id || '未命名分组'))}</option>`;
+                })).join('');
+            groupSwitcher = `
+            <div style="flex-shrink:0;margin-left:6px;">
+                <select id="${sgUid}"
+                    data-acc-id="${escapeHtml(accId)}"
+                    data-key-id="${escapeHtml(String(it.id || ''))}"
+                    data-cur-group="${escapeHtml(curGidStr)}"
+                    title="把该密钥移动到另一个分组（直接调用远程 PUT /api/v1/keys/{id}）"
+                    onchange="handleMoveGroup(this)"
+                    style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:12px;cursor:pointer;max-width:170px;">
+                    ${gOptions}
+                </select>
+            </div>`;
+        }
+
         const copyUid = nextUid('cp');
         const selBtn = `<button class="btn btn-sm" data-token-select="1"
             data-acc-id="${escapeHtml(accId)}"
@@ -1858,8 +1894,58 @@ function renderItemRow(it, isChannel, accId, groupName) {
             <div class="token-item-meta">${metas.join('') || (it.id ? `<code>ID: ${escapeHtml(String(it.id))}</code>` : '')}</div>
         </div>
         ${quotaBar}
+        ${groupSwitcher}
         ${actions}
     </div>`;
+}
+
+/* ============================================================
+ * 单个密钥 → 切换所属分组（直接调用远程修改）
+ * ============================================================ */
+async function handleMoveGroup(sel) {
+    const accId = sel.getAttribute('data-acc-id') || '';
+    const keyId = sel.getAttribute('data-key-id') || '';
+    const curGid = sel.getAttribute('data-cur-group') || '';
+    if (!accId || !keyId) {
+        showMsg('listMsg', '❌ 参数缺失：账号或密钥ID为空', 'fail');
+        sel.value = curGid || '';
+        return;
+    }
+    // 选择了默认空值 → 还原，不操作
+    if (!sel.value) {
+        sel.value = curGid || '';
+        return;
+    }
+    const opt = sel.selectedOptions && sel.selectedOptions[0];
+    const targetName = opt ? (opt.getAttribute('data-gname') || opt.textContent || '') : '';
+    const targetId = sel.value;
+    const confirmMsg = `确定把密钥「${keyId}」从当前分组移动到「${targetName || targetId}」吗？`;
+    if (!confirm(confirmMsg)) {
+        sel.value = curGid || '';
+        return;
+    }
+    sel.disabled = true;
+    const origColor = sel.style.background;
+    sel.style.background = 'var(--bg-secondary)';
+    sel.style.cursor = 'progress';
+    try {
+        const r = await req(`${API}/accounts/${accId}/keys/${encodeURIComponent(keyId)}/move-group`, 'POST', {
+            target_group_id: targetId,
+            target_group_name: targetName || '',
+        });
+        if (!r.ok) throw new Error(r.message || '操作失败');
+        showMsg('pageMsg', '✅ ' + (r.message || '修改成功'), 'success');
+        // 成功后立即刷新弹窗（后端已刷新缓存）
+        setTimeout(() => showGroups(accId, null), 300);
+    } catch (e) {
+        showMsg('listMsg', '❌ 切换分组失败：' + (e.message || e), 'fail');
+        // 还原选择
+        sel.value = curGid || '';
+    } finally {
+        sel.disabled = false;
+        sel.style.background = origColor || '';
+        sel.style.cursor = 'pointer';
+    }
 }
 
 function closeModal() {
