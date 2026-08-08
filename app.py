@@ -1795,7 +1795,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
 
     # ==== 【关键】先拉「可用分组列表」（包含空分组！这才是 /keys 页面下拉的来源）====
     # 优先使用独立分组接口；后续合并到 all_group_options，确保下拉能列出所有分组（哪怕组里没 key）
-    group_list_endpoints = [
+    group_list_endpoints = ([f"{base}/api/user/self/groups"] if pool_type == "newapi" else []) + [
         f"{base}/api/v1/groups/available",
         f"{base}/api/groups/available",
         f"{base}/api/v1/group/available",
@@ -1804,6 +1804,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
         f"{base}/api/v1/keys/groups/options",
     ]
     server_group_options = []  # [{id,name}]
+    embedded_token_list = []
     for url in group_list_endpoints:
         try:
             resp = requests.get(url, headers=headers, timeout=5)
@@ -1812,12 +1813,14 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                 arr = None
                 if isinstance(data, dict):
                     d = data.get("data")
-                    if isinstance(d, list):
+                    if isinstance(d, dict):
+                        embedded_token_list.extend(d.get("tokens") or d.get("keys") or d.get("items") or [])
+                        arr = d.get("groups") or d.get("list")
+                    elif isinstance(d, list):
                         arr = d
-                    elif isinstance(d, dict):
-                        arr = d.get("items") or d.get("list") or d.get("groups")
                     if not arr:
-                        arr = data.get("items") or data.get("list") or data.get("groups")
+                        embedded_token_list.extend(data.get("tokens") or data.get("keys") or [])
+                        arr = data.get("groups") or data.get("items") or data.get("list")
                 elif isinstance(data, list):
                     arr = data
                 if isinstance(arr, list) and arr:
@@ -1830,11 +1833,18 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                             continue
                         gname = g.get("name") or g.get("title") or (f"分组 #{gid}" if isinstance(gid, (int, float)) else str(gid))
                         item = {"id": gid, "name": gname}
-                        # 倍率字段：有的话一起带，供前端选项里显示
-                        for fld, key in (("rate_multiplier", "rate_multiplier"),
-                                         ("peak_rate_multiplier", "peak_rate_multiplier"),
+                        # NewAPI 不同版本可能使用 ratio / rate / multiplier 表示倍率。
+                        rate_value = None
+                        for rate_key in ("rate_multiplier", "ratio", "rate", "multiplier", "倍率"):
+                            if g.get(rate_key) is not None:
+                                rate_value = g[rate_key]
+                                break
+                        if rate_value is not None:
+                            item["rate_multiplier"] = rate_value
+                        for fld, key in (("peak_rate_multiplier", "peak_rate_multiplier"),
                                          ("peak_rate_enabled", "peak_rate_enabled"),
-                                         ("platform", "platform")):
+                                         ("platform", "platform"),
+                                         ("description", "description")):
                             if fld in g:
                                 item[key] = g[fld]
                         out.append(item)
@@ -1852,7 +1862,7 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
         f"{base}/api/keys",
         f"{base}/api/user/tokens",
     ]
-    token_list = []
+    token_list = list(embedded_token_list)
     last_token_err = ""
     for url in token_endpoints:
         try:
