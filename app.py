@@ -2168,22 +2168,33 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
     base = _normalize_base_url(base_url)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    # 远程 API 要求 group_id 是整数（Go int64），字符串会 400
-    try:
-        gid_int = int(target_group_id)
-    except (ValueError, TypeError):
-        return False, f"目标分组ID不是有效整数：{target_group_id}"
-
-    # 主 payload：group_id 为整数
-    # 备用 payload：某些系统可能用 group 字段
-    payload_candidates = [
-        {"group_id": gid_int},
-        {"group_id": gid_int, "group": gid_int},
-    ]
-    endpoints = [
-        f"{base}/api/v1/keys/{key_id}",
-        f"{base}/api/keys/{key_id}",
-    ]
+    # NewAPI 的分组键可能是 ccmax 这类字符串；Sub2API 仍按整数 group_id 处理。
+    if pool_type == "newapi":
+        group_value = str(target_group_id)
+        payload_candidates = [
+            {"group": group_value},
+            {"group_name": group_value},
+            {"group_id": group_value, "group": group_value},
+        ]
+        endpoints = [
+            f"{base}/api/user/self/keys/{key_id}",
+            f"{base}/api/user/keys/{key_id}",
+            f"{base}/api/v1/keys/{key_id}",
+            f"{base}/api/keys/{key_id}",
+        ]
+    else:
+        try:
+            gid_int = int(target_group_id)
+        except (ValueError, TypeError):
+            return False, f"目标分组ID不是有效整数：{target_group_id}"
+        payload_candidates = [
+            {"group_id": gid_int},
+            {"group_id": gid_int, "group": gid_int},
+        ]
+        endpoints = [
+            f"{base}/api/v1/keys/{key_id}",
+            f"{base}/api/keys/{key_id}",
+        ]
 
     last_err = ""
     for url in endpoints:
@@ -2196,13 +2207,20 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
                         if isinstance(data, dict):
                             code = data.get("code")
                             if code is None or code == 0 or str(code) == "200" or code is True:
-                                # 验证返回的 data.group_id 是否真正更新（防止假成功）
+                                # 验证返回的分组字段；NewAPI 使用字符串分组名，Sub2API 使用整数 group_id。
                                 resp_data = data.get("data")
                                 if isinstance(resp_data, dict):
                                     actual_gid = resp_data.get("group_id")
-                                    if actual_gid is not None and int(actual_gid) != gid_int:
-                                        last_err = f"远程返回 group_id={actual_gid}，与目标 {gid_int} 不一致"
-                                        continue
+                                    if actual_gid is None:
+                                        actual_gid = resp_data.get("group") or resp_data.get("group_name")
+                                    if actual_gid is not None:
+                                        if pool_type == "newapi":
+                                            if str(actual_gid) != group_value:
+                                                last_err = f"远程返回分组={actual_gid}，与目标 {group_value} 不一致"
+                                                continue
+                                        elif int(actual_gid) != gid_int:
+                                            last_err = f"远程返回 group_id={actual_gid}，与目标 {gid_int} 不一致"
+                                            continue
                                 return True, "修改成功"
                             msg = data.get("message") or data.get("msg") or f"code={code}"
                             last_err = f"返回异常：{msg}"
