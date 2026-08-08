@@ -2177,11 +2177,13 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
             {"group_id": group_value, "group": group_value},
         ]
         endpoints = [
+            f"{base}/api/token/{key_id}",
             f"{base}/api/user/self/keys/{key_id}",
             f"{base}/api/user/keys/{key_id}",
             f"{base}/api/v1/keys/{key_id}",
             f"{base}/api/keys/{key_id}",
         ]
+        methods = [requests.put, requests.patch, requests.post]
     else:
         try:
             gid_int = int(target_group_id)
@@ -2195,8 +2197,7 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
             f"{base}/api/v1/keys/{key_id}",
             f"{base}/api/keys/{key_id}",
         ]
-
-    methods = [requests.put, requests.patch, requests.post] if pool_type == "newapi" else [requests.put, requests.patch]
+        methods = [requests.put, requests.patch]
     for url in endpoints:
         for payload in payload_candidates:
             for method in methods:
