@@ -116,6 +116,7 @@ _POOL_ACCOUNTS_DDL = """
         username TEXT NOT NULL,
         password_encrypted TEXT NOT NULL,
         access_token_encrypted TEXT,
+        access_token_input_encrypted TEXT,
         balance REAL,
         balance_updated_at TEXT,
         groups_json TEXT DEFAULT '[]',
@@ -160,6 +161,7 @@ _POOL_NEW_COLUMNS_DDL = [
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_id TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_name TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_key_encrypted TEXT",
+    "ALTER TABLE pool_accounts ADD COLUMN access_token_input_encrypted TEXT",
 ]
 
 
@@ -1408,6 +1410,7 @@ def _load_pool_accounts() -> list:
                 "username": row["username"],
                 "password": _decrypt(row["password_encrypted"]),
                 "access_token": _decrypt(row["access_token_encrypted"]) if row["access_token_encrypted"] else None,
+                "access_token_input": (lambda enc: _decrypt(enc) if enc else None)(row["access_token_input_encrypted"]) if "access_token_input_encrypted" in row.keys() else None,
                 "balance": row["balance"],
                 "balance_updated_at": row["balance_updated_at"],
                 "groups": json.loads(row["groups_json"]) if row["groups_json"] else [],
@@ -1448,6 +1451,7 @@ def _find_pool_account(pool_id: str) -> dict | None:
             "username": row["username"],
             "password": _decrypt(row["password_encrypted"]),
             "access_token": _decrypt(row["access_token_encrypted"]) if row["access_token_encrypted"] else None,
+            "access_token_input": (lambda enc: _decrypt(enc) if enc else None)(row["access_token_input_encrypted"]) if "access_token_input_encrypted" in cols else None,
             "balance": row["balance"],
             "balance_updated_at": row["balance_updated_at"],
             "groups": json.loads(row["groups_json"]) if row["groups_json"] else [],
@@ -1473,10 +1477,11 @@ def _upsert_pool_account(acc: dict):
         _ensure_pool_table(conn)
         existing = conn.execute("SELECT id FROM pool_accounts WHERE id = ?", (acc["id"],)).fetchone()
         sel_key_enc = _encrypt(acc["selected_token_key"]) if acc.get("selected_token_key") else None
+        tok_input_enc = _encrypt(acc["access_token_input"]) if acc.get("access_token_input") else None
         if existing:
             conn.execute(
                 """UPDATE pool_accounts SET pool_type=?, name=?, base_url=?, username=?,
-                   password_encrypted=?, access_token_encrypted=?, balance=?, balance_updated_at=?,
+                   password_encrypted=?, access_token_encrypted=?, access_token_input_encrypted=?, balance=?, balance_updated_at=?,
                    groups_json=?, groups_updated_at=?, remark=?, status=?,
                    selected_group=?, selected_token_id=?, selected_token_name=?, selected_token_key_encrypted=?,
                    updated_at=? WHERE id=?""",
@@ -1484,6 +1489,7 @@ def _upsert_pool_account(acc: dict):
                     acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
                     _encrypt(acc["password"]),
                     _encrypt(acc["access_token"]) if acc.get("access_token") else None,
+                    tok_input_enc,
                     acc.get("balance"), acc.get("balance_updated_at"),
                     json.dumps(acc.get("groups", []), ensure_ascii=False),
                     acc.get("groups_updated_at"),
@@ -1498,15 +1504,16 @@ def _upsert_pool_account(acc: dict):
         else:
             conn.execute(
                 """INSERT INTO pool_accounts (id, pool_type, name, base_url, username,
-                   password_encrypted, access_token_encrypted, balance, balance_updated_at,
+                   password_encrypted, access_token_encrypted, access_token_input_encrypted, balance, balance_updated_at,
                    groups_json, groups_updated_at, remark, status,
                    selected_group, selected_token_id, selected_token_name, selected_token_key_encrypted,
                    created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     acc["id"], acc["pool_type"], acc["name"], acc["base_url"], acc["username"],
                     _encrypt(acc["password"]),
                     _encrypt(acc["access_token"]) if acc.get("access_token") else None,
+                    tok_input_enc,
                     acc.get("balance"), acc.get("balance_updated_at"),
                     json.dumps(acc.get("groups", []), ensure_ascii=False),
                     acc.get("groups_updated_at"),
@@ -1549,6 +1556,9 @@ def _update_pool_field(pool_id: str, **fields):
                 params.append(_encrypt(v))
             elif k == "access_token":
                 sets.append("access_token_encrypted = ?")
+                params.append(_encrypt(v) if v else None)
+            elif k == "access_token_input":
+                sets.append("access_token_input_encrypted = ?")
                 params.append(_encrypt(v) if v else None)
             elif k == "groups":
                 sets.append("groups_json = ?")
@@ -1641,6 +1651,31 @@ def _pool_login(pool_type: str, base_url: str, username: str, password: str) -> 
             except Exception as e:
                 last_error = f"异常：{e}"
     return None, last_error or "所有登录端点均未返回有效 token"
+
+
+def _pool_relogin_with_fallback(acc: dict) -> tuple[str | None, str]:
+    """
+    重新登录：优先复用用户手动绑定的 access_token_input（GitHub/OAuth 用户），
+    失败再 fallback 用户名密码登录。返回 (token, error_msg)
+    """
+    manual = (acc.get("access_token_input") or "").strip()
+    if manual:
+        # 先校验一下手动 token 是否有效；失效时再走用户名密码
+        headers = {"Authorization": f"Bearer {manual}", "Content-Type": "application/json"}
+        base = _normalize_base_url(acc["base_url"])
+        for u in [f"{base}/api/v1/auth/me", f"{base}/api/user/self", f"{base}/api/v1/user/profile"]:
+            try:
+                r = requests.get(u, headers=headers, timeout=8)
+                if r.status_code == 200:
+                    return manual, ""
+            except Exception:
+                pass
+        # 校验未通过：若用户有用户名密码，就继续 fallback 到密码登录
+        if not (acc.get("username") and acc.get("password")):
+            return None, f"手动 access_token 已过期，且未配置用户名密码，无法自动刷新。请到浏览器重新获取最新 access_token 后在编辑账号里更新"
+    if acc.get("username") and acc.get("password"):
+        return _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+    return None, "未配置用户名/密码，也未提供有效手动 access_token"
 
 
 def _pool_get_balance(pool_type: str, base_url: str, token: str) -> tuple[float | None, str]:
@@ -2180,6 +2215,7 @@ def api_pool_add():
         username = (data.get("username") or "").strip()
         password = (data.get("password") or "").strip()
         remark = (data.get("remark") or "").strip()
+        access_token_input = (data.get("access_token") or "").strip()
 
         if pool_type not in ("sub2api", "newapi"):
             return {"ok": False, "message": "账号类型必须是 sub2api 或 newapi"}
@@ -2187,10 +2223,11 @@ def api_pool_add():
             return {"ok": False, "message": "请填写名称"}
         if not base_url:
             return {"ok": False, "message": "请填写 API 地址"}
-        if not username:
-            return {"ok": False, "message": "请填写用户名"}
-        if not password:
-            return {"ok": False, "message": "请填写密码"}
+        # 两种登录方式任选其一：用户名/密码 或 手动粘贴 access_token
+        has_up = bool(username and password)
+        has_tok = bool(access_token_input)
+        if not has_up and not has_tok:
+            return {"ok": False, "message": "请填写用户名+密码，或手动粘贴 access_token（GitHub/OAuth 登录用户可用）"}
 
         acc = {
             "id": str(uuid.uuid4()),
@@ -2199,7 +2236,8 @@ def api_pool_add():
             "base_url": _normalize_base_url(base_url),
             "username": username,
             "password": password,
-            "access_token": None,
+            "access_token_input": access_token_input or None,
+            "access_token": access_token_input if has_tok else None,
             "balance": None,
             "balance_updated_at": None,
             "groups": [],
@@ -2208,7 +2246,8 @@ def api_pool_add():
             "status": "active",
         }
         _upsert_pool_account(acc)
-        return {"ok": True, "message": f"账号「{name}」添加成功", "id": acc["id"]}
+        extras = f"（已手动绑定 access_token，无需再次登录即可查询余额/分组）" if has_tok else ""
+        return {"ok": True, "message": f"账号「{name}」添加成功{extras}", "id": acc["id"]}
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -2226,13 +2265,21 @@ def api_pool_update(pool_id):
             return {"ok": False, "message": "账号不存在"}
         data = request.get_json(force=True) or {}
         fields = {}
-        for k in ("pool_type", "name", "base_url", "username", "password", "remark", "status"):
+        for k in ("pool_type", "name", "base_url", "username", "password", "remark", "status", "access_token"):
             if k in data:
                 v = data[k]
                 if isinstance(v, str):
                     v = v.strip()
                 if k == "base_url" and isinstance(v, str):
                     v = _normalize_base_url(v)
+                # 对 access_token 单独处理：有值就同时写 access_token_input + access_token；空值就清掉 input 但保留当前 access_token
+                if k == "access_token":
+                    if v:
+                        fields["access_token_input"] = v
+                        fields["access_token"] = v
+                    else:
+                        fields["access_token_input"] = None
+                    continue
                 if v is not None and v != "":
                     fields[k] = v
         if not fields:
@@ -2270,6 +2317,32 @@ def api_pool_login(pool_id):
         acc = _find_pool_account(pool_id)
         if not acc:
             return {"ok": False, "message": "账号不存在"}
+        # 情况1：用户手动提供了 access_token（如 GitHub OAuth 登录用户），直接用，不走用户名密码登录
+        manual_tok = (acc.get("access_token_input") or "").strip()
+        if manual_tok:
+            _update_pool_field(pool_id, access_token=manual_tok)
+            # 快速校验：调一次 /me 判断 token 是否仍有效
+            headers = {"Authorization": f"Bearer {manual_tok}", "Content-Type": "application/json"}
+            me_urls = [
+                f"{_normalize_base_url(acc['base_url'])}/api/v1/auth/me",
+                f"{_normalize_base_url(acc['base_url'])}/api/user/self",
+                f"{_normalize_base_url(acc['base_url'])}/api/v1/user/profile",
+            ]
+            ok_me = False
+            last_me_err = ""
+            for u in me_urls:
+                try:
+                    r = requests.get(u, headers=headers, timeout=10)
+                    if r.status_code == 200:
+                        ok_me = True
+                        break
+                    last_me_err = f"HTTP {r.status_code}"
+                except Exception as ee:
+                    last_me_err = str(ee)
+            if not ok_me:
+                return {"ok": False, "message": f"已应用手动 access_token，但校验失败（可能过期）：{last_me_err or '未知'}。请重新从浏览器 localStorage 复制最新的 access_token 再粘贴"}
+            return {"ok": True, "message": "✅ 已启用手动 access_token，校验通过（GitHub/OAuth 模式）", "token_preview": manual_tok[:16] + "..."}
+        # 情况2：用户名密码登录（传统模式）
         token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
         if not token:
             return {"ok": False, "message": f"登录失败：{err}"}
@@ -2301,7 +2374,7 @@ def api_pool_balance(pool_id):
             need_relogin = True
 
         if need_relogin:
-            token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            token, err = _pool_relogin_with_fallback(acc)
             if not token:
                 return {"ok": False, "message": f"登录失败，无法查询余额：{err}"}
             _update_pool_field(pool_id, access_token=token)
@@ -2340,7 +2413,7 @@ def api_pool_groups(pool_id):
             need_relogin = True
 
         if need_relogin:
-            token, err_login = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            token, err_login = _pool_relogin_with_fallback(acc)
             if not token:
                 return {"ok": False, "message": f"登录失败，无法查询分组：{err_login}"}
             _update_pool_field(pool_id, access_token=token)
@@ -2395,7 +2468,7 @@ def api_pool_groups_get(pool_id):
             token = acc.get("access_token")
             relogged_in = False
             if not token:
-                token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+                token, err = _pool_relogin_with_fallback(acc)
                 if not token:
                     return {"ok": False, "message": f"登录失败：{err}"}
                 _update_pool_field(pool_id, access_token=token)
@@ -2405,7 +2478,7 @@ def api_pool_groups_get(pool_id):
             groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token)
             # 若拉取失败且本次没有重登（说明 token 可能过期）→ 强制再登录一次再拉
             if groups is None and not relogged_in:
-                token2, err2 = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+                token2, err2 = _pool_relogin_with_fallback(acc)
                 if token2:
                     _update_pool_field(pool_id, access_token=token2)
                     groups, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token2)
@@ -2514,7 +2587,7 @@ def api_pool_key_move_group(pool_id, key_id):
             need_relogin = True
 
         if need_relogin:
-            token2, err_login = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            token2, err_login = _pool_relogin_with_fallback(acc)
             if not token2:
                 return {"ok": False, "message": f"登录失败，无法修改分组：{err_login}"}
             _update_pool_field(pool_id, access_token=token2)
@@ -2534,12 +2607,23 @@ def api_pool_key_move_group(pool_id, key_id):
             _update_pool_field(pool_id, groups_updated_at="")
 
         name_hint = target_group_name or str(target_group_id)
+        # 把最新分组摘要一起返回，前端拿到可直接同步到列表卡片，无需重拉列表
+        groups_for_summary = groups_new if groups_new is not None else (acc.get("groups") or [])
+        groups_summary = [
+            {"name": g.get("name"), "count": g.get("count", (len(g.get("tokens") or [])) if isinstance(g, dict) else 0)}
+            for g in groups_for_summary[:10]
+        ]
+        groups_count = len(groups_for_summary)
+        groups_updated_at_val = now if groups_new is not None else (acc.get("groups_updated_at") or "")
         return {
             "ok": True,
             "message": f"已将密钥 #{key_id} 移动到分组「{name_hint}」",
             "target_group_id": target_group_id,
             "target_group_name": target_group_name,
             "refreshed_groups": groups_new is not None,
+            "groups_summary": groups_summary,
+            "groups_count": groups_count,
+            "groups_updated_at": groups_updated_at_val,
         }
     except Exception as e:
         import traceback

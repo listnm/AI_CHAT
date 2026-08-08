@@ -15,3 +15,9 @@ uploads/
 __pycache__/
 *.pyc
 *.pyo
+
+# IDE / Agent 临时文件
+.trae-html-share-packages/
+*-preview.png
+*.swp
+.DS_Store

@@ -856,12 +856,28 @@
                     </div>
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">用户名 <span style="color:var(--danger)">*</span></label>
+                            <label class="form-label">用户名 <span class="cred-up" style="color:var(--danger)">*</span></label>
                             <input type="text" id="newUser" class="input" placeholder="admin / your@email.com">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">密码 <span style="color:var(--danger)">*</span></label>
+                            <label class="form-label">密码 <span class="cred-up" style="color:var(--danger)">*</span></label>
                             <input type="password" id="newPass" class="input input-mono" placeholder="登录密码">
+                        </div>
+                    </div>
+                    <!-- GitHub / OAuth 登录用户：手动粘贴 access_token（替代用户名密码） -->
+                    <div class="form-group" id="tokenInputWrap" style="display:none;">
+                        <label class="form-label">
+                            手动粘贴 <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:5px;">access_token</code>
+                            <span style="color:var(--accent);font-weight:500;margin-left:4px;">（GitHub OAuth 用户用这个）</span>
+                        </label>
+                        <input type="text" id="newAccessToken" class="input input-mono" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....">
+                        <div style="margin-top:6px;font-size:12px;color:var(--text-muted);line-height:1.65;">
+                            📖 <b>获取方式</b>：先在对方网站（如 <code>seekai.cc</code>）用 GitHub 登录成功 →
+                            按 <kbd style="background:var(--bg-secondary);padding:1px 5px;border-radius:4px;">F12</kbd> 打开开发者工具 →
+                            <b>Application / 应用</b> 标签 → <b>Local Storage / 本地存储</b> → 点击站点域名 →
+                            找到键 <code>access_token</code>（或 <code>Authorization</code> / <code>token</code>），复制完整值粘贴到上面。
+                            <br>
+                            💡 <b>二选一即可</b>：填了 access_token 就可以不填用户名/密码；反之亦然。
                         </div>
                     </div>
                     <div class="form-row">
@@ -1065,6 +1081,29 @@ function switchType(t) {
     document.querySelectorAll('.type-tab').forEach(el => {
         el.classList.toggle('active', el.dataset.type === t);
     });
+    // NewAPI 下才显示「手动粘贴 access_token」入口；Sub2API 一般用户名密码够用
+    const tokWrap = document.getElementById('tokenInputWrap');
+    if (tokWrap) tokWrap.style.display = (t === 'newapi') ? '' : 'none';
+    // 用户名密码的必填星：有 token 时变成可选
+    _syncCredRequiredHint();
+}
+
+function _syncCredRequiredHint() {
+    const tok = (document.getElementById('newAccessToken')?.value || '').trim();
+    const hasTok = !!tok;
+    document.querySelectorAll('.cred-up').forEach(el => {
+        if (hasTok) {
+            el.textContent = ''; // 去掉必填 *
+            el.dataset.original = '*';
+        } else {
+            el.textContent = '*';
+        }
+    });
+    // 监听 token 输入变化
+    if (document.getElementById('newAccessToken') && !document.getElementById('newAccessToken').dataset._bound) {
+        document.getElementById('newAccessToken').dataset._bound = '1';
+        document.getElementById('newAccessToken').addEventListener('input', _syncCredRequiredHint);
+    }
 }
 
 /* ============================================================
@@ -1077,11 +1116,16 @@ async function addAccount() {
     const user = document.getElementById('newUser').value.trim();
     const pass = document.getElementById('newPass').value;
     const remark = document.getElementById('newRemark').value.trim();
+    const access_token = (document.getElementById('newAccessToken')?.value || '').trim();
 
     if (!name) return showMsg('listMsg', '请填写名称', 'fail');
     if (!base) return showMsg('listMsg', '请填写 Base URL', 'fail');
-    if (!user) return showMsg('listMsg', '请填写用户名', 'fail');
-    if (!pass) return showMsg('listMsg', '请填写密码', 'fail');
+    // 二选一：用户名+密码 或 access_token
+    const has_up = !!(user && pass);
+    const has_tok = !!access_token;
+    if (!has_up && !has_tok) {
+        return showMsg('listMsg', '请填写用户名+密码，或粘贴 access_token（GitHub OAuth 用户用）', 'fail');
+    }
 
     btn.disabled = true;
     const orig = btn.innerHTML;
@@ -1091,12 +1135,16 @@ async function addAccount() {
         const r = await req(API + '/accounts', 'POST', {
             pool_type: state.addType, name, base_url: base,
             username: user, password: pass, remark,
+            access_token: access_token || undefined,
         });
         if (r.ok) {
             showMsg('pageMsg', r.message, 'success');
             document.getElementById('newName').value = '';
             document.getElementById('newPass').value = '';
             document.getElementById('newRemark').value = '';
+            const tokEl = document.getElementById('newAccessToken');
+            if (tokEl) tokEl.value = '';
+            _syncCredRequiredHint();
             await loadList();
         } else {
             showMsg('listMsg', r.message || '添加失败', 'fail');
@@ -2141,6 +2189,29 @@ async function handleMoveGroup(sel) {
                 _renderModalBody(accId, fullGroups, nowStr + '（本地已即时同步）');
                 locallyUpdated = true;
             }
+        }
+
+        // ========== 同步：把最新 groups_summary 写回 state.accounts，刷新账号列表卡片 ==========
+        // 优先用后端返回的权威摘要；如果后端没返回，从本地修改后的 _fullGroups 生成一个
+        const accIdx = state.accounts.findIndex(a => a.id === accId);
+        if (accIdx >= 0) {
+            let summary = r.groups_summary;
+            let cnt = r.groups_count;
+            let updAt = r.groups_updated_at;
+            if (!(summary && summary.length) && state._fullGroups && state._fullGroups[accId]) {
+                // 后端没返回就从本地生成（仅作为卡片即时视觉反馈用）
+                const fgs = state._fullGroups[accId].filter(g => !g.is_channel_group).slice(0, 10);
+                summary = fgs.map(g => ({
+                    name: g.name || '未命名分组',
+                    count: (g.count != null && g.count !== '') ? Number(g.count) : (g.tokens || []).length,
+                }));
+                cnt = fgs.length;
+            }
+            const a = state.accounts[accIdx];
+            if (Array.isArray(summary)) a.groups_summary = summary;
+            if (typeof cnt === 'number') a.groups_count = cnt;
+            if (updAt) a.groups_updated_at = String(updAt);
+            renderList();
         }
 
         // ========== 后台静默校对（仅当本地未即时修改时执行）==========
