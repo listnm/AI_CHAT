@@ -1682,6 +1682,17 @@ def _pool_login(pool_type: str, base_url: str, username: str, password: str) -> 
     return None, last_error or "所有登录端点均未返回有效 token"
 
 
+def _pool_check_token(pool_type: str, base_url: str, token: str) -> tuple[bool, str]:
+    """宽松校验 access_token：优先用账号池真实依赖的接口验证。"""
+    balance, balance_err = _pool_get_balance(pool_type, base_url, token)
+    if balance is not None:
+        return True, ""
+    groups, groups_err = _pool_get_groups(pool_type, base_url, token)
+    if groups is not None:
+        return True, ""
+    return False, groups_err or balance_err or "token 校验失败"
+
+
 def _pool_relogin_with_fallback(acc: dict) -> tuple[str | None, str]:
     """
     重新登录：优先复用用户手动绑定的 access_token_input（GitHub/OAuth 用户），
@@ -1689,19 +1700,11 @@ def _pool_relogin_with_fallback(acc: dict) -> tuple[str | None, str]:
     """
     manual = (acc.get("access_token_input") or "").strip()
     if manual:
-        # 先校验一下手动 token 是否有效；失效时再走用户名密码
-        headers = {"Authorization": f"Bearer {manual}", "Content-Type": "application/json"}
-        base = _normalize_base_url(acc["base_url"])
-        for u in [f"{base}/api/v1/auth/me", f"{base}/api/user/self", f"{base}/api/v1/user/profile"]:
-            try:
-                r = requests.get(u, headers=headers, timeout=8)
-                if r.status_code == 200:
-                    return manual, ""
-            except Exception:
-                pass
-        # 校验未通过：若用户有用户名密码，就继续 fallback 到密码登录
+        ok, err = _pool_check_token(acc["pool_type"], acc["base_url"], manual)
+        if ok:
+            return manual, ""
         if not (acc.get("username") and acc.get("password")):
-            return None, f"手动 access_token 已过期，且未配置用户名密码，无法自动刷新。请到浏览器重新获取最新 access_token 后在编辑账号里更新"
+            return None, f"手动 access_token 不可用或已过期：{err}。请到浏览器重新获取最新 access_token 后在编辑账号里更新"
     if acc.get("username") and acc.get("password"):
         return _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
     return None, "未配置用户名/密码，也未提供有效手动 access_token"
@@ -2349,28 +2352,11 @@ def api_pool_login(pool_id):
         # 情况1：用户手动提供了 access_token（如 GitHub OAuth 登录用户），直接用，不走用户名密码登录
         manual_tok = (acc.get("access_token_input") or "").strip()
         if manual_tok:
+            ok, err = _pool_check_token(acc["pool_type"], acc["base_url"], manual_tok)
+            if not ok:
+                return {"ok": False, "message": f"手动 access_token 不可用或已过期：{err}。请重新从浏览器 localStorage 复制最新的 access_token 再粘贴"}
             _update_pool_field(pool_id, access_token=manual_tok)
-            # 快速校验：调一次 /me 判断 token 是否仍有效
-            headers = {"Authorization": f"Bearer {manual_tok}", "Content-Type": "application/json"}
-            me_urls = [
-                f"{_normalize_base_url(acc['base_url'])}/api/v1/auth/me",
-                f"{_normalize_base_url(acc['base_url'])}/api/user/self",
-                f"{_normalize_base_url(acc['base_url'])}/api/v1/user/profile",
-            ]
-            ok_me = False
-            last_me_err = ""
-            for u in me_urls:
-                try:
-                    r = requests.get(u, headers=headers, timeout=10)
-                    if r.status_code == 200:
-                        ok_me = True
-                        break
-                    last_me_err = f"HTTP {r.status_code}"
-                except Exception as ee:
-                    last_me_err = str(ee)
-            if not ok_me:
-                return {"ok": False, "message": f"已应用手动 access_token，但校验失败（可能过期）：{last_me_err or '未知'}。请重新从浏览器 localStorage 复制最新的 access_token 再粘贴"}
-            return {"ok": True, "message": "✅ 已启用手动 access_token，校验通过（GitHub/OAuth 模式）", "token_preview": manual_tok[:16] + "..."}
+            return {"ok": True, "message": "已启用手动 access_token，余额/分组接口校验通过（GitHub/OAuth 模式）", "token_preview": manual_tok[:16] + "..."}
         # 情况2：用户名密码登录（传统模式）
         token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
         if not token:
@@ -2772,8 +2758,8 @@ def api_pool_refresh_all():
 
         def do_one(acc: dict):
             r = {"id": acc["id"], "name": acc["name"], "pool_type": acc["pool_type"]}
-            # 登录
-            token, err = _pool_login(acc["pool_type"], acc["base_url"], acc["username"], acc["password"])
+            # 登录：支持用户名密码，也支持手动绑定的 GitHub/OAuth access_token
+            token, err = _pool_relogin_with_fallback(acc)
             if not token:
                 r["login_ok"] = False
                 r["login_err"] = err
