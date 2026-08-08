@@ -1816,6 +1816,17 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
                     if isinstance(d, dict):
                         embedded_token_list.extend(d.get("tokens") or d.get("keys") or d.get("items") or [])
                         arr = d.get("groups") or d.get("list")
+                        # NewAPI 格式：data = {"ccmax": {"desc": ..., "ratio": 0.9}}
+                        # 将分组名提升为 name，保留 ratio 供前端显示倍率。
+                        if not arr and pool_type == "newapi":
+                            arr = []
+                            for group_name, group_info in d.items():
+                                if not isinstance(group_info, dict):
+                                    continue
+                                item = dict(group_info)
+                                item.setdefault("id", group_info.get("id") or group_name)
+                                item.setdefault("name", group_info.get("name") or group_name)
+                                arr.append(item)
                     elif isinstance(d, list):
                         arr = d
                     if not arr:
@@ -2052,6 +2063,23 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
             for g in groups:
                 if not g.get("is_channel_group"):
                     g["all_group_options"] = opts
+
+    # NewAPI 的 /api/user/self/groups 可能只返回分组倍率，不返回密钥列表。
+    # 这类分组仍需要展示，供前端显示倍率和作为分组选择来源。
+    if not groups and server_group_options:
+        groups = []
+        for option in server_group_options:
+            groups.append({
+                "name": option.get("name") or str(option.get("id")),
+                "count": 0,
+                "tokens": [],
+                "rate_multiplier": option.get("rate_multiplier"),
+                "peak_rate_multiplier": option.get("peak_rate_multiplier"),
+                "peak_rate_enabled": option.get("peak_rate_enabled"),
+                "platform": option.get("platform"),
+                "description": option.get("description"),
+                "all_group_options": server_group_options,
+            })
 
     # ==== 再尝试取上游/渠道分组（sub2api 特有的渠道/供应商分组） ====
     channel_endpoints = [
