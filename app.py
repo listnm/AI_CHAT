@@ -2196,49 +2196,27 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
             f"{base}/api/keys/{key_id}",
         ]
 
-    last_err = ""
+    methods = [requests.put, requests.patch, requests.post] if pool_type == "newapi" else [requests.put, requests.patch]
     for url in endpoints:
         for payload in payload_candidates:
-            try:
-                resp = requests.put(url, headers=headers, json=payload, timeout=15)
-                if resp.status_code == 200:
-                    try:
-                        data = resp.json()
+            for method in methods:
+                try:
+                    resp = method(url, headers=headers, json=payload, timeout=15)
+                    if resp.status_code in (200, 201, 204):
+                        try:
+                            data = resp.json()
+                        except ValueError:
+                            data = None
                         if isinstance(data, dict):
+                            ok_flag = data.get("success")
                             code = data.get("code")
-                            if code is None or code == 0 or str(code) == "200" or code is True:
-                                # 验证返回的分组字段；NewAPI 使用字符串分组名，Sub2API 使用整数 group_id。
-                                resp_data = data.get("data")
-                                if isinstance(resp_data, dict):
-                                    actual_gid = resp_data.get("group_id")
-                                    if actual_gid is None:
-                                        actual_gid = resp_data.get("group") or resp_data.get("group_name")
-                                    if actual_gid is not None:
-                                        if pool_type == "newapi":
-                                            if str(actual_gid) != group_value:
-                                                last_err = f"远程返回分组={actual_gid}，与目标 {group_value} 不一致"
-                                                continue
-                                        elif int(actual_gid) != gid_int:
-                                            last_err = f"远程返回 group_id={actual_gid}，与目标 {gid_int} 不一致"
-                                            continue
-                                return True, "修改成功"
-                            msg = data.get("message") or data.get("msg") or f"code={code}"
-                            last_err = f"返回异常：{msg}"
-                            continue
-                    except Exception:
-                        return True, "修改成功（HTTP 200）"
-                else:
-                    last_err = f"HTTP {resp.status_code}"
-                    # 也尝试 PATCH
-                    try:
-                        resp2 = requests.patch(url, headers=headers, json=payload, timeout=15)
-                        if resp2.status_code == 200:
-                            return True, "修改成功（PATCH）"
-                        last_err = f"HTTP {resp.status_code} / PATCH {resp2.status_code}"
-                    except Exception as e2:
-                        last_err = f"HTTP {resp.status_code} / PATCH异常 {e2}"
-            except Exception as e:
-                last_err = f"异常：{e}"
+                            if ok_flag is False or (code is not None and code not in (0, 200, "0", "200", True)):
+                                last_err = data.get("message") or data.get("msg") or f"返回异常：code={code}"
+                                continue
+                        return True, "修改请求已提交"
+                    last_err = f"{method.__name__.upper()} {url}：HTTP {resp.status_code}：{resp.text[:160]}"
+                except Exception as e:
+                    last_err = f"{method.__name__.upper()} {url}：异常：{e}"
     return False, last_err or "未能调用修改分组接口"
 
 
@@ -2769,8 +2747,22 @@ def api_pool_key_move_group(pool_id, key_id):
         elif msg:
             return {"ok": False, "message": f"远程修改分组失败：{msg}"}
 
-        # 成功后立即刷新分组缓存，保证前端下次看到的是新分组
+        # 成功后重新读取远端分组，确认密钥确实已经切换，而不是仅返回 HTTP 200。
         groups_new, g_err = _pool_get_groups(acc["pool_type"], acc["base_url"], token or token2)
+        if groups_new is not None and acc["pool_type"] == "newapi":
+            remote_group = None
+            def find_remote_group(group_list):
+                for group in group_list or []:
+                    for item in group.get("tokens") or []:
+                        if str(item.get("id")) == str(key_id):
+                            return item.get("_group_id") or item.get("_group_name") or group.get("name")
+                    found = find_remote_group(group.get("sub_groups") or [])
+                    if found is not None:
+                        return found
+                return None
+            remote_group = find_remote_group(groups_new)
+            if remote_group is not None and str(remote_group) != str(target_group_id) and str(remote_group) != str(target_group_name):
+                return {"ok": False, "message": f"远程接口未生效：密钥当前仍在分组「{remote_group}」，目标是「{target_group_name or target_group_id}」"}
         now = datetime.now().isoformat()
         if groups_new is not None:
             _update_pool_field(pool_id, groups=groups_new, groups_updated_at=now)
