@@ -168,19 +168,48 @@ _POOL_NEW_COLUMNS_DDL = [
 def _ensure_pool_table(conn):
     """确保 pool_accounts 表存在 + 所有新列齐全（运行时兜底，防止 PG 多 worker 环境遗漏迁移）"""
     migrated = False
+    # PG 下 DDL 必须在独立事务里执行，否则 rollback 会丢失
+    # 先提交当前事务，避免 CREATE TABLE/ALTER TABLE 因前面的 INSERT 失败被回滚
+    try:
+        conn.commit()
+    except Exception:
+        pass
     try:
         conn.execute(_POOL_ACCOUNTS_DDL)
         migrated = True
-    except Exception:
+        conn.commit()
+    except Exception as e:
         # 表已存在类错误（PG 的 "relation already exists" 等），忽略，继续补列
-        pass
+        try:
+            conn.commit()
+        except Exception:
+            pass
     # 兼容旧 pool_accounts：补充新增字段（无论表是否新建都走一遍，已存在则 except 跳过）
     for col_sql in _POOL_NEW_COLUMNS_DDL:
         try:
             conn.execute(col_sql)
             migrated = True
+            conn.commit()
+        except Exception as e:
+            # 列已存在或其它 PG 错误（如多 worker 并发），记录但不中断
+            try:
+                conn.commit()
+            except Exception:
+                pass
+    # 最终确认所有列都已就绪（PG 下用显式 EXISTS 查询兜底）
+    try:
+        cols_sql = """SELECT column_name FROM information_schema.columns
+                       WHERE table_name = 'pool_accounts' AND column_name = 'access_token_input_encrypted'"""
+        rows = conn.execute(cols_sql).fetchall()
+        if not rows:
+            # 兜底：如果列还没加上（可能上面的 ALTER TABLE 因事务丢失），重试一次
+            conn.execute("ALTER TABLE pool_accounts ADD COLUMN access_token_input_encrypted TEXT")
+            conn.commit()
+    except Exception:
+        try:
+            conn.commit()
         except Exception:
-            pass  # 列已存在
+            pass
     if migrated:
         try:
             conn.commit()
