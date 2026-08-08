@@ -1712,19 +1712,50 @@ def _pool_relogin_with_fallback(acc: dict) -> tuple[str | None, str]:
 
 def _pool_get_balance(pool_type: str, base_url: str, token: str) -> tuple[float | None, str]:
     """
-    查询余额（sub2api / newapi）
-    返回 (balance_value, error_msg)；余额单位通常为 USD 或 CNY，按上游原样返回
+    查询余额（sub2api / newapi）。
+    NewAPI 的 /wallet 页面通常使用 /api/user/self 返回的 quota，
+    quota 是内部额度单位，钱包金额需要除以 500000。
     """
     base = _normalize_base_url(base_url)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     endpoints = [
+        f"{base}/api/user/self",
         f"{base}/api/v1/auth/me",
         f"{base}/api/v1/user/profile",
-        f"{base}/api/user/self",
         f"{base}/api/user/info",
         f"{base}/api/me",
         f"{base}/user/self",
     ]
+
+    def to_number(value):
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+        if isinstance(value, str):
+            text = value.strip().replace(",", "")
+            try:
+                return float(text)
+            except ValueError:
+                return None
+        return None
+
+    def find_amount(obj):
+        if not isinstance(obj, dict):
+            return None
+        # balance/credits 等通常已经是页面展示单位，不能再次换算。
+        for key in ("balance", "credits", "available", "remaining", "quota_remaining"):
+            amount = to_number(obj.get(key))
+            if amount is not None:
+                return amount
+        # NewAPI quota 是内部额度单位，钱包页面显示 quota / 500000。
+        quota = to_number(obj.get("quota"))
+        if quota is not None:
+            return quota / 500000 if pool_type == "newapi" else quota
+        for key in ("user", "info", "account"):
+            amount = find_amount(obj.get(key))
+            if amount is not None:
+                return amount
+        return None
+
     last_error = ""
     for url in endpoints:
         try:
@@ -1732,25 +1763,17 @@ def _pool_get_balance(pool_type: str, base_url: str, token: str) -> tuple[float 
             if resp.status_code == 200:
                 try:
                     data = resp.json()
+                    candidates = [data]
                     if isinstance(data, dict):
-                        d = data.get("data", data)
-                        if isinstance(d, dict):
-                            # 常见字段：balance / quota / credits / available / remaining
-                            for key in ("balance", "quota", "credits", "available", "remaining", "quota_remaining"):
-                                v = d.get(key)
-                                if isinstance(v, (int, float)):
-                                    return float(v), ""
-                                if isinstance(v, str) and v.replace(".", "", 1).isdigit():
-                                    return float(v), ""
-                            # 有些放在更深处
-                            for key in ("user", "info"):
-                                sub = d.get(key)
-                                if isinstance(sub, dict):
-                                    for k2 in ("balance", "quota", "credits", "available", "remaining"):
-                                        v = sub.get(k2)
-                                        if isinstance(v, (int, float)):
-                                            return float(v), ""
-                    last_error = f"未解析到余额字段：响应={json.dumps(data)[:300]}"
+                        candidates.append(data.get("data"))
+                    amount = None
+                    for candidate in candidates:
+                        amount = find_amount(candidate)
+                        if amount is not None:
+                            break
+                    if amount is not None:
+                        return amount, ""
+                    last_error = f"未解析到余额字段：响应={json.dumps(data, ensure_ascii=False)[:300]}"
                 except Exception as e:
                     last_error = f"响应解析失败：{e}"
             else:
