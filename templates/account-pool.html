@@ -1962,6 +1962,8 @@ function renderGroupBlock(g, isChannel, accId) {
 }
 
 function renderItemRow(it, isChannel, accId, groupName) {
+    const account = (state.accounts || []).find(a => String(a.id) === String(accId));
+    const isNewApi = account && account.pool_type === 'newapi';
     const name = it.name || it.title || (isChannel ? `渠道 ${it.id || ''}` : `令牌 ${it.id || ''}`);
     let metas = [];
     if (it.type) metas.push(`<span>类型：<code>${escapeHtml(String(it.type))}</code></span>`);
@@ -2014,17 +2016,18 @@ function renderItemRow(it, isChannel, accId, groupName) {
                     return `<option value="${escapeHtml(oidStr || o.name || '')}" data-gname="${escapeHtml(String(o.name || ''))}"${sel}>${escapeHtml(display)}</option>`;
                 })).join('');
             groupSwitcher = `
-            <div style="flex-shrink:0;margin-left:6px;">
+            <div style="flex-shrink:0;margin-left:6px;display:flex;gap:6px;align-items:center;">
                 <select id="${sgUid}"
                     data-acc-id="${escapeHtml(accId)}"
                     data-key-id="${escapeHtml(String(it.id || ''))}"
                     data-key-name="${escapeHtml(String(name))}"
                     data-cur-group="${escapeHtml(curGidStr)}"
                     title="把该密钥移动到另一个分组（直接调用远程 PUT /api/v1/keys/{id}）"
-                    onchange="handleMoveGroup(this)"
+                    onchange="${isNewApi ? 'handleNewApiGroupSelection(this)' : 'handleMoveGroup(this)'}"
                     style="padding:5px 8px;border-radius:7px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:12px;cursor:pointer;min-width:240px;max-width:360px;">
                     ${gOptions}
                 </select>
+                ${isNewApi ? `<button type="button" class="btn btn-primary btn-sm" data-group-confirm="${sgUid}" onclick="confirmNewApiGroup(this)" style="display:none;padding:5px 10px;">确定</button>` : ''}
             </div>`;
         }
 
@@ -2129,6 +2132,30 @@ function _findTargetGroup(groups, targetId, targetName) {
 /* ============================================================
  * 单个密钥 → 切换所属分组（直接调用远程修改）
  * ============================================================ */
+async function handleNewApiGroupSelection(sel) {
+    const curGid = sel.getAttribute('data-cur-group') || '';
+    const confirmBtn = document.querySelector(`[data-group-confirm="${sel.id}"]`);
+    if (!sel.value || String(sel.value) === String(curGid)) {
+        sel.value = curGid;
+        if (confirmBtn) confirmBtn.style.display = 'none';
+        return;
+    }
+    if (confirmBtn) {
+        confirmBtn.style.display = 'inline-flex';
+        confirmBtn.disabled = false;
+    }
+    showMsg('listMsg', '请选择目标分组后点击“确定”提交到 NewAPI', 'info');
+}
+
+async function confirmNewApiGroup(btn) {
+    const selectId = btn.getAttribute('data-group-confirm');
+    const sel = document.getElementById(selectId);
+    if (!sel) return;
+    btn.disabled = true;
+    await handleMoveGroup(sel);
+    btn.disabled = false;
+}
+
 async function handleMoveGroup(sel) {
     const accId = sel.getAttribute('data-acc-id') || '';
     const keyId = sel.getAttribute('data-key-id') || '';
