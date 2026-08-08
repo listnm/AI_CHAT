@@ -2383,6 +2383,84 @@ def api_pool_login(pool_id):
         return {"ok": False, "message": f"服务器异常：{e}"}, 500
 
 
+@app.route("/api/pool/oauth/github/start", methods=["POST"])
+def api_pool_oauth_github_start():
+    """
+    发起 GitHub OAuth 登录流程（适用于 NewAPI 中转站，如 seekai.cc）。
+
+    流程说明（已逆向 NewAPI 的 OAuth 实现）：
+      1. GET  {base_url}/api/status          → 取 github_oauth / github_client_id
+      2. POST {base_url}/api/oauth/state      → 取 flow_token（服务端 CSRF state，无 cookie 绑定）
+      3. 拼装 GitHub 授权 URL（client_id + redirect_uri + state=flow_token + scope）
+
+    注意：GitHub 的 redirect_uri 已在中转站后台固定为 {base_url}/api/oauth/github，
+    我们无法改写它，因此用户授权后浏览器会跳回中转站回调并返回 access_token（JSON）。
+    用户需从回调页的 JSON 响应或中转站 localStorage 里复制 access_token 后回填到表单。
+    """
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    try:
+        data = request.get_json(silent=True) or {}
+        base_url = _normalize_base_url((data.get("base_url") or "").strip())
+        if not base_url:
+            return {"ok": False, "message": "请先填写 Base URL"}
+
+        s = requests.Session()
+        s.headers.update({"User-Agent": "acc-pool-oauth/1.0", "Accept": "application/json"})
+
+        # 1. 拉站点状态，确认 GitHub OAuth 已开启并取 client_id
+        try:
+            r = s.get(f"{base_url}/api/status", timeout=12)
+            r.raise_for_status()
+            st = (r.json() or {}).get("data", {})
+        except Exception as e:
+            return {"ok": False, "message": f"访问 {base_url}/api/status 失败：{e}"}
+        if not st.get("github_oauth"):
+            return {"ok": False, "message": "该站点未启用 GitHub OAuth 登录，请改用用户名/密码"}
+        client_id = st.get("github_client_id")
+        if not client_id:
+            return {"ok": False, "message": "站点配置异常：未返回 github_client_id"}
+
+        # 2. 申请 flow_token（NewAPI 的 CSRF state，服务端保存，约 10 分钟有效期）
+        try:
+            r = s.post(
+                f"{base_url}/api/oauth/state",
+                json={"provider": "github", "intent": "login"},
+                timeout=12,
+            )
+            r.raise_for_status()
+            payload = r.json() or {}
+        except Exception as e:
+            return {"ok": False, "message": f"申请 flow_token 失败：{e}"}
+        if not payload.get("success"):
+            return {"ok": False, "message": f"申请 flow_token 失败：{payload.get('message') or payload}"}
+        flow_token = (payload.get("data") or {}).get("flow_token")
+        if not flow_token:
+            return {"ok": False, "message": "站点未返回 flow_token"}
+
+        # 3. 拼装 GitHub 授权 URL（redirect_uri 固定为中转站回调）
+        from urllib.parse import urlencode
+        params = {
+            "client_id": client_id,
+            "redirect_uri": f"{base_url}/api/oauth/github",
+            "state": flow_token,
+            "scope": "user:email",
+        }
+        auth_url = f"https://github.com/login/oauth/authorize?{urlencode(params)}"
+
+        return {
+            "ok": True,
+            "url": auth_url,
+            "flow_token": flow_token,
+            "client_id": client_id,
+            "message": "已生成 GitHub 授权链接，请在打开的新窗口完成 GitHub 授权，然后从回调页 JSON 或中转站 localStorage 复制 access_token 回填",
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"ok": False, "message": f"服务器异常：{e}"}, 500
+
+
 @app.route("/api/pool/accounts/<pool_id>/balance", methods=["POST"])
 def api_pool_balance(pool_id):
     """查询并保存余额（如未登录或 Token 失效会自动重新登录）"""

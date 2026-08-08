@@ -866,16 +866,25 @@
                     </div>
                     <!-- GitHub / OAuth 登录用户：手动粘贴 access_token（替代用户名密码） -->
                     <div class="form-group" id="tokenInputWrap" style="display:none;">
-                        <label class="form-label">
-                            手动粘贴 <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:5px;">access_token</code>
-                            <span style="color:var(--accent);font-weight:500;margin-left:4px;">（GitHub OAuth 用户用这个）</span>
-                        </label>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+                            <label class="form-label" style="margin:0;">
+                                手动粘贴 <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:5px;">access_token</code>
+                                <span style="color:var(--accent);font-weight:500;margin-left:4px;">（GitHub OAuth 用户用这个）</span>
+                            </label>
+                            <button type="button" class="btn btn-sm" id="githubOauthBtn" onclick="githubOauthStart(this)"
+                                style="background:#24292e;color:#fff;border:none;min-height:30px;">
+                                🔑 GitHub 一键登录
+                            </button>
+                        </div>
                         <input type="text" id="newAccessToken" class="input input-mono" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....">
                         <div style="margin-top:6px;font-size:12px;color:var(--text-muted);line-height:1.65;">
-                            📖 <b>获取方式</b>：先在对方网站（如 <code>seekai.cc</code>）用 GitHub 登录成功 →
-                            按 <kbd style="background:var(--bg-secondary);padding:1px 5px;border-radius:4px;">F12</kbd> 打开开发者工具 →
-                            <b>Application / 应用</b> 标签 → <b>Local Storage / 本地存储</b> → 点击站点域名 →
-                            找到键 <code>access_token</code>（或 <code>Authorization</code> / <code>token</code>），复制完整值粘贴到上面。
+                            🚀 <b>最快方式</b>：点上方 <b>「GitHub 一键登录」</b> → 在新窗口用 GitHub 授权 →
+                            浏览器会跳到中转站回调页并直接显示一段 JSON（<code>{"success":true,"data":{"access_token":"..."}}</code>），
+                            复制 <code>access_token</code> 的值粘贴到上面即可。
+                            <br>
+                            📖 <b>备选方式</b>：若回调页没显示 JSON，按 <kbd style="background:var(--bg-secondary);padding:1px 5px;border-radius:4px;">F12</kbd> →
+                            <b>Application / 应用</b> → <b>Local Storage / 本地存储</b> → 站点域名 →
+                            找键 <code>access_token</code>（或 <code>Authorization</code> / <code>token</code>）复制。
                             <br>
                             💡 <b>二选一即可</b>：填了 access_token 就可以不填用户名/密码；反之亦然。
                         </div>
@@ -1103,6 +1112,45 @@ function _syncCredRequiredHint() {
     if (document.getElementById('newAccessToken') && !document.getElementById('newAccessToken').dataset._bound) {
         document.getElementById('newAccessToken').dataset._bound = '1';
         document.getElementById('newAccessToken').addEventListener('input', _syncCredRequiredHint);
+    }
+}
+
+/* ============================================================
+ * GitHub OAuth 一键登录（NewAPI 中转站，如 seekai.cc）
+ * ============================================================
+ * 后端去中转站拉 flow_token + github_client_id，拼出 GitHub 授权 URL；
+ * 这里在新窗口打开，用户授权后浏览器会跳回中转站回调并返回 access_token（JSON），
+ * 用户复制 access_token 回填到下方输入框即可。
+ */
+async function githubOauthStart(btn) {
+    const base = (document.getElementById('newBase')?.value || '').trim();
+    if (!base) return showMsg('listMsg', '请先填写 Base URL（如 https://seekai.cc）', 'fail');
+
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> 生成中...';
+    try {
+        const r = await req(API + '/oauth/github/start', 'POST', { base_url: base });
+        if (r.ok && r.url) {
+            // 新窗口打开 GitHub 授权页（不能直接 location.href，否则离开当前未保存的表单）
+            const win = window.open(r.url, '_blank');
+            if (!win) {
+                // 弹窗被拦截：回退为当前页跳转，并提示
+                showMsg('listMsg', '⚠️ 弹窗被浏览器拦截，已在本页跳转；授权后请回到本页粘贴 access_token', 'info');
+                window.location.href = r.url;
+            } else {
+                showMsg('listMsg',
+                    '✅ 已打开 GitHub 授权页。完成授权后，新窗口会显示一段 JSON，复制其中的 access_token 粘贴到下方输入框',
+                    'success');
+            }
+        } else {
+            showMsg('listMsg', r.message || '生成 GitHub 授权链接失败', 'fail');
+        }
+    } catch (e) {
+        showMsg('listMsg', '请求异常：' + (e && e.message ? e.message : e), 'fail');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = orig;
     }
 }
 
