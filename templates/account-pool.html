@@ -1678,9 +1678,19 @@ function refreshModalSelection(accId) {
 /* ============================================================
  * 分组详情弹窗
  * ============================================================ */
-async function showGroups(id, btn) {
+async function showGroups(id, opts) {
     const acc = state.accounts.find(a => a.id === id);
     if (!acc) return;
+
+    // 兼容旧调用方式：第二个参数可能是按钮元素，也可能是 {force:true, btn:xxx}
+    let btn = null;
+    let force = true; // 默认强制刷新，保证移动分组后立刻拿到最新
+    if (opts && (typeof opts === 'object') && !(opts instanceof Element || (opts.nodeType && opts.nodeType === 1))) {
+        btn = opts.btn || null;
+        if (opts.force === false) force = false;
+    } else if (opts) {
+        btn = opts;
+    }
 
     // 按钮加载状态
     let origBtn = '';
@@ -1701,24 +1711,23 @@ async function showGroups(id, btn) {
     document.getElementById('groupsModal').classList.add('show');
 
     try {
-        // GET /groups 现在会自动登录+拉取，force=1 强制刷新
-        const r = await req(`${API}/accounts/${id}/groups?force=1`, 'GET');
+        const r = await req(`${API}/accounts/${id}/groups?force=${force ? 1 : 0}`, 'GET');
         if (!r.ok) throw new Error(r.message || '查询失败');
         const groups = r.groups || [];
         // 保存分组选项列表（用于"切换分组"下拉）
         // 优先用响应顶层的 group_options（已从后端聚合好，带倍率），其次从第一个有 all_group_options 的块里取
         if (!state._groupOpts) state._groupOpts = {};
-        let opts = r.group_options;
-        if (!(opts && opts.length)) {
+        let gopts = r.group_options;
+        if (!(gopts && gopts.length)) {
             for (const g of groups) {
                 if (g && g.all_group_options && g.all_group_options.length) {
-                    opts = g.all_group_options;
+                    gopts = g.all_group_options;
                     break;
                 }
             }
         }
-        if (opts && opts.length) {
-            state._groupOpts[id] = opts;
+        if (gopts && gopts.length) {
+            state._groupOpts[id] = gopts;
         }
         if (!groups.length) {
             body.innerHTML = `
@@ -1737,8 +1746,7 @@ async function showGroups(id, btn) {
                     ${updatedStr ? `<span style="color:var(--text-muted);font-size:11px;">更新于 ${updatedStr}</span>` : ''}
                 </div>
                 <div>• 点击每条密钥右侧的 <b>「📋 复制Key」</b> 直接复制完整密钥到剪贴板</div>
-                <div>• 点击 <b>「✨ 选用此Key」</b> 将该密钥设为当前账号的主 Key，保存在卡片头部</div>
-                <div>• 随时可切换到其他分组的密钥，无需登录对方网站</div>
+                <div>• 在密钥行左侧的 <b>「切分组」下拉框</b> 里直接选目标分组就会立刻把该密钥移动过去，和对方网站操作一致</div>
             </div>`;
         body.innerHTML = header + groups.map(g => renderGroupBlock(g, !!g.is_channel_group, id)).join('');
         setTimeout(() => refreshModalSelection(id), 30);
@@ -1898,6 +1906,7 @@ function renderItemRow(it, isChannel, accId, groupName) {
                 <select id="${sgUid}"
                     data-acc-id="${escapeHtml(accId)}"
                     data-key-id="${escapeHtml(String(it.id || ''))}"
+                    data-key-name="${escapeHtml(String(name))}"
                     data-cur-group="${escapeHtml(curGidStr)}"
                     title="把该密钥移动到另一个分组（直接调用远程 PUT /api/v1/keys/{id}）"
                     onchange="handleMoveGroup(this)"
@@ -1908,21 +1917,12 @@ function renderItemRow(it, isChannel, accId, groupName) {
         }
 
         const copyUid = nextUid('cp');
-        const selBtn = `<button class="btn btn-sm" data-token-select="1"
-            data-acc-id="${escapeHtml(accId)}"
-            data-group-name="${escapeHtml(groupName || '')}"
-            data-token-id="${escapeHtml(String(it.id || ''))}"
-            data-token-key="${escapeHtml(String(it.key))}"
-            data-token-name="${escapeHtml(String(name))}"
-            style="padding:4px 10px;font-size:12px;background:var(--primary);color:#fff;border:none;"
-            onclick="handleSelectToken(this)">✨ 选用此Key</button>`;
         actions = `
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0;margin-left:10px;flex-wrap:wrap;justify-content:flex-end;">
             <button class="btn btn-sm" style="padding:4px 10px;font-size:12px;background:transparent;border:1px solid var(--border);cursor:pointer;"
                     data-copy-text="${escapeHtml(String(it.key))}"
                     data-copy-hint="${escapeHtml(copyUid)}"
                     onclick="handleCopy(this)">📋 复制Key</button>
-            ${selBtn}
             <span id="${copyUid}" style="font-size:11px;color:var(--text-muted);min-width:60px;text-align:center;">复制</span>
         </div>`;
     } else if (isChannel && it.base_url) {
@@ -1956,6 +1956,7 @@ async function handleMoveGroup(sel) {
     const accId = sel.getAttribute('data-acc-id') || '';
     const keyId = sel.getAttribute('data-key-id') || '';
     const curGid = sel.getAttribute('data-cur-group') || '';
+    const keyName = sel.getAttribute('data-key-name') || '';
     if (!accId || !keyId) {
         showMsg('listMsg', '❌ 参数缺失：账号或密钥ID为空', 'fail');
         sel.value = curGid || '';
@@ -1969,32 +1970,37 @@ async function handleMoveGroup(sel) {
     const opt = sel.selectedOptions && sel.selectedOptions[0];
     const targetName = opt ? (opt.getAttribute('data-gname') || opt.textContent || '') : '';
     const targetId = sel.value;
-    const confirmMsg = `确定把密钥「${keyId}」从当前分组移动到「${targetName || targetId}」吗？`;
-    if (!confirm(confirmMsg)) {
-        sel.value = curGid || '';
+    // 选了和当前相同的分组：还原提示一下，也不需要发请求
+    if (curGid !== '' && String(targetId) === String(curGid)) {
+        showMsg('listMsg', '💬 当前已经是该分组', 'info');
         return;
     }
+
     sel.disabled = true;
     const origColor = sel.style.background;
     sel.style.background = 'var(--bg-secondary)';
     sel.style.cursor = 'progress';
+    sel.title = `正在移动密钥 → ${targetName || targetId} …`;
     try {
+        showMsg('pageMsg', `⏳ 正在移动密钥「${keyName || keyId}」到「${targetName || targetId}」…`, 'info');
         const r = await req(`${API}/accounts/${accId}/keys/${encodeURIComponent(keyId)}/move-group`, 'POST', {
             target_group_id: targetId,
             target_group_name: targetName || '',
         });
         if (!r.ok) throw new Error(r.message || '操作失败');
-        showMsg('pageMsg', '✅ ' + (r.message || '修改成功'), 'success');
-        // 成功后立即刷新弹窗（后端已刷新缓存）
-        setTimeout(() => showGroups(accId, null), 300);
+        showMsg('pageMsg', '✅ 移动成功，已立即同步远程：' + (r.message || ''), 'success');
+        // 强制刷新整个弹窗（force=true → 后端再拉一次远程 + 更新缓存），
+        // 确保那条密钥立刻显示在新分组下面，旧分组里消失
+        await showGroups(accId, {force: true});
     } catch (e) {
         showMsg('listMsg', '❌ 切换分组失败：' + (e.message || e), 'fail');
-        // 还原选择
+        // 还原选择，让用户能重新选或重试
         sel.value = curGid || '';
     } finally {
         sel.disabled = false;
         sel.style.background = origColor || '';
         sel.style.cursor = 'pointer';
+        sel.title = '把该密钥移动到另一个分组（直接调用远程 PUT /api/v1/keys/{id}）';
     }
 }
 
