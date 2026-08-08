@@ -18,6 +18,12 @@ from flask import Flask, render_template, request, Response, stream_with_context
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+# 禁用模板缓存，开发阶段修改 templates 立刻生效
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+try:
+    app.jinja_env.auto_reload = True
+except Exception:
+    pass
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ai-chat-secret-key-change-in-production")
 
 # Render 环境配置（HTTPS 代理修复 + 安全 cookie）

@@ -947,7 +947,7 @@
  * 全局状态
  * ============================================================ */
 const API = '/api/pool';
-let state = { accounts: [], addType: 'sub2api' };
+let state = { accounts: [], addType: 'sub2api', _fullGroups: {} };
 
 /* ============================================================
  * 主题切换
@@ -1678,23 +1678,50 @@ function refreshModalSelection(accId) {
 /* ============================================================
  * 分组详情弹窗
  * ============================================================ */
+function _renderModalBody(accId, groups, updatedStr) {
+    const body = document.getElementById('modalBody');
+    if (!groups || !groups.length) {
+        body.innerHTML = `
+            <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
+                <span style="font-size:40px;display:block;margin-bottom:12px;">📭</span>
+                <p style="font-size:14px;">暂无分组数据</p>
+                <p style="font-size:12px;margin-top:4px;">该账号下可能还没有创建密钥</p>
+            </div>`;
+        return;
+    }
+    const updateInfo = updatedStr ? `<span style="color:var(--text-muted);font-size:11px;">更新于 ${updatedStr}</span>` : '';
+    const header = `
+        <div style="padding:10px 14px;margin-bottom:14px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border-light);font-size:12px;line-height:1.8;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-weight:600;">📡 分组详情（共 ${groups.length} 个）</span>
+                ${updateInfo}
+            </div>
+            <div>• 点击每条密钥右侧的 <b>「📋 复制Key」</b> 直接复制完整密钥到剪贴板</div>
+            <div>• 在密钥行左侧的 <b>「切分组」下拉框</b> 里直接选目标分组就会立刻把该密钥移动过去，和对方网站操作一致</div>
+        </div>`;
+    body.innerHTML = header + groups.map(g => renderGroupBlock(g, !!g.is_channel_group, accId)).join('');
+    setTimeout(() => refreshModalSelection(accId), 30);
+}
+
 async function showGroups(id, opts) {
     const acc = state.accounts.find(a => a.id === id);
     if (!acc) return;
 
-    // 兼容旧调用方式：第二个参数可能是按钮元素，也可能是 {force:true, btn:xxx}
+    // 兼容旧调用方式：第二个参数可能是按钮元素，也可能是 {force, btn, silent}
     let btn = null;
-    let force = true; // 默认强制刷新，保证移动分组后立刻拿到最新
+    let force = true;
+    let silent = false;
     if (opts && (typeof opts === 'object') && !(opts instanceof Element || (opts.nodeType && opts.nodeType === 1))) {
         btn = opts.btn || null;
         if (opts.force === false) force = false;
+        if (opts.silent === true) silent = true;
     } else if (opts) {
         btn = opts;
     }
 
-    // 按钮加载状态
+    // 按钮加载状态（仅非静默模式）
     let origBtn = '';
-    if (btn) {
+    if (btn && !silent) {
         origBtn = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;"></span> 加载中';
@@ -1702,20 +1729,23 @@ async function showGroups(id, opts) {
 
     document.getElementById('modalTitle').textContent = `${acc.name} - 密钥/渠道分组详情`;
     const body = document.getElementById('modalBody');
-    body.innerHTML = `
-        <div style="text-align:center;padding:30px;color:var(--text-muted);">
-            <span class="spinner" style="border-color:var(--primary-light);border-top-color:var(--primary);width:28px;height:28px;"></span>
-            <p style="margin-top:12px;font-size:13px;">正在自动登录并拉取分组数据…</p>
-            <p style="margin-top:4px;font-size:11px;color:var(--text-muted);">首次加载需登录远程平台，请稍候</p>
-        </div>`;
+    if (!silent) {
+        body.innerHTML = `
+            <div style="text-align:center;padding:30px;color:var(--text-muted);">
+                <span class="spinner" style="border-color:var(--primary-light);border-top-color:var(--primary);width:28px;height:28px;"></span>
+                <p style="margin-top:12px;font-size:13px;">正在自动登录并拉取分组数据…</p>
+                <p style="margin-top:4px;font-size:11px;color:var(--text-muted);">首次加载需登录远程平台，请稍候</p>
+            </div>`;
+    }
     document.getElementById('groupsModal').classList.add('show');
 
     try {
         const r = await req(`${API}/accounts/${id}/groups?force=${force ? 1 : 0}`, 'GET');
         if (!r.ok) throw new Error(r.message || '查询失败');
         const groups = r.groups || [];
+        // 缓存完整分组数据（用于 handleMoveGroup 成功后本地即时修改+重渲染）
+        state._fullGroups[id] = JSON.parse(JSON.stringify(groups));
         // 保存分组选项列表（用于"切换分组"下拉）
-        // 优先用响应顶层的 group_options（已从后端聚合好，带倍率），其次从第一个有 all_group_options 的块里取
         if (!state._groupOpts) state._groupOpts = {};
         let gopts = r.group_options;
         if (!(gopts && gopts.length)) {
@@ -1729,35 +1759,21 @@ async function showGroups(id, opts) {
         if (gopts && gopts.length) {
             state._groupOpts[id] = gopts;
         }
-        if (!groups.length) {
-            body.innerHTML = `
-                <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
-                    <span style="font-size:40px;display:block;margin-bottom:12px;">📭</span>
-                    <p style="font-size:14px;">暂无分组数据</p>
-                    <p style="font-size:12px;margin-top:4px;">该账号下可能还没有创建密钥</p>
-                </div>`;
-            return;
-        }
         const updatedStr = r.groups_updated_at ? fmtTime(r.groups_updated_at) : '';
-        const header = `
-            <div style="padding:10px 14px;margin-bottom:14px;background:var(--bg-secondary);border-radius:10px;border:1px solid var(--border-light);font-size:12px;line-height:1.8;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                    <span style="font-weight:600;">📡 已从远程拉取 ${groups.length} 个分组</span>
-                    ${updatedStr ? `<span style="color:var(--text-muted);font-size:11px;">更新于 ${updatedStr}</span>` : ''}
-                </div>
-                <div>• 点击每条密钥右侧的 <b>「📋 复制Key」</b> 直接复制完整密钥到剪贴板</div>
-                <div>• 在密钥行左侧的 <b>「切分组」下拉框</b> 里直接选目标分组就会立刻把该密钥移动过去，和对方网站操作一致</div>
-            </div>`;
-        body.innerHTML = header + groups.map(g => renderGroupBlock(g, !!g.is_channel_group, id)).join('');
-        setTimeout(() => refreshModalSelection(id), 30);
+        _renderModalBody(id, groups, updatedStr);
     } catch (e) {
-        body.innerHTML = `
-            <div style="text-align:center;padding:30px;">
-                <p style="color:var(--danger);font-size:14px;">❌ 加载失败：${e.message || e}</p>
-                <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="showGroups('${id}', this)">🔄 重试</button>
-            </div>`;
+        if (silent) {
+            // 静默模式出错就不显示了，反正用户没在等这个
+            console.warn('[showGroups silent] refresh failed:', e);
+        } else {
+            body.innerHTML = `
+                <div style="text-align:center;padding:30px;">
+                    <p style="color:var(--danger);font-size:14px;">❌ 加载失败：${e.message || e}</p>
+                    <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="showGroups('${id}', this)">🔄 重试</button>
+                </div>`;
+        }
     } finally {
-        if (btn) {
+        if (btn && !silent) {
             btn.disabled = false;
             btn.innerHTML = origBtn;
         }
@@ -1949,6 +1965,71 @@ function renderItemRow(it, isChannel, accId, groupName) {
     </div>`;
 }
 
+/* 在完整 groups 树里递归找指定 key 的 token 及其所在分组 */
+function _locateTokenInGroups(groups, keyId) {
+    if (!groups) return null;
+    const keyIdStr = String(keyId);
+    // 只在非渠道分组（即 tokens 分组）里找，渠道分组不存在 token/group_id 概念
+    for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (!g || g.is_channel_group) continue;
+        const tokens = g.tokens || [];
+        for (let j = 0; j < tokens.length; j++) {
+            const t = tokens[j];
+            if (t && String(t.id || '') === keyIdStr) {
+                return { token: t, group: g, groupIndex: i, tokenIndex: j, inSubGroup: false, subGroupIndex: -1 };
+            }
+        }
+        // 递归子分组
+        const subs = g.sub_groups || [];
+        for (let k = 0; k < subs.length; k++) {
+            const sg = subs[k];
+            if (!sg || sg.is_channel_group) continue;
+            const sgTokens = sg.tokens || [];
+            for (let j = 0; j < sgTokens.length; j++) {
+                const t = sgTokens[j];
+                if (t && String(t.id || '') === keyIdStr) {
+                    return { token: t, group: sg, parentGroup: g, groupIndex: i, tokenIndex: j, inSubGroup: true, subGroupIndex: k };
+                }
+            }
+        }
+    }
+    return null;
+}
+
+/* 在完整 groups 树里按 id/name 找目标分组（用于插入 token） */
+function _findTargetGroup(groups, targetId, targetName) {
+    if (!groups) return null;
+    const idStr = String(targetId || '');
+    const nameStr = String(targetName || '');
+    for (let i = 0; i < groups.length; i++) {
+        const g = groups[i];
+        if (!g || g.is_channel_group) continue;
+        const gid = g.id != null ? String(g.id) : '';
+        const gname = String(g.name || '');
+        // id 匹配优先；如果分组缺少 id 字段（部分平台返回 groups 不带 id），
+        // 则允许按 name 匹配作为 fallback（id / name 任一命中即可）
+        const idHit = !!(idStr && gid && gid === idStr);
+        const nameHit = !!(nameStr && gname && gname === nameStr);
+        if (idHit || nameHit) {
+            return { group: g, groupIndex: i, inSubGroup: false };
+        }
+        const subs = g.sub_groups || [];
+        for (let k = 0; k < subs.length; k++) {
+            const sg = subs[k];
+            if (!sg || sg.is_channel_group) continue;
+            const sgid = sg.id != null ? String(sg.id) : '';
+            const sgname = String(sg.name || '');
+            const sgIdHit = !!(idStr && sgid && sgid === idStr);
+            const sgNameHit = !!(nameStr && sgname && sgname === nameStr);
+            if (sgIdHit || sgNameHit) {
+                return { group: sg, parentGroup: g, groupIndex: i, inSubGroup: true, subGroupIndex: k };
+            }
+        }
+    }
+    return null;
+}
+
 /* ============================================================
  * 单个密钥 → 切换所属分组（直接调用远程修改）
  * ============================================================ */
@@ -1989,9 +2070,95 @@ async function handleMoveGroup(sel) {
         });
         if (!r.ok) throw new Error(r.message || '操作失败');
         showMsg('pageMsg', '✅ 移动成功，已立即同步远程：' + (r.message || ''), 'success');
-        // 强制刷新整个弹窗（force=true → 后端再拉一次远程 + 更新缓存），
-        // 确保那条密钥立刻显示在新分组下面，旧分组里消失
-        await showGroups(accId, {force: true});
+
+        // ========== 关键：先本地立刻修改 state + 重渲染，用户马上看到效果 ==========
+        const fullGroups = state._fullGroups && state._fullGroups[accId];
+        let locallyUpdated = false;
+        if (fullGroups && fullGroups.length) {
+            const loc = _locateTokenInGroups(fullGroups, keyId);
+            let tgt = _findTargetGroup(fullGroups, targetId, targetName);
+
+            // 如果目标分组不在当前 groups 树中（通常是 0 条密钥的空分组，没有被远程返回），
+            // 就根据 state._groupOpts[accId] 里的分组元信息，动态创建一个空分组节点
+            // 插入到 fullGroups 末尾，确保本地能立即显示"该 key 已被移动过去"
+            if (loc && !tgt && state._groupOpts && state._groupOpts[accId]) {
+                const opts = state._groupOpts[accId] || [];
+                const tidStr = String(targetId || '');
+                const tnameStr = String(targetName || '');
+                const opt = opts.find(o => {
+                    const oid = o.id != null ? String(o.id) : '';
+                    const oname = String(o.name || '');
+                    return (tidStr && oid === tidStr) || (!tidStr && tnameStr && oname === tnameStr);
+                });
+                if (opt) {
+                    const newGroup = {
+                        id: opt.id != null ? opt.id : (opt.name || targetId),
+                        name: String(opt.name || targetName || '未命名分组'),
+                        tokens: [],
+                        is_channel_group: false,
+                        rate_multiplier: opt.rate_multiplier,
+                        peak_rate_enabled: opt.peak_rate_enabled,
+                        peak_rate_multiplier: opt.peak_rate_multiplier,
+                        peak_start: opt.peak_start,
+                        peak_end: opt.peak_end,
+                        platform: opt.platform,
+                        _createdLocally: true,
+                    };
+                    fullGroups.push(newGroup);
+                    // 重新查找目标分组，这次一定找到了
+                    tgt = _findTargetGroup(fullGroups, targetId, targetName);
+                }
+            }
+
+            if (loc && tgt && loc.token) {
+                // 1. 从原分组移除
+                const srcList = (loc.group.tokens = loc.group.tokens || []);
+                // 按索引移除更稳妥
+                if (loc.tokenIndex >= 0 && loc.tokenIndex < srcList.length &&
+                    String(srcList[loc.tokenIndex].id || '') === String(keyId)) {
+                    srcList.splice(loc.tokenIndex, 1);
+                } else {
+                    // fallback：按 id 匹配移除
+                    for (let idx = srcList.length - 1; idx >= 0; idx--) {
+                        if (String(srcList[idx].id || '') === String(keyId)) srcList.splice(idx, 1);
+                    }
+                }
+                // 2. 改 token 上的 group_id（确保下拉选中状态正确）
+                const movedToken = loc.token;
+                movedToken._group_id = targetId;
+                if (targetId != null && String(targetId).match(/^\d+$/)) {
+                    movedToken.group_id = Number(targetId);
+                } else {
+                    movedToken.group_id = targetId;
+                }
+                // 3. 插入到目标分组末尾
+                const dstList = (tgt.group.tokens = tgt.group.tokens || []);
+                dstList.push(movedToken);
+                // 4. 同步更新 state._fullGroups 并立即重渲染弹窗
+                state._fullGroups[accId] = fullGroups;
+                const acc = state.accounts.find(a => a.id === accId);
+                const nowStr = acc ? fmtTime(acc.groups_updated_at) : '';
+                _renderModalBody(accId, fullGroups, nowStr + '（本地已即时同步）');
+                locallyUpdated = true;
+            }
+        }
+
+        // ========== 后台静默校对（仅当本地未即时修改时执行）==========
+        // 如果 locallyUpdated=true，用户已经看到 key 出现在新分组里了，此时再 force 重拉会覆盖 UI。
+        // 对方 API 可能有异步写延迟（PUT 返回 ok 但 GET 仍返回旧值），导致反而把"切换成功"的视觉打回原状。
+        // 所以仅在 locallyUpdated=false 时才强制重拉。下次用户手动打开分组详情时自然会再同步。
+        if (!locallyUpdated) {
+            (async () => {
+                try {
+                    await new Promise(r => setTimeout(r, 400));
+                    await showGroups(accId, { force: true, silent: true });
+                } catch (e) {
+                    console.warn('[move-group background sync] failed:', e);
+                }
+            })();
+            // 极端情况：同步 fallback：立即 showGroups 确保用户看到最新
+            await showGroups(accId, { force: true, silent: false });
+        }
     } catch (e) {
         showMsg('listMsg', '❌ 切换分组失败：' + (e.message || e), 'fail');
         // 还原选择，让用户能重新选或重试
