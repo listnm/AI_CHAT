@@ -1766,7 +1766,11 @@ def _pool_get_groups(pool_type: str, base_url: str, token: str) -> tuple[list | 
     last_token_err = ""
     for url in token_endpoints:
         try:
-            resp = requests.get(url, headers=headers, timeout=6, params={"p": 1, "page_size": 500})
+            resp = requests.get(url, headers=headers, timeout=6, params={
+                "page": 1, "page_size": 500,
+                "sort_by": "created_at", "sort_order": "desc",
+                "timezone": "Asia/Shanghai",
+            })
             if resp.status_code == 200:
                 data = resp.json()
                 arr = None
@@ -2036,17 +2040,21 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
     base = _normalize_base_url(base_url)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    # 不同系统支持的字段名可能不同：group_id / group
+    # 远程 API 要求 group_id 是整数（Go int64），字符串会 400
+    try:
+        gid_int = int(target_group_id)
+    except (ValueError, TypeError):
+        return False, f"目标分组ID不是有效整数：{target_group_id}"
+
+    # 主 payload：group_id 为整数
+    # 备用 payload：某些系统可能用 group 字段
     payload_candidates = [
-        {"group_id": target_group_id},
-        {"group": target_group_id},
-        {"group_id": target_group_id, "group": target_group_id},
+        {"group_id": gid_int},
+        {"group_id": gid_int, "group": gid_int},
     ]
     endpoints = [
         f"{base}/api/v1/keys/{key_id}",
         f"{base}/api/keys/{key_id}",
-        f"{base}/api/v1/token/{key_id}",
-        f"{base}/api/token/{key_id}",
     ]
 
     last_err = ""
@@ -2060,14 +2068,21 @@ def _pool_update_key_group(pool_type: str, base_url: str, token: str, key_id, ta
                         if isinstance(data, dict):
                             code = data.get("code")
                             if code is None or code == 0 or str(code) == "200" or code is True:
+                                # 验证返回的 data.group_id 是否真正更新（防止假成功）
+                                resp_data = data.get("data")
+                                if isinstance(resp_data, dict):
+                                    actual_gid = resp_data.get("group_id")
+                                    if actual_gid is not None and int(actual_gid) != gid_int:
+                                        last_err = f"远程返回 group_id={actual_gid}，与目标 {gid_int} 不一致"
+                                        continue
                                 return True, "修改成功"
                             msg = data.get("message") or data.get("msg") or f"code={code}"
                             last_err = f"返回异常：{msg}"
                             continue
                     except Exception:
-                        # 200 但非 JSON 也算成功
                         return True, "修改成功（HTTP 200）"
                 else:
+                    last_err = f"HTTP {resp.status_code}"
                     # 也尝试 PATCH
                     try:
                         resp2 = requests.patch(url, headers=headers, json=payload, timeout=15)
