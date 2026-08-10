@@ -1,0 +1,2688 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>账号池管理</title>
+<style>
+:root{
+    --primary:#6366f1;
+    --primary-dark:#4f46e5;
+    --success:#10b981;
+    --danger:#ef4444;
+    --warning:#f59e0b;
+    --info:#0ea5e9;
+    --text:#111827;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --bg:#f8fafc;
+    --card:#ffffff;
+    --soft:#f3f4f6;
+    --shadow:0 8px 30px rgba(15,23,42,.08);
+    --radius:16px;
+}
+*{
+    box-sizing:border-box;
+}
+body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        "PingFang SC",
+        "Microsoft YaHei",
+        sans-serif;
+}
+/* =========================
+   Header
+========================= */
+.header{
+    background:linear-gradient(135deg,#6366f1,#8b5cf6);
+    color:#fff;
+    padding:18px 20px;
+    position:sticky;
+    top:0;
+    z-index:50;
+}
+.header-inner{
+    max-width:1280px;
+    margin:auto;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+}
+.title{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:19px;
+    font-weight:800;
+}
+.title-icon{
+    width:38px;
+    height:38px;
+    border-radius:11px;
+    background:rgba(255,255,255,.18);
+    display:grid;
+    place-items:center;
+}
+.header-actions{
+    display:flex;
+    gap:8px;
+}
+.header-btn{
+    border:0;
+    border-radius:9px;
+    background:rgba(255,255,255,.15);
+    color:#fff;
+    padding:8px 12px;
+    cursor:pointer;
+}
+/* =========================
+   Container
+========================= */
+.container{
+    max-width:1280px;
+    margin:auto;
+    padding:20px;
+}
+/* =========================
+   Message
+========================= */
+.message{
+    display:none;
+    padding:11px 14px;
+    border-radius:10px;
+    margin-bottom:14px;
+    font-size:13px;
+    font-weight:600;
+}
+.message.show{
+    display:block;
+}
+.message.success{
+    background:rgba(16,185,129,.12);
+    color:var(--success);
+}
+.message.error{
+    background:rgba(239,68,68,.12);
+    color:var(--danger);
+}
+.message.info{
+    background:rgba(99,102,241,.12);
+    color:var(--primary);
+}
+/* =========================
+   Stats
+========================= */
+.stats{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:14px;
+    margin-bottom:18px;
+}
+.stat{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:16px;
+    box-shadow:var(--shadow);
+}
+.stat-label{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:700;
+}
+.stat-value{
+    font-size:26px;
+    font-weight:800;
+    margin-top:5px;
+}
+/* =========================
+   Toolbar
+========================= */
+.toolbar{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:14px;
+}
+.search{
+    flex:1;
+    min-width:220px;
+}
+.input,
+.select,
+.textarea{
+    width:100%;
+    border:1px solid var(--border);
+    background:#fff;
+    color:var(--text);
+    border-radius:10px;
+    padding:10px 12px;
+    outline:none;
+}
+.input:focus,
+.select:focus,
+.textarea:focus{
+    border-color:var(--primary);
+    box-shadow:0 0 0 3px rgba(99,102,241,.12);
+}
+/* =========================
+   Buttons
+========================= */
+.btn{
+    border:0;
+    border-radius:10px;
+    padding:9px 13px;
+    min-height:38px;
+    font-size:13px;
+    font-weight:700;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    cursor:pointer;
+}
+.btn:disabled{
+    opacity:.55;
+    cursor:not-allowed;
+}
+.btn-primary{
+    background:var(--primary);
+    color:#fff;
+}
+.btn-primary:hover{
+    background:var(--primary-dark);
+}
+.btn-outline{
+    background:var(--card);
+    color:var(--text);
+    border:1px solid var(--border);
+}
+.btn-success{
+    background:var(--success);
+    color:#fff;
+}
+.btn-danger{
+    background:var(--danger);
+    color:#fff;
+}
+.btn-info{
+    background:var(--info);
+    color:#fff;
+}
+.btn-warning{
+    background:var(--warning);
+    color:#fff;
+}
+/* =========================
+   Account Panel
+========================= */
+.panel{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+}
+.panel-head{
+    padding:16px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    border-bottom:1px solid var(--border);
+}
+.panel-title{
+    font-size:17px;
+    font-weight:800;
+}
+/* =========================
+   Table
+========================= */
+.table-wrap{
+    overflow:auto;
+}
+table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:1050px;
+}
+th,
+td{
+    text-align:left;
+    padding:13px 12px;
+    border-bottom:1px solid var(--border);
+    vertical-align:middle;
+}
+th{
+    background:var(--soft);
+    color:var(--muted);
+    font-size:11px;
+    font-weight:800;
+}
+td{
+    font-size:13px;
+}
+.account-name{
+    font-weight:800;
+}
+.meta{
+    margin-top:4px;
+    color:var(--muted);
+    font-size:11px;
+    word-break:break-all;
+}
+/* =========================
+   Badge
+========================= */
+.badge{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:4px 8px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:800;
+    white-space:nowrap;
+}
+.badge-newapi{
+    background:rgba(245,158,11,.13);
+    color:var(--warning);
+}
+.badge-sub2api{
+    background:rgba(14,165,233,.12);
+    color:var(--info);
+}
+.badge-success{
+    background:rgba(16,185,129,.13);
+    color:var(--success);
+}
+.badge-muted{
+    background:var(--soft);
+    color:var(--muted);
+}
+/* =========================
+   Group Selector
+========================= */
+.group-box{
+    min-width:260px;
+}
+.group-selector{
+    display:flex;
+    align-items:center;
+    gap:7px;
+}
+.group-selector .select{
+    min-width:210px;
+}
+.group-current{
+    margin-top:5px;
+    font-size:10px;
+    color:var(--muted);
+}
+.group-current strong{
+    color:var(--primary);
+}
+.group-note{
+    margin-top:3px;
+    font-size:10px;
+    color:var(--muted);
+}
+.group-count{
+    font-size:10px;
+    color:var(--muted);
+    white-space:nowrap;
+}
+/* =========================
+   Actions
+========================= */
+.actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+}
+.actions .btn{
+    min-height:31px;
+    padding:6px 9px;
+    font-size:12px;
+}
+/* =========================
+   Mobile Card
+========================= */
+.mobile-cards{
+    display:none;
+    padding:12px;
+    gap:12px;
+    flex-direction:column;
+}
+.mobile-card{
+    border:1px solid var(--border);
+    border-radius:15px;
+    padding:15px;
+    background:var(--card);
+}
+.mobile-card-head{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--border);
+    margin-bottom:12px;
+}
+.mobile-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+}
+.mobile-field-label{
+    color:var(--muted);
+    font-size:10px;
+    font-weight:800;
+    margin-bottom:4px;
+}
+.mobile-field-value{
+    font-size:13px;
+    word-break:break-all;
+}
+.mobile-group{
+    grid-column:1/-1;
+    background:var(--soft);
+    padding:11px;
+    border-radius:11px;
+}
+.mobile-actions{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:7px;
+    margin-top:13px;
+}
+/* =========================
+   Modal
+========================= */
+.modal-mask{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.58);
+    z-index:100;
+    align-items:center;
+    justify-content:center;
+    padding:14px;
+}
+.modal-mask.show{
+    display:flex;
+}
+.modal{
+    width:min(900px,100%);
+    max-height:90vh;
+    background:var(--card);
+    border-radius:18px;
+    overflow:hidden;
+    box-shadow:0 25px 70px rgba(0,0,0,.3);
+    display:flex;
+    flex-direction:column;
+}
+.modal-header{
+    padding:16px 18px;
+    border-bottom:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+}
+.modal-title{
+    font-weight:800;
+    font-size:17px;
+}
+.modal-close{
+    border:0;
+    background:transparent;
+    color:var(--muted);
+    font-size:25px;
+    cursor:pointer;
+}
+.modal-body{
+    padding:18px;
+    overflow:auto;
+}
+.modal-footer{
+    padding:13px 18px;
+    border-top:1px solid var(--border);
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+}
+/* =========================
+   Group Detail
+========================= */
+.group-info{
+    background:var(--soft);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px;
+    margin-bottom:14px;
+}
+.group-info-title{
+    font-weight:800;
+    margin-bottom:6px;
+}
+.group-info-note{
+    color:var(--muted);
+    font-size:11px;
+    line-height:1.6;
+}
+.group-detail{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:12px;
+    margin-bottom:9px;
+}
+.group-detail-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+}
+.group-detail-name{
+    font-weight:800;
+}
+.group-detail-meta{
+    color:var(--muted);
+    font-size:11px;
+    margin-top:4px;
+}
+/* =========================
+   Empty
+========================= */
+.empty{
+    text-align:center;
+    padding:55px 20px;
+    color:var(--muted);
+}
+/* =========================
+   Responsive
+========================= */
+@media(max-width:850px){
+    .stats{
+        grid-template-columns:repeat(2,1fr);
+    }
+    .table-wrap{
+        display:none;
+    }
+    .mobile-cards{
+        display:flex;
+    }
+    .container{
+        padding:13px;
+    }
+    .header{
+        padding:13px;
+    }
+}
+@media(max-width:560px){
+    .stats{
+        gap:8px;
+    }
+    .stat{
+        padding:12px;
+    }
+    .stat-value{
+        font-size:21px;
+    }
+    .search{
+        min-width:100%;
+    }
+    .mobile-grid{
+        grid-template-columns:1fr 1fr;
+    }
+    .mobile-actions{
+        grid-template-columns:1fr 1fr 1fr;
+    }
+}
+</style>
+</head>
+<body>
+<header class="header">
+    <div class="header-inner">
+    <div class="title">
+        <div class="title-icon">🗂️</div>
+        <div>账号池管理</div>
+    </div>
+    <div class="header-actions">
+        <button class="header-btn" onclick="toggleTheme()">🌓</button>
+        <button class="header-btn" onclick="logout()">退出</button>
+    </div>
+</div>
+</header>
+<main class="container">
+<div id="pageMessage" class="message"></div>
+<!-- 统计 -->
+<section class="stats">
+    <div class="stat">
+        <div class="stat-label">账号总数</div>
+        <div class="stat-value" id="statTotal">0</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">总余额</div>
+        <div class="stat-value" id="statBalance">¥0.00</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">Sub2API</div>
+        <div class="stat-value" id="statSub2API">0</div>
+    </div>
+    <div class="stat">
+        <div class="stat-label">NewAPI</div>
+        <div class="stat-value" id="statNewAPI">0</div>
+    </div>
+</section>
+<!-- 工具栏 -->
+<section class="toolbar">
+    <input
+        id="searchInput"
+        class="input search"
+        placeholder="搜索名称、地址、用户名、当前分组…"
+        oninput="renderAccounts()"
+    >
+    <select
+        id="typeFilter"
+        class="select"
+        style="width:150px"
+        onchange="renderAccounts()"
+    >
+        <option value="">全部类型</option>
+        <option value="sub2api">Sub2API</option>
+        <option value="newapi">NewAPI</option>
+    </select>
+    <button
+        id="refreshButton"
+        class="btn btn-outline"
+        onclick="loadAccounts(true)"
+    >
+        🔄 刷新列表
+    </button>
+    <button
+        id="refreshAllButton"
+        class="btn btn-info"
+        onclick="refreshAll()"
+    >
+        ⚡ 全部刷新
+    </button>
+    <button
+        class="btn btn-primary"
+        onclick="openAddAccount()"
+    >
+        ＋ 添加账号
+    </button>
+</section>
+<!-- 账号列表 -->
+<section class="panel">
+    <div class="panel-head">
+        <div class="panel-title">
+            账号列表
+        </div>
+        <span
+            id="listCount"
+            class="badge badge-muted"
+        >
+            0 个
+        </span>
+    </div>
+    <!-- PC -->
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>账号</th>
+                    <th>类型</th>
+                    <th>余额</th>
+                    <th>当前分组</th>
+                    <th>更新时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="accountTableBody"></tbody>
+        </table>
+    </div>
+    <!-- Mobile -->
+    <div
+        id="mobileCards"
+        class="mobile-cards"
+    ></div>
+</section>
+</main>
+<!-- Modal -->
+<div
+    id="modalMask"
+    class="modal-mask"
+    onclick="closeModalByBackdrop(event)"
+>
+<div class="modal">
+    <div class="modal-header">
+        <div
+            id="modalTitle"
+            class="modal-title"
+        >
+            窗口
+        </div>
+        <button
+            class="modal-close"
+            onclick="closeModal()"
+        >
+            ×
+        </button>
+    </div>
+    <div
+        id="modalBody"
+        class="modal-body"
+    ></div>
+    <div
+        id="modalFooter"
+        class="modal-footer"
+    ></div>
+</div>
+</div>
+<script>
+/* =========================================================
+   状态
+========================================================= */
+let accounts = [];
+let currentAccountId = null;
+const busyActions = new Set();
+/* =========================================================
+   工具
+========================================================= */
+function escapeHtml(value){
+    return String(value ?? '')
+        .replace(/[&<>"']/g, function(char){
+            return {
+                '&':'&amp;',
+                '<':'&lt;',
+                '>':'&gt;',
+                '"':'&quot;',
+                "'":'&#39;'
+            }[char];
+        });
+}
+function money(value){
+    if(
+        value === null ||
+        value === undefined ||
+        value === ''
+    ){
+        return '—';
+    }
+    const number = Number(value);
+    if(!Number.isFinite(number)){
+        return '—';
+    }
+    return '¥' + number.toFixed(2);
+}
+function formatTime(value){
+    if(!value){
+        return '—';
+    }
+    try{
+        return new Date(value)
+            .toLocaleString(
+                'zh-CN',
+                {
+                    hour12:false
+                }
+            );
+    }catch(error){
+        return String(value);
+    }
+}
+/* =========================================================
+   消息
+========================================================= */
+function showMessage(
+    text,
+    type = 'success'
+){
+    const element =
+        document.getElementById(
+            'pageMessage'
+        );
+    element.textContent = text;
+    element.className =
+        'message show ' + type;
+    clearTimeout(
+        showMessage.timer
+    );
+    showMessage.timer =
+        setTimeout(
+            function(){
+                element.className =
+                    'message';
+            },
+            5000
+        );
+}
+/* =========================================================
+   API
+========================================================= */
+async function apiRequest(
+    url,
+    method = 'GET',
+    body = undefined
+){
+    const options = {
+        method,
+        credentials:'same-origin',
+        headers:{
+            'Accept':'application/json'
+        }
+    };
+    if(body !== undefined){
+        options.headers[
+            'Content-Type'
+        ] = 'application/json';
+        options.body =
+            JSON.stringify(body);
+    }
+    const response =
+        await fetch(
+            url,
+            options
+        );
+    let data = null;
+    try{
+        data =
+            await response.json();
+    }catch(error){}
+    if(!response.ok){
+        throw new Error(
+            data?.message ||
+            data?.error ||
+            `HTTP ${response.status}`
+        );
+    }
+    if(
+        data &&
+        data.ok === false
+    ){
+        throw new Error(
+            data.message ||
+            data.error ||
+            '操作失败'
+        );
+    }
+    return data || {};
+}
+/* =========================================================
+   防止重复点击
+========================================================= */
+async function runButtonAction(
+    key,
+    button,
+    callback
+){
+    if(
+        busyActions.has(key)
+    ){
+        return;
+    }
+    busyActions.add(key);
+    let oldText = '';
+    if(button){
+        oldText =
+            button.innerHTML;
+        button.disabled = true;
+        button.innerHTML =
+            '⏳ 处理中…';
+    }
+    try{
+        return await callback();
+    }finally{
+        busyActions.delete(key);
+        if(button){
+            button.disabled = false;
+            button.innerHTML =
+                oldText;
+        }
+    }
+}
+/* =========================================================
+   加载账号
+========================================================= */
+async function loadAccounts(
+    showFeedback = false
+){
+    const button =
+        document.getElementById(
+            'refreshButton'
+        );
+    await runButtonAction(
+        'load-accounts',
+        button,
+        async function(){
+            try{
+                if(showFeedback){
+                    showMessage(
+                        '正在刷新账号列表…',
+                        'info'
+                    );
+                }
+                const data =
+                    await apiRequest(
+                        '/api/pool/accounts'
+                    );
+                accounts =
+                    data.accounts ||
+                    data.items ||
+                    [];
+                updateStatistics();
+                renderAccounts();
+                if(showFeedback){
+                    showMessage(
+                        `账号列表已刷新，共 ${accounts.length} 个账号`
+                    );
+                }
+            }catch(error){
+                showMessage(
+                    '读取账号池失败：' +
+                    error.message,
+                    'error'
+                );
+            }
+        }
+    );
+}
+/* =========================================================
+   统计
+========================================================= */
+function updateStatistics(){
+    document.getElementById(
+        'statTotal'
+    ).textContent =
+        accounts.length;
+    document.getElementById(
+        'statSub2API'
+    ).textContent =
+        accounts.filter(
+            account =>
+                account.pool_type === 'sub2api'
+        ).length;
+    document.getElementById(
+        'statNewAPI'
+    ).textContent =
+        accounts.filter(
+            account =>
+                account.pool_type === 'newapi'
+        ).length;
+    const totalBalance =
+        accounts.reduce(
+            function(total, account){
+                return total +
+                    (Number(account.balance) || 0);
+            },
+            0
+        );
+    document.getElementById(
+        'statBalance'
+    ).textContent =
+        money(totalBalance);
+}
+/* =========================================================
+   搜索
+========================================================= */
+function getFilteredAccounts(){
+    const keyword =
+        (
+            document.getElementById(
+                'searchInput'
+            ).value || ''
+        )
+        .toLowerCase()
+        .trim();
+    const type =
+        document.getElementById(
+            'typeFilter'
+        ).value;
+    return accounts.filter(
+        function(account){
+            if(
+                type &&
+                account.pool_type !== type
+            ){
+                return false;
+            }
+            if(!keyword){
+                return true;
+            }
+            const text = [
+                account.name,
+                account.base_url,
+                account.username,
+                account.remark,
+                account.selected_group
+            ]
+            .map(value =>
+                String(value || '')
+                    .toLowerCase()
+            )
+            .join(' ');
+            return text.includes(
+                keyword
+            );
+        }
+    );
+}
+/* =========================================================
+   分组处理
+========================================================= */
+function normalizeGroups(
+    groups
+){
+    const result = [];
+    const map = new Map();
+    function addGroup(group){
+        if(!group){
+            return;
+        }
+        const name =
+            group.name ||
+            group.group_name;
+        if(!name){
+            return;
+        }
+        const key =
+            String(
+                group.id ??
+                name
+            );
+        if(
+            !map.has(key)
+        ){
+            map.set(
+                key,
+                {
+                    id:
+                        group.id ??
+                        name,
+                    name:name,
+                    description:
+                        group.description || '',
+                    rate_multiplier:
+                        group.rate_multiplier
+                }
+            );
+        }
+    }
+    function walk(group){
+        if(!group){
+            return;
+        }
+        if(
+            !group.is_channel_group
+        ){
+            addGroup(group);
+        }
+        if(
+            Array.isArray(
+                group.sub_groups
+            )
+        ){
+            group.sub_groups.forEach(
+                walk
+            );
+        }
+    }
+    if(
+        Array.isArray(groups)
+    ){
+        groups.forEach(
+            walk
+        );
+    }
+    return Array.from(
+        map.values()
+    );
+}
+/*
+ * 这里非常关键：
+ *
+ * group_options 优先。
+ *
+ * 如果后端已经给了：
+ *
+ * account.group_options
+ *
+ * 就直接使用。
+ *
+ * 否则从 groups 兼容提取。
+ */
+function getGroupOptions(
+    account
+){
+    if(
+        Array.isArray(
+            account.group_options
+        ) &&
+        account.group_options.length
+    ){
+        return account.group_options;
+    }
+    if(
+        Array.isArray(
+            account.all_group_options
+        ) &&
+        account.all_group_options.length
+    ){
+        return account.all_group_options;
+    }
+    return normalizeGroups(
+        account.groups || []
+    );
+}
+/* =========================================================
+   类型 Badge
+========================================================= */
+function renderTypeBadge(
+    account
+){
+    if(
+        account.pool_type === 'newapi'
+    ){
+        return `
+            <span class="badge badge-newapi">
+                NewAPI
+            </span>
+        `;
+    }
+    return `
+        <span class="badge badge-sub2api">
+            Sub2API
+        </span>
+    `;
+}
+/* =========================================================
+   余额
+========================================================= */
+function renderBalance(
+    account
+){
+    const number =
+        Number(account.balance);
+    if(
+        !Number.isFinite(number)
+    ){
+        return `
+            <span>—</span>
+        `;
+    }
+    let className =
+        'badge-success';
+    if(number <= 5){
+        className =
+            'badge-muted';
+    }
+    return `
+        <span class="badge ${className}">
+            ${escapeHtml(
+                money(number)
+            )}
+        </span>
+    `;
+}
+/* =========================================================
+   分组下拉框
+========================================================= */
+function renderGroupSelector(
+    account
+){
+    const options =
+        getGroupOptions(
+            account
+        );
+    const selected =
+        String(
+            account.selected_group || ''
+        );
+    if(
+        !options.length
+    ){
+        return `
+            <div class="group-box">
+                <div class="group-selector">
+                    <select
+                        class="select"
+                        disabled
+                    >
+                        <option>
+                            暂无可用分组
+                        </option>
+                    </select>
+                </div>
+                <div class="group-current">
+                    当前选择：
+                    <strong>
+                        ${
+                            selected
+                                ? escapeHtml(selected)
+                                : '未选择'
+                        }
+                    </strong>
+                </div>
+                <div class="group-note">
+                    点击「分组详情」重新读取
+                </div>
+            </div>
+        `;
+    }
+    const optionHtml =
+        options.map(
+            function(group){
+                const name =
+                    String(
+                        group.name ||
+                        group.group_name ||
+                        ''
+                    );
+                const isSelected =
+                    selected === name ||
+                    selected ===
+                        String(
+                            group.id ?? ''
+                        );
+                return `
+                    <option
+                        value="${escapeHtml(name)}"
+                        ${isSelected ? 'selected' : ''}
+                    >
+                        ${escapeHtml(name)}
+                    </option>
+                `;
+            }
+        ).join('');
+    return `
+        <div class="group-box">
+            <div class="group-selector">
+                <select
+                    class="select"
+                    onchange="
+                        changeSelectedGroup(
+                            '${escapeHtml(account.id)}',
+                            this
+                        )
+                    "
+                >
+                    <option value="">
+                        请选择分组…
+                    </option>
+                    ${optionHtml}
+                </select>
+                <span class="group-count">
+                    ${options.length} 个
+                </span>
+            </div>
+            <div class="group-current">
+                当前选择：
+                <strong>
+                    ${
+                        selected
+                            ? escapeHtml(selected)
+                            : '未选择'
+                    }
+                </strong>
+            </div>
+            <div class="group-note">
+                切换分组会同步远程 API Key 分组
+            </div>
+        </div>
+    `;
+}
+/* =========================================================
+   操作按钮
+========================================================= */
+function renderActions(
+    account
+){
+    const id =
+        escapeHtml(
+            account.id
+        );
+    return `
+        <div class="actions">
+            <button
+                class="btn btn-outline"
+                onclick="
+                    runButtonAction(
+                        'login-${id}',
+                        this,
+                        ()=>loginAccount('${id}')
+                    )
+                "
+            >
+                🔐 登录
+            </button>
+            <button
+                class="btn btn-success"
+                onclick="
+                    runButtonAction(
+                        'balance-${id}',
+                        this,
+                        ()=>refreshBalance('${id}')
+                    )
+                "
+            >
+                💰 余额
+            </button>
+            <button
+                class="btn btn-info"
+                onclick="
+                    runButtonAction(
+                        'groups-${id}',
+                        this,
+                        ()=>showGroupDetails('${id}')
+                    )
+                "
+            >
+                📂 分组详情
+            </button>
+            <button
+                class="btn btn-outline"
+                onclick="
+                    openEditAccount('${id}')
+                "
+            >
+                ✏️ 编辑
+            </button>
+            <button
+                class="btn btn-danger"
+                onclick="
+                    deleteAccount('${id}')
+                "
+            >
+                🗑️ 删除
+            </button>
+        </div>
+    `;
+}
+/* =========================================================
+   PC 表格
+========================================================= */
+function renderAccounts(){
+    const list =
+        getFilteredAccounts();
+    document.getElementById(
+        'listCount'
+    ).textContent =
+        list.length + ' 个';
+    const tableBody =
+        document.getElementById(
+            'accountTableBody'
+        );
+    if(!list.length){
+        tableBody.innerHTML = `
+            <tr>
+                <td colspan="6">
+                    <div class="empty">
+                        📭 暂无账号
+                    </div>
+                </td>
+            </tr>
+        `;
+    }else{
+        tableBody.innerHTML =
+            list.map(
+                function(account){
+                    return `
+                        <tr>
+                            <td>
+                                <div class="account-name">
+                                    ${escapeHtml(
+                                        account.name
+                                    )}
+                                </div>
+                                <div class="meta">
+                                    ${escapeHtml(
+                                        account.username ||
+                                        '未填写'
+                                    )}
+                                </div>
+                                <div class="meta">
+                                    ${escapeHtml(
+                                        account.base_url
+                                    )}
+                                </div>
+                                ${
+                                    account.remark
+                                        ? `
+                                            <div class="meta">
+                                                备注：
+                                                ${escapeHtml(
+                                                    account.remark
+                                                )}
+                                            </div>
+                                        `
+                                        : ''
+                                }
+                            </td>
+                            <td>
+                                ${renderTypeBadge(
+                                    account
+                                )}
+                            </td>
+                            <td>
+                                ${renderBalance(
+                                    account
+                                )}
+                                <div class="meta">
+                                    ${escapeHtml(
+                                        formatTime(
+                                            account.balance_updated_at
+                                        )
+                                    )}
+                                </div>
+                            </td>
+                            <td>
+                                ${renderGroupSelector(
+                                    account
+                                )}
+                            </td>
+                            <td>
+                                ${escapeHtml(
+                                    formatTime(
+                                        account.groups_updated_at ||
+                                        account.updated_at
+                                    )
+                                )}
+                            </td>
+                            <td>
+                                ${renderActions(
+                                    account
+                                )}
+                            </td>
+                        </tr>
+                    `;
+                }
+            ).join('');
+    }
+    renderMobileCards(
+        list
+    );
+}
+/* =========================================================
+   手机卡片
+========================================================= */
+function renderMobileCards(
+    list
+){
+    const container =
+        document.getElementById(
+            'mobileCards'
+        );
+    if(!list.length){
+        container.innerHTML = `
+            <div class="empty">
+                📭 暂无账号
+            </div>
+        `;
+        return;
+    }
+    container.innerHTML =
+        list.map(
+            function(account){
+                return `
+                    <div class="mobile-card">
+                        <div class="mobile-card-head">
+                            <div>
+                                <div class="account-name">
+                                    ${escapeHtml(
+                                        account.name
+                                    )}
+                                </div>
+                                <div class="meta">
+                                    ${escapeHtml(
+                                        account.base_url
+                                    )}
+                                </div>
+                            </div>
+                            ${renderTypeBadge(
+                                account
+                            )}
+                        </div>
+                        <div class="mobile-grid">
+                            <div>
+                                <div class="mobile-field-label">
+                                    余额
+                                </div>
+                                <div class="mobile-field-value">
+                                    ${renderBalance(
+                                        account
+                                    )}
+                                </div>
+                            </div>
+                            <div>
+                                <div class="mobile-field-label">
+                                    用户名
+                                </div>
+                                <div class="mobile-field-value">
+                                    ${escapeHtml(
+                                        account.username ||
+                                        '—'
+                                    )}
+                                </div>
+                            </div>
+                            <div class="mobile-group">
+                                <div class="mobile-field-label">
+                                    当前分组
+                                    <span style="color:var(--primary)">
+                                        （独立于 Key）
+                                    </span>
+                                </div>
+                                ${renderGroupSelector(
+                                    account
+                                )}
+                            </div>
+                            <div>
+                                <div class="mobile-field-label">
+                                    更新时间
+                                </div>
+                                <div class="mobile-field-value">
+                                    ${escapeHtml(
+                                        formatTime(
+                                            account.updated_at
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mobile-actions" style="grid-template-columns:1fr 1fr;">
+                            <button
+                                class="btn btn-outline"
+                                onclick="
+                                    runButtonAction(
+                                        'login-m-${escapeHtml(account.id)}',
+                                        this,
+                                        ()=>loginAccount('${escapeHtml(account.id)}')
+                                    )
+                                "
+                            >
+                                🔐 登录
+                            </button>
+                            <button
+                                class="btn btn-success"
+                                onclick="
+                                    runButtonAction(
+                                        'balance-m-${escapeHtml(account.id)}',
+                                        this,
+                                        ()=>refreshBalance('${escapeHtml(account.id)}')
+                                    )
+                                "
+                            >
+                                💰 余额
+                            </button>
+                            <button
+                                class="btn btn-info"
+                                onclick="
+                                    runButtonAction(
+                                        'groups-m-${escapeHtml(account.id)}',
+                                        this,
+                                        ()=>showGroupDetails('${escapeHtml(account.id)}')
+                                    )
+                                "
+                            >
+                                📂 分组
+                            </button>
+                            <button
+                                class="btn btn-outline"
+                                onclick="
+                                    openEditAccount('${escapeHtml(account.id)}')
+                                "
+                            >
+                                ✏️ 编辑
+                            </button>
+                            <button
+                                class="btn btn-danger"
+                                onclick="
+                                    deleteAccount('${escapeHtml(account.id)}')
+                                "
+                            >
+                                🗑️ 删除
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+        ).join('');
+}
+/* =========================================================
+   切换账号池当前分组
+========================================================= */
+async function changeSelectedGroup(
+    accountId,
+    selectElement
+){
+    const groupName =
+        selectElement.value;
+    if(!groupName){
+        return;
+    }
+    const account =
+        accounts.find(
+            item =>
+                String(item.id) ===
+                String(accountId)
+        );
+    const oldGroup =
+        account
+            ? account.selected_group
+            : '';
+    selectElement.disabled =
+        true;
+    showMessage(
+        `正在切换到「${groupName}」…`,
+        'info'
+    );
+    try{
+        /*
+         * 这里调用的是：
+         *
+         * /select-group
+         *
+         * 后端会保存账号池自己的 selected_group，并把当前使用的
+         * API Key 远程移动到目标分组（new-api: PUT /api/token/），
+         * 确保中转站那边同步生效。
+         */
+        const result =
+            await apiRequest(
+                `/api/pool/accounts/${encodeURIComponent(accountId)}/select-group`,
+                'POST',
+                {
+                    group_name:
+                        groupName
+                }
+            );
+        if(account){
+            account.selected_group =
+                groupName;
+        }
+        renderAccounts();
+        showMessage(
+            result.message ||
+            `✓ 已切换到「${groupName}」`,
+            'success'
+        );
+    }catch(error){
+        /*
+         * 恢复旧选择
+         */
+        selectElement.value =
+            oldGroup || '';
+        showMessage(
+            '分组切换失败：' +
+            error.message,
+            'error'
+        );
+    }finally{
+        selectElement.disabled =
+            false;
+    }
+}
+/* =========================================================
+   从弹窗切换分组
+========================================================= */
+async function switchGroupFromModal(
+    accountId
+){
+    const select =
+        document.getElementById(
+            'modalGroupSelect'
+        );
+    if(!select){
+        return;
+    }
+    const groupName =
+        select.value;
+    if(!groupName){
+        showMessage(
+            '请选择一个分组',
+            'error'
+        );
+        return;
+    }
+    const account =
+        accounts.find(
+            item =>
+                String(item.id) ===
+                String(accountId)
+        );
+    const oldGroup =
+        account
+            ? account.selected_group
+            : '';
+    select.disabled = true;
+    showMessage(
+        `正在切换到「${groupName}」…`,
+        'info'
+    );
+    try{
+        const result =
+            await apiRequest(
+                `/api/pool/accounts/${encodeURIComponent(accountId)}/select-group`,
+                'POST',
+                {
+                    group_name:
+                        groupName
+                }
+            );
+        if(account){
+            account.selected_group =
+                groupName;
+        }
+        renderAccounts();
+        showMessage(
+            result.message ||
+            `✓ 已切换到「${groupName}」`,
+            'success'
+        );
+        /*
+         * 刷新弹窗内容，保持最新状态
+         */
+        await showGroupDetails(
+            accountId
+        );
+    }catch(error){
+        select.value =
+            oldGroup || '';
+        showMessage(
+            '分组切换失败：' +
+            error.message,
+            'error'
+        );
+        select.disabled = false;
+    }
+}
+
+/* =========================================================
+   登录
+========================================================= */
+async function loginAccount(
+    id
+){
+    try{
+        showMessage(
+            '正在登录账号…',
+            'info'
+        );
+        const result =
+            await apiRequest(
+                `/api/pool/accounts/${encodeURIComponent(id)}/login`,
+                'POST',
+                {}
+            );
+        showMessage(
+            result.message ||
+            '✓ 登录成功',
+            'success'
+        );
+        await loadAccounts(
+            false
+        );
+    }catch(error){
+        showMessage(
+            '登录失败：' +
+            error.message,
+            'error'
+        );
+    }
+}
+/* =========================================================
+   余额
+========================================================= */
+async function refreshBalance(
+    id
+){
+    try{
+        showMessage(
+            '正在读取余额…',
+            'info'
+        );
+        const result =
+            await apiRequest(
+                `/api/pool/accounts/${encodeURIComponent(id)}/balance`,
+                'POST',
+                {}
+            );
+        showMessage(
+            result.message ||
+            `✓ 余额已刷新：${money(result.balance)}`,
+            'success'
+        );
+        await loadAccounts(
+            false
+        );
+    }catch(error){
+        showMessage(
+            '余额读取失败：' +
+            error.message,
+            'error'
+        );
+    }
+}
+/* =========================================================
+   全部刷新
+========================================================= */
+async function refreshAll(){
+    const button =
+        document.getElementById(
+            'refreshAllButton'
+        );
+    await runButtonAction(
+        'refresh-all',
+        button,
+        async function(){
+            try{
+                showMessage(
+                    '正在刷新所有账号的余额和分组…',
+                    'info'
+                );
+                const result =
+                    await apiRequest(
+                        '/api/pool/accounts/refresh-all',
+                        'POST',
+                        {}
+                    );
+                showMessage(
+                    result.message ||
+                    '✓ 全部刷新完成',
+                    'success'
+                );
+                await loadAccounts(
+                    false
+                );
+            }catch(error){
+                showMessage(
+                    '全部刷新失败：' +
+                    error.message,
+                    'error'
+                );
+            }
+        }
+    );
+}
+/* =========================================================
+   分组详情
+========================================================= */
+async function showGroupDetails(
+    id
+){
+    const account =
+        accounts.find(
+            item =>
+                String(item.id) ===
+                String(id)
+        );
+    currentAccountId =
+        id;
+    openModal(
+        `📂 ${escapeHtml(
+            account?.name || '账号'
+        )} - 分组详情`,
+        `
+            <div class="empty">
+                正在读取分组…
+            </div>
+        `,
+        `
+            <button
+                class="btn btn-outline"
+                onclick="closeModal()"
+            >
+                关闭
+            </button>
+        `
+    );
+    try{
+        const result =
+            await apiRequest(
+                `/api/pool/accounts/${encodeURIComponent(id)}/groups`,
+                'POST',
+                {}
+            );
+        /*
+         * 更新当前账号的分组缓存
+         */
+        if(account){
+            account.groups =
+                result.groups || [];
+            account.group_options =
+                result.group_options ||
+                normalizeGroups(
+                    result.groups || []
+                );
+            account.selected_group =
+                result.selected_group ??
+                account.selected_group ??
+                '';
+        }
+        renderAccounts();
+        const options =
+            result.group_options?.length
+                ? result.group_options
+                : normalizeGroups(
+                    result.groups || []
+                );
+        const selected =
+            result.selected_group ||
+            account?.selected_group ||
+            '';
+        let detailsHtml = '';
+        if(
+            Array.isArray(
+                result.groups
+            ) &&
+            result.groups.length
+        ){
+            detailsHtml =
+                result.groups.map(
+                    function(group){
+                        const name =
+                            group.name ||
+                            group.group_name ||
+                            '未命名分组';
+                        let count = 0;
+                        if(
+                            Array.isArray(
+                                group.tokens
+                            )
+                        ){
+                            count =
+                                group.tokens.length;
+                        }else if(
+                            Array.isArray(
+                                group.keys
+                            )
+                        ){
+                            count =
+                                group.keys.length;
+                        }
+                        return `
+                            <div class="group-detail">
+                                <div class="group-detail-head">
+                                    <div>
+                                        <div class="group-detail-name">
+                                            📂
+                                            ${escapeHtml(
+                                                name
+                                            )}
+                                        </div>
+                                        <div class="group-detail-meta">
+                                            ${count}
+                                            个 Key / Token
+                                        </div>
+                                    </div>
+                                    ${
+                                        selected ===
+                                        String(name)
+                                            ? `
+                                                <span class="badge badge-success">
+                                                    当前选择
+                                                </span>
+                                            `
+                                            : ''
+                                    }
+                                </div>
+                            </div>
+                        `;
+                    }
+                ).join('');
+        }else{
+            detailsHtml = `
+                <div class="empty">
+                    📭 没有读取到分组
+                </div>
+            `;
+        }
+        const groupSelectorHtml = options.length
+            ? `
+                <div style="
+                    display:flex;
+                    gap:8px;
+                    align-items:center;
+                    flex-wrap:wrap;
+                ">
+                    <select
+                        id="modalGroupSelect"
+                        class="select"
+                        style="flex:1;min-width:160px;"
+                        onchange="switchGroupFromModal('${escapeHtml(id)}')"
+                    >
+                        <option value="">
+                            请选择分组…
+                        </option>
+                        ${options.map(function(g){
+                            const gName = g.name || g.group_name || '';
+                            const isSel = selected === gName || selected === String(g.id ?? '');
+                            const rateLabel = g.rate_multiplier
+                                ? ' (' + escapeHtml(String(g.rate_multiplier)) + 'x)'
+                                : '';
+                            return `
+                                <option
+                                    value="${escapeHtml(gName)}"
+                                    ${isSel ? 'selected' : ''}
+                                >
+                                    ${escapeHtml(gName)}${rateLabel}
+                                </option>
+                            `;
+                        }).join('')}
+                    </select>
+                    <span style="
+                        font-size:11px;
+                        color:var(--muted);
+                        white-space:nowrap;
+                    ">
+                        ${options.length} 个可选
+                    </span>
+                </div>
+            `
+            : `
+                <div style="color:var(--muted);font-size:13px;">
+                    暂无可用分组，点击下方「重新读取」拉取
+                </div>
+            `;
+
+        openModal(
+            `📂 ${escapeHtml(
+                account?.name || '账号'
+            )} - 分组详情`,
+            `
+                <div class="group-info">
+                    <div class="group-info-title">
+                        当前选择：
+                        ${
+                            selected
+                                ? `
+                                    <span style="
+                                        color:var(--primary);
+                                    ">
+                                        ${escapeHtml(
+                                            selected
+                                        )}
+                                    </span>
+                                `
+                                : `
+                                    <span style="
+                                        color:var(--muted);
+                                    ">
+                                        未选择
+                                    </span>
+                                `
+                        }
+                    </div>
+                    <div class="group-info-note">
+                        ⚠️ 切换分组将把当前使用的 API Key 同步到目标分组
+                    </div>
+                    <div style="margin-top:10px;">
+                        ${groupSelectorHtml}
+                    </div>
+                </div>
+                <div style="
+                    font-weight:800;
+                    font-size:14px;
+                    margin:16px 0 10px;
+                ">
+                    全部分组详情
+                </div>
+                ${detailsHtml}
+            `,
+            `
+                <button
+                    class="btn btn-outline"
+                    onclick="closeModal()"
+                >
+                    关闭
+                </button>
+                <button
+                    class="btn btn-info"
+                    onclick="
+                        showGroupDetails(
+                            '${escapeHtml(id)}'
+                        )
+                    "
+                >
+                    🔄 重新读取
+                </button>
+            `
+        );
+    }catch(error){
+        openModal(
+            `📂 ${escapeHtml(
+                account?.name || '账号'
+            )} - 分组详情`,
+            `
+                <div class="empty">
+                    <div style="
+                        font-size:42px;
+                        margin-bottom:10px;
+                    ">
+                        ❌
+                    </div>
+                    <div style="
+                        color:var(--danger);
+                        font-weight:800;
+                    ">
+                        分组读取失败
+                    </div>
+                    <div style="
+                        margin-top:8px;
+                        font-size:12px;
+                    ">
+                        ${escapeHtml(
+                            error.message
+                        )}
+                    </div>
+                </div>
+            `,
+            `
+                <button
+                    class="btn btn-outline"
+                    onclick="closeModal()"
+                >
+                    关闭
+                </button>
+                <button
+                    class="btn btn-primary"
+                    onclick="
+                        showGroupDetails(
+                            '${escapeHtml(id)}'
+                        )
+                    "
+                >
+                    🔄 重试
+                </button>
+            `
+        );
+    }
+}
+/* =========================================================
+   删除
+========================================================= */
+async function deleteAccount(
+    id
+){
+    const account =
+        accounts.find(
+            item =>
+                String(item.id) ===
+                String(id)
+        );
+    if(!account){
+        return;
+    }
+    if(
+        !confirm(
+            `确定删除账号「${account.name}」吗？\n\n此操作不可恢复。`
+        )
+    ){
+        return;
+    }
+    try{
+        showMessage(
+            '正在删除账号…',
+            'info'
+        );
+        await apiRequest(
+            `/api/pool/accounts/${encodeURIComponent(id)}`,
+            'DELETE'
+        );
+        showMessage(
+            '✓ 账号已删除',
+            'success'
+        );
+        await loadAccounts(
+            false
+        );
+    }catch(error){
+        showMessage(
+            '删除失败：' +
+            error.message,
+            'error'
+        );
+    }
+}
+/* =========================================================
+   添加账号
+========================================================= */
+function openAddAccount(){
+    openModal(
+        '➕ 添加账号',
+        `
+            <div style="
+                display:grid;
+                grid-template-columns:1fr 1fr;
+                gap:12px;
+            ">
+                <div>
+                    <label>
+                        账号类型
+                    </label>
+                    <select
+                        id="addType"
+                        class="select"
+                    >
+                        <option value="sub2api">
+                            Sub2API
+                        </option>
+                        <option value="newapi">
+                            NewAPI
+                        </option>
+                    </select>
+                </div>
+                <div>
+                    <label>
+                        名称
+                    </label>
+                    <input
+                        id="addName"
+                        class="input"
+                        placeholder="例如：003"
+                    >
+                </div>
+                <div style="
+                    grid-column:1/-1;
+                ">
+                    <label>
+                        API 地址
+                    </label>
+                    <input
+                        id="addUrl"
+                        class="input"
+                        placeholder="https://example.com"
+                    >
+                </div>
+                <div>
+                    <label>
+                        用户名
+                    </label>
+                    <input
+                        id="addUsername"
+                        class="input"
+                    >
+                </div>
+                <div>
+                    <label>
+                        密码
+                    </label>
+                    <input
+                        id="addPassword"
+                        type="password"
+                        class="input"
+                    >
+                </div>
+                <div style="
+                    grid-column:1/-1;
+                ">
+                    <label>
+                        Access Token
+                    </label>
+                    <textarea
+                        id="addToken"
+                        class="textarea"
+                        rows="3"
+                    ></textarea>
+                <div class="meta">
+                    用户名+密码和 Token
+                    根据你的后端逻辑二选一。
+                </div>
+            </div>
+            <div style="
+                grid-column:1/-1;
+            ">
+                <label>
+                    备注
+                </label>
+                <input
+                    id="addRemark"
+                    class="input"
+                >
+            </div>
+        </div>
+    `,
+    `
+        <button
+            class="btn btn-outline"
+            onclick="closeModal()"
+        >
+            取消
+        </button>
+        <button
+            id="saveAddButton"
+            class="btn btn-primary"
+            onclick="saveAddAccount()"
+        >
+            保存账号
+        </button>
+    `
+);
+
+}
+
+/* =========================================================
+保存添加
+========================================================= */
+
+async function saveAddAccount(){
+
+const button =
+    document.getElementById(
+        'saveAddButton'
+    );
+const body = {
+    pool_type:
+        document.getElementById(
+            'addType'
+        ).value,
+    name:
+        document.getElementById(
+            'addName'
+        ).value.trim(),
+    base_url:
+        document.getElementById(
+            'addUrl'
+        ).value.trim(),
+    username:
+        document.getElementById(
+            'addUsername'
+        ).value.trim(),
+    password:
+        document.getElementById(
+            'addPassword'
+        ).value,
+    access_token:
+        document.getElementById(
+            'addToken'
+        ).value.trim(),
+    remark:
+        document.getElementById(
+            'addRemark'
+        ).value.trim()
+};
+if(
+    !body.name ||
+    !body.base_url
+){
+    showMessage(
+        '名称和 API 地址不能为空',
+        'error'
+    );
+    return;
+}
+await runButtonAction(
+    'save-add',
+    button,
+    async function(){
+        try{
+            await apiRequest(
+                '/api/pool/accounts',
+                'POST',
+                body
+            );
+            closeModal();
+            showMessage(
+                '✓ 账号添加成功',
+                'success'
+            );
+            await loadAccounts(
+                false
+            );
+        }catch(error){
+            showMessage(
+                '添加失败：' +
+                error.message,
+                'error'
+            );
+        }
+    }
+);
+
+}
+
+/* =========================================================
+编辑
+========================================================= */
+
+function openEditAccount(
+id
+){
+
+const account =
+    accounts.find(
+        item =>
+            String(item.id) ===
+            String(id)
+    );
+if(!account){
+    return;
+}
+currentAccountId =
+    id;
+openModal(
+    '✏️ 编辑账号',
+    `
+        <div style="
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:12px;
+        ">
+            <div>
+                <label>
+                    账号类型
+                </label>
+                <select
+                    id="editType"
+                    class="select"
+                >
+                    <option
+                        value="sub2api"
+                        ${
+                            account.pool_type ===
+                            'sub2api'
+                                ? 'selected'
+                                : ''
+                        }
+                    >
+                        Sub2API
+                    </option>
+                    <option
+                        value="newapi"
+                        ${
+                            account.pool_type ===
+                            'newapi'
+                                ? 'selected'
+                                : ''
+                        }
+                    >
+                        NewAPI
+                    </option>
+                </select>
+            </div>
+            <div>
+                <label>
+                    名称
+                </label>
+                <input
+                    id="editName"
+                    class="input"
+                    value="${escapeHtml(
+                        account.name
+                    )}"
+                >
+            </div>
+            <div style="
+                grid-column:1/-1;
+            ">
+                <label>
+                    API 地址
+                </label>
+                <input
+                    id="editUrl"
+                    class="input"
+                    value="${escapeHtml(
+                        account.base_url
+                    )}"
+                >
+            </div>
+            <div>
+                <label>
+                    用户名
+                </label>
+                <input
+                    id="editUsername"
+                    class="input"
+                    value="${escapeHtml(
+                        account.username || ''
+                    )}"
+                >
+            </div>
+            <div>
+                <label>
+                    新密码
+                </label>
+                <input
+                    id="editPassword"
+                    type="password"
+                    class="input"
+                    placeholder="留空则不修改"
+                >
+            </div>
+            <div style="
+                grid-column:1/-1;
+            ">
+                <label>
+                    Access Token
+                </label>
+                <textarea
+                    id="editToken"
+                    class="textarea"
+                    rows="3"
+                    placeholder="留空则保持原 Token"
+                ></textarea>
+            </div>
+            <div style="
+                grid-column:1/-1;
+            ">
+                <label>
+                    备注
+                </label>
+                <input
+                    id="editRemark"
+                    class="input"
+                    value="${escapeHtml(
+                        account.remark || ''
+                    )}"
+                >
+            </div>
+        </div>
+    `,
+    `
+        <button
+            class="btn btn-outline"
+            onclick="closeModal()"
+        >
+            取消
+        </button>
+        <button
+            id="saveEditButton"
+            class="btn btn-primary"
+            onclick="saveEditAccount()"
+        >
+            保存修改
+        </button>
+    `
+);
+
+}
+
+/* =========================================================
+保存编辑
+========================================================= */
+
+async function saveEditAccount(){
+
+const button =
+    document.getElementById(
+        'saveEditButton'
+    );
+const body = {
+    pool_type:
+        document.getElementById(
+            'editType'
+        ).value,
+    name:
+        document.getElementById(
+            'editName'
+        ).value.trim(),
+    base_url:
+        document.getElementById(
+            'editUrl'
+        ).value.trim(),
+    username:
+        document.getElementById(
+            'editUsername'
+        ).value.trim(),
+    remark:
+        document.getElementById(
+            'editRemark'
+        ).value.trim()
+};
+const password =
+    document.getElementById(
+        'editPassword'
+    ).value;
+const token =
+    document.getElementById(
+        'editToken'
+    ).value.trim();
+if(password){
+    body.password =
+        password;
+}
+if(token){
+    body.access_token =
+        token;
+}
+await runButtonAction(
+    'save-edit',
+    button,
+    async function(){
+        try{
+            await apiRequest(
+                `/api/pool/accounts/${encodeURIComponent(currentAccountId)}`,
+                'PUT',
+                body
+            );
+            closeModal();
+            showMessage(
+                '✓ 账号修改成功',
+                'success'
+            );
+            await loadAccounts(
+                false
+            );
+        }catch(error){
+            showMessage(
+                '保存失败：' +
+                error.message,
+                'error'
+            );
+        }
+    }
+);
+
+}
+
+/* =========================================================
+Modal
+========================================================= */
+
+function openModal(
+title,
+body,
+footer
+){
+
+document.getElementById(
+    'modalTitle'
+).innerHTML =
+    title;
+document.getElementById(
+    'modalBody'
+).innerHTML =
+    body;
+document.getElementById(
+    'modalFooter'
+).innerHTML =
+    footer || '';
+document.getElementById(
+    'modalMask'
+).classList.add(
+    'show'
+);
+
+}
+
+function closeModal(){
+
+document.getElementById(
+    'modalMask'
+).classList.remove(
+    'show'
+);
+currentAccountId =
+    null;
+
+}
+
+function closeModalByBackdrop(
+event
+){
+
+if(
+    event.target.id ===
+    'modalMask'
+){
+    closeModal();
+}
+
+}
+
+/* =========================================================
+主题
+========================================================= */
+
+function toggleTheme(){
+
+const dark =
+    document.body.dataset.theme ===
+    'dark';
+document.body.dataset.theme =
+    dark
+        ? 'light'
+        : 'dark';
+
+}
+
+/* =========================================================
+退出
+========================================================= */
+
+async function logout(){
+
+try{
+    await fetch(
+        '/admin/logout',
+        {
+            method:'POST',
+            credentials:'same-origin'
+        }
+    );
+}finally{
+    location.href =
+        '/admin';
+}
+
+}
+
+/* =========================================================
+初始化
+========================================================= */
+
+loadAccounts();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,2121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>管理后台 - AI 对话</title>
+    <script>
+        (function() {
+            try {
+                var t = localStorage.getItem('theme') || 'light';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch(e) {}
+        })();
+    </script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-light: #eef2ff;
+            --success: #10b981;
+            --success-light: #ecfdf5;
+            --danger: #ef4444;
+            --danger-light: #fef2f2;
+            --warning: #f59e0b;
+            --warning-light: #fffbeb;
+            --text: #111827;
+            --text-secondary: #6b7280;
+            --text-muted: #9ca3af;
+            --border: #e5e7eb;
+            --border-light: #f3f4f6;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --header-grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            --input-bg: #fafbfc;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+            color-scheme: light;
+        }
+
+        /* ===== 深色模式 ===== */
+        [data-theme="dark"] {
+            --primary: #2dd4a8;
+            --primary-hover: #26b891;
+            --primary-light: rgba(45, 212, 168, 0.12);
+            --success: #2dd4a8;
+            --success-light: rgba(45, 212, 168, 0.12);
+            --danger: #f87171;
+            --danger-light: rgba(248, 113, 113, 0.12);
+            --warning: #fbbf24;
+            --warning-light: rgba(251, 191, 36, 0.12);
+            --text: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border: #1e2d3d;
+            --border-light: #1a2435;
+            --bg: #0a0f14;
+            --card: #141d2a;
+            --header-grad: linear-gradient(135deg, #0f1620 0%, #141d2a 100%);
+            --input-bg: #0f1620;
+            --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.3);
+            color-scheme: dark;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        /* ===== 顶部导航 ===== */
+        .admin-header {
+            background: var(--header-grad);
+            padding: 20px 24px;
+            color: white;
+            border-bottom: 1px solid var(--border);
+        }
+        .admin-header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .admin-title {
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .admin-title-icon {
+            width: 36px; height: 36px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+        }
+        .admin-nav {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .admin-nav a {
+            color: rgba(255,255,255,0.9);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+        .admin-nav a:hover { color: white; }
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .logout-btn:hover { background: rgba(255,255,255,0.3); }
+        .base-url {
+            font-size: 12px;
+            opacity: 0.75;
+            font-family: monospace;
+            background: rgba(255,255,255,0.1);
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        /* ===== 容器 ===== */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* ===== 卡片 ===== */
+        .card {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+            border: 1px solid var(--border-light);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title-icon {
+            font-size: 20px;
+        }
+
+        /* ===== API 信息卡片 ===== */
+        .api-info-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%);
+            border: 1px solid #e0e7ff;
+        }
+        .api-info-box {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            border: 1px solid var(--border-light);
+        }
+        .api-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px dashed var(--border-light);
+        }
+        .api-row:last-child { border-bottom: none; }
+        .api-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            min-width: 80px;
+            flex-shrink: 0;
+        }
+        .api-value {
+            flex: 1;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+            color: var(--primary);
+            word-break: break-all;
+        }
+        .usage-tips {
+            margin-top: 16px;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+        }
+        .usage-tips-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tip-list {
+            list-style: none;
+        }
+        .tip-item {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.8;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .tip-item .method {
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .tip-item code {
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+
+        /* ===== 按钮 ===== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+            text-decoration: none;
+            line-height: 1.4;
+            min-height: 36px;
+            font-family: inherit;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+        }
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: #059669;
+            box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        }
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            box-shadow: 0 4px 12px rgba(239,68,68,0.3);
+        }
+        .btn-outline {
+            background: white;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-outline:hover:not(:disabled) {
+            background: var(--border-light);
+            color: var(--text);
+        }
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+            min-height: 30px;
+        }
+        .btn-lg {
+            padding: 12px 24px;
+            font-size: 15px;
+            min-height: 44px;
+        }
+        .btn-icon {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            flex-shrink: 0;
+        }
+        .btn-block { width: 100%; }
+
+        /* ===== 输入框 ===== */
+        .input, .select {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1.5px solid var(--border);
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: inherit;
+            background: var(--input-bg);
+            color: var(--text);
+            transition: all 0.2s;
+            outline: none;
+        }
+        .input:focus, .select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+        }
+        .input::placeholder {
+            color: var(--text-muted);
+        }
+        .input-mono {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 13px;
+        }
+
+        /* ===== 表单 ===== */
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            align-items: flex-end;
+        }
+        .form-row .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        /* ===== 批量操作栏 ===== */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .status-tags {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            flex: 1;
+            justify-content: flex-end;
+        }
+        .status-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            flex-wrap: wrap;
+        }
+        .status-tag-default {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            color: #92400e;
+            border: 1px solid #fcd34d;
+        }
+        .status-tag-fastest {
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+        .status-tag-model {
+            padding: 2px 8px;
+            background: rgba(255,255,255,0.5);
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 11px;
+        }
+        .status-tag span {
+            white-space: nowrap;
+        }
+
+        /* ===== 测速模式开关 ===== */
+        .test-mode-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            user-select: none;
+        }
+        .test-mode-toggle input {
+            display: none;
+        }
+        .toggle-slider {
+            width: 36px;
+            height: 20px;
+            background: #d0d5dd;
+            border-radius: 10px;
+            position: relative;
+            transition: all 0.2s;
+        }
+        .toggle-slider::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .test-mode-toggle input:checked + .toggle-slider {
+            background: var(--primary);
+        }
+        .test-mode-toggle input:checked + .toggle-slider::after {
+            left: 18px;
+        }
+        .toggle-label {
+            white-space: nowrap;
+        }
+
+        /* ===== 账号添加区域 ===== */
+        .add-account-section {
+            background: var(--border-light);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ===== 账号表格（电脑端） ===== */
+        .account-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 14px;
+        }
+        .account-table thead {
+            background: var(--border-light);
+        }
+        .account-table th {
+            padding: 14px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid var(--border);
+        }
+        .account-table td {
+            padding: 10px 12px;
+            vertical-align: middle;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .account-table tbody tr {
+            transition: background 0.2s;
+        }
+        .account-table tbody tr:hover {
+            background: var(--input-bg);
+        }
+        .account-table tbody tr.fastest-row {
+            background: var(--success-light);
+        }
+        .account-table tbody tr.fastest-row:hover {
+            background: #d1fae5;
+        }
+
+        /* 表格内输入框容器 */
+        .field-wrap {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .field-wrap .input, .field-wrap .select {
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+        .field-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .copy-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 3px;
+            padding: 3px 8px;
+            font-size: 11px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: white;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .copy-btn:hover {
+            background: var(--primary-light);
+            color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        /* 名称字段 */
+        .name-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .name-field .input {
+            flex: 1;
+            font-weight: 600;
+        }
+        .star-badge {
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(245,158,11,0.3);
+        }
+
+        /* 延迟徽章 */
+        .latency-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .latency-badge.success {
+            background: var(--success-light);
+            color: var(--success);
+        }
+        .latency-badge.gray {
+            background: var(--border-light);
+            color: var(--text-muted);
+        }
+        .latency-badge.error {
+            background: var(--danger-light);
+            color: var(--danger);
+        }
+        .latency-badge.loading {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        /* 操作按钮组 */
+        .action-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+        }
+        .action-group .btn {
+            padding: 4px 8px;
+            font-size: 11px;
+            min-height: 28px;
+            white-space: nowrap;
+        }
+
+        /* ===== 消息提示 ===== */
+        .msg {
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+        .msg-success {
+            display: block;
+            background: var(--success-light);
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+        .msg-fail {
+            display: block;
+            background: var(--danger-light);
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        .msg-info {
+            display: block;
+            background: var(--primary-light);
+            color: #3730a3;
+            border: 1px solid #c7d2fe;
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 按钮点击反馈 */
+        .btn:active:not(:disabled),
+        .copy-btn:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+        .btn, .copy-btn {
+            transition: all 0.15s ease;
+        }
+
+        /* ===== 空状态 ===== */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+        }
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            display: block;
+        }
+        .empty-state-text {
+            font-size: 15px;
+        }
+
+        /* ===== 对话列表 ===== */
+        .conv-head {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+        }
+        .conv-head .card-title { margin: 0; }
+        .conv-search {
+            position: relative; flex: 1; min-width: 180px; max-width: 340px;
+        }
+        .conv-search input {
+            width: 100%; padding: 9px 14px 9px 34px;
+            border: 1px solid var(--border); border-radius: 10px;
+            background: var(--bg-secondary); font-size: 13px; font-family: inherit; color: var(--text);
+            transition: all .18s ease;
+        }
+        .conv-search input:focus {
+            outline: none; border-color: var(--border-glow);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+        .conv-search input::placeholder { color: var(--text-muted); }
+        .conv-search-icon {
+            position: absolute; left: 11px; top: 50%;
+            transform: translateY(-50%); color: var(--text-muted); font-size: 13px;
+        }
+        .conv-empty {
+            text-align: center; padding: 48px 24px 40px; color: var(--text-muted);
+        }
+        .conv-empty-icon {
+            width: 68px; height: 68px; border-radius: 18px;
+            background: var(--primary-light);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 30px; margin: 0 auto 14px;
+            border: 1px solid var(--border-glow);
+        }
+        .conv-empty-title { font-size: 15px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px; }
+        .conv-empty-sub { font-size: 12.5px; line-height: 1.6; }
+
+        .conv-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 14px;
+        }
+        .conv-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: .1em;
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--border);
+            font-family: var(--font-mono);
+        }
+        .conv-table th:first-child { border-top-left-radius: 10px; }
+        .conv-table th:last-child { border-top-right-radius: 10px; }
+        .conv-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+            font-size: 13px;
+            vertical-align: top;
+        }
+        .conv-table tbody tr:hover {
+            background: var(--bg-hover);
+        }
+        .conv-row-main {
+            display: flex; align-items: flex-start; gap: 10px;
+        }
+        .conv-avatar {
+            width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff; display: flex; align-items: center; justify-content: center;
+            font-size: 16px; font-weight: 600;
+        }
+        .conv-info { flex: 1; min-width: 0; }
+        .conv-title {
+            color: var(--text);
+            font-weight: 600;
+            font-size: 13.5px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            margin-bottom: 4px;
+        }
+        .conv-preview {
+            font-size: 12px; color: var(--text-muted);
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            line-height: 1.5;
+        }
+        .conv-preview-tag {
+            display: inline-block; font-size: 10.5px; padding: 1px 6px;
+            border-radius: 5px; margin-right: 5px;
+            font-weight: 600;
+        }
+        .conv-preview-tag.me { background: #eef2ff; color: #6366f1; }
+        .conv-preview-tag.ai { background: #ecfdf5; color: #059669; }
+        .msg-count-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .conv-actions {
+            display: flex; gap: 6px; align-items: center;
+        }
+        .conv-btn {
+            border: none; background: transparent; cursor: pointer;
+            padding: 6px 10px; border-radius: 8px;
+            font-size: 12px; font-family: inherit; font-weight: 500;
+            transition: all .15s ease; display: inline-flex; align-items: center; gap: 4px;
+            white-space: nowrap;
+        }
+        .conv-btn.view { color: var(--primary); background: var(--primary-light); }
+        .conv-btn.view:hover { background: var(--bg-hover); box-shadow: 0 0 10px var(--accent-glow); }
+        .conv-btn.del { color: var(--danger); background: var(--danger-light); }
+        .conv-btn.del:hover { background: rgba(239, 68, 68, 0.25); }
+
+        /* 展开详情行 */
+        .detail-row td { padding: 0; background: var(--bg-secondary); }
+        .detail-wrap { padding: 14px 24px 20px; }
+        .detail-title-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 10px; margin-bottom: 12px; padding-bottom: 10px;
+            border-bottom: 1px dashed var(--border);
+        }
+        .detail-title {
+            font-size: 13px; font-weight: 700; color: var(--text);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .detail-close {
+            border: none; background: transparent; cursor: pointer;
+            font-size: 18px; color: var(--text-muted); padding: 2px 6px; border-radius: 6px;
+        }
+        .detail-close:hover { background: var(--bg-hover); color: var(--text); }
+        .msg-list { display: flex; flex-direction: column; gap: 10px; }
+        .msg-item { display: flex; gap: 8px; }
+        .msg-item.user { flex-direction: row-reverse; }
+        .msg-av {
+            width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; color: #fff;
+        }
+        .msg-item.user .msg-av { background: linear-gradient(135deg, #2dd4a8, #14b8a6); }
+        .msg-item.assistant .msg-av { background: linear-gradient(135deg, #0ea5e9, #06b6d4); }
+        .msg-bubble {
+            max-width: 82%; padding: 10px 13px; border-radius: 12px;
+            font-size: 13px; line-height: 1.65; color: var(--text);
+            white-space: pre-wrap; word-break: break-word;
+        }
+        .msg-item.user .msg-bubble {
+            background: linear-gradient(135deg, #2dd4a8, #14b8a6); color: #fff;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+        .msg-item.assistant .msg-bubble {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-bottom-left-radius: 4px;
+        }
+
+        /* ===== 登录页 ===== */
+        .login-page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            padding: 20px;
+            position: relative;
+        }
+        .login-theme-toggle {
+            position: fixed; top: 18px; right: 18px; z-index: 50;
+            width: 40px; height: 40px; border-radius: 10px;
+            background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.25);
+            color: #fff; cursor: pointer; font-size: 17px;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s; backdrop-filter: blur(4px);
+        }
+        .login-theme-toggle:hover { background: rgba(255,255,255,0.32); }
+        .login-card {
+            background: var(--card);
+            border-radius: 24px;
+            padding: 40px 36px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+        }
+        [data-theme="dark"] .login-page {
+            background: linear-gradient(135deg, #0a0f14 0%, #0f1620 50%, #141d2a 100%);
+        }
+        [data-theme="dark"] .login-logo {
+            background: linear-gradient(135deg, #2dd4a8 0%, #14b8a6 100%);
+            box-shadow: 0 10px 25px rgba(45,212,168,0.4);
+        }
+        .login-logo {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto 20px;
+            box-shadow: 0 10px 25px rgba(99,102,241,0.4);
+        }
+        .login-title {
+            font-size: 22px;
+            font-weight: 700;
+            text-align: center;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        .login-subtitle {
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 28px;
+        }
+        .login-form .form-group {
+            margin-bottom: 20px;
+        }
+        .login-form .input {
+            padding: 14px 16px;
+            font-size: 15px;
+            border-radius: 12px;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            border-radius: 12px;
+        }
+        .login-error {
+            background: var(--danger-light);
+            color: var(--danger);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            text-align: center;
+            margin-top: 16px;
+            border: 1px solid #fecaca;
+        }
+
+        /* ===== 卡片视图（手机端账号列表） ===== */
+        .account-cards {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .account-card {
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border-light);
+            box-shadow: var(--shadow-sm);
+            transition: all 0.2s;
+            position: relative;
+        }
+        .account-card.fastest {
+            border-color: var(--success);
+            background: linear-gradient(135deg, #f0fdf4 0%, white 100%);
+        }
+        .account-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+        .account-card-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+        .account-card-name .input {
+            font-weight: 700;
+            font-size: 16px;
+            padding: 8px 12px;
+        }
+        .account-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .account-card-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .account-card-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .account-card-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-light);
+        }
+        .account-card-actions .btn {
+            width: 100%;
+            min-height: 40px;
+            font-size: 13px;
+        }
+        .account-card-latency {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+        }
+
+        /* ===== 响应式（≤ 768px）===== */
+        @media (max-width: 768px) {
+            .container { padding: 16px; }
+
+            /* 顶部导航 */
+            .admin-header { padding: 16px; }
+            .admin-header-inner { flex-direction: column; align-items: stretch; }
+            .admin-nav { justify-content: space-between; }
+            .base-url { display: none; }
+
+            /* 卡片 */
+            .card { padding: 16px; border-radius: 14px; }
+            .card-title { font-size: 16px; }
+
+            /* 表单行：垂直堆叠 */
+            .form-row { flex-direction: column; gap: 12px; }
+            .form-row .form-group { width: 100%; }
+            .form-row .btn { width: 100%; }
+            .form-row .btn-icon { width: 100%; }
+
+            /* 电脑端表格隐藏，显示卡片视图 */
+            .account-table { display: none; }
+            .account-cards { display: flex; }
+
+            /* 工具栏 */
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .toolbar .btn { width: 100%; }
+            .test-mode-toggle { justify-content: center; padding: 4px 0; }
+            .status-tags { justify-content: stretch; flex-direction: column; }
+            .status-tag { justify-content: center; }
+
+            /* API 信息 */
+            .api-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+            .api-label { min-width: auto; }
+
+            /* 对话表格 → 卡片 */
+            .conv-table { display: none; }
+            .conv-cards { display: flex; flex-direction: column; gap: 10px; }
+            .conv-card {
+                background: white;
+                border: 1px solid var(--border-light);
+                border-radius: 12px;
+                padding: 14px;
+            }
+            .conv-card-title {
+                font-size: 14px;
+                font-weight: 600;
+                color: var(--text);
+                margin-bottom: 8px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .conv-card-meta {
+                display: flex;
+                gap: 16px;
+                font-size: 12px;
+                color: var(--text-secondary);
+                flex-wrap: wrap;
+            }
+
+            /* 登录页 */
+            .login-card { padding: 32px 24px; border-radius: 20px; }
+        }
+
+        /* 对话卡片视图（手机端） */
+        .conv-cards { display: none; }
+    </style>
+</head>
+<body>
+    {% if not logged_in %}
+    <div class="login-page">
+        <button class="login-theme-toggle" id="themeToggle" type="button" title="切换深浅模式">🌙</button>
+        <div class="login-card">
+            <div class="login-logo">🔐</div>
+            <h1 class="login-title">管理后台</h1>
+            <p class="login-subtitle">请输入管理员密码以继续</p>
+            <form method="post" action="/admin" class="login-form">
+                <div class="form-group">
+                    <input type="password" name="password" class="input" placeholder="管理员密码" required autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary login-btn">登录</button>
+                {% if error %}<div class="login-error">{{ error }}</div>{% endif %}
+            </form>
+        </div>
+    </div>
+    {% else %}
+
+    <!-- 顶部导航 -->
+    <div class="admin-header">
+        <div class="admin-header-inner">
+            <div class="admin-title">
+                <div class="admin-title-icon">⚡</div>
+                <span>AI 对话管理后台</span>
+            </div>
+            <div class="admin-nav">
+                <a href="/">← 返回首页</a>
+                <a href="/acc">🗂️ 账号池</a>
+                <span class="base-url">{{ base_url }}</span>
+                <button class="logout-btn" id="themeToggle" type="button" title="切换深浅模式">🌙</button>
+                <form method="post" action="/admin/logout" style="margin:0;">
+                    <button class="logout-btn" type="submit">退出</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 转发 API 信息 -->
+        <div class="card api-info-card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-icon">🔗</span>
+                    OpenAI 兼容转发 API
+                </div>
+            </div>
+            <div class="api-info-box">
+                <div class="api-row">
+                    <span class="api-label">API 地址</span>
+                    <span class="api-value" id="proxyUrl">{{ proxy_url }}</span>
+                    <button class="copy-btn" onclick="copyText('proxyUrl')">📋 复制</button>
+                </div>
+                <div class="api-row">
+                    <span class="api-label">API Key</span>
+                    <span class="api-value" id="proxyKey">{{ proxy_api_key }}</span>
+                    <button class="copy-btn" onclick="copyText('proxyKey')">📋 复制</button>
+                </div>
+            </div>
+            <div class="usage-tips">
+                <div class="usage-tips-title">💡 三种使用方式</div>
+                <ul class="tip-list">
+                    <li class="tip-item">
+                        <span class="method" style="color:#6366f1;">方式一：自动</span>
+                        <span>不传 <code>account</code> 参数，系统优先使用 ⭐默认账号，无默认则选最快的</span>
+                    </li>
+                    <li class="tip-item">
+                        <span class="method" style="color:#10b981;">方式二：手动</span>
+                        <span>传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站</span>
+                    </li>
+                    <li class="tip-item">
+                        <span class="method" style="color:#f59e0b;">方式三：auto</span>
+                        <span>传 <code>"model": "auto"</code>，自动选最优账号（兼容各种 AI 工具）</span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- 账号管理 -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-icon">📋</span>
+                    账号管理
+                </div>
+                <div id="accountMsg" class="msg" style="margin-bottom:0;"></div>
+            </div>
+
+            <!-- 批量操作 -->
+            <div class="toolbar">
+                <button class="btn btn-primary" onclick="adminSpeedTestAll(this)">
+                    🚀 全部测速
+                </button>
+                <label class="test-mode-toggle" title="轻量模式：优先调 /models 验证，对不支持的中转站自动回退到同步对话，均不消耗 Token；严格模式：真实对话消耗少量 Token">
+                    <input type="checkbox" id="strictModeToggle">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-label">严格测速</span>
+                </label>
+                <div class="status-tags">
+                    <div id="defaultLabel" class="status-tag status-tag-default">
+                        ⭐ 默认：<span id="defaultName">--</span>
+                        <span class="status-tag-model">模型：<span id="defaultModel">--</span></span>
+                    </div>
+                    <div id="fastestLabel" class="status-tag status-tag-fastest">
+                        ⚡ 最快：<span id="fastestName">--</span>
+                        <span class="status-tag-model">模型：<span id="fastestModel">--</span> (<span id="fastestMs">--</span>)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 添加账号 -->
+            <div class="add-account-section">
+                <div class="section-title">➕ 添加新账号</div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="text" id="newName" class="input" placeholder="账号名称（如: aihub.top）">
+                    </div>
+                    <div class="form-group">
+                        <input type="url" id="newUrl" class="input" placeholder="API 地址 https://...">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <input type="password" id="newKey" class="input input-mono" placeholder="API Key">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <select id="newModel" class="select">
+                            <option value="">— 先填地址和 Key 再点右侧刷新 —</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-outline btn-icon" id="newRefreshModels" title="从 API 获取模型列表">
+                        ↻
+                    </button>
+                    <button class="btn btn-primary" onclick="adminAddAccount(this)">
+                        ✨ 添加账号
+                    </button>
+                </div>
+            </div>
+
+            <!-- 账号列表 - 电脑端表格 -->
+            {% if accounts %}
+            <div style="overflow-x: auto;">
+                <table class="account-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 16%;">名称</th>
+                            <th style="width: 20%;">API 地址</th>
+                            <th style="width: 15%;">模型</th>
+                            <th style="width: 20%;">API Key</th>
+                            <th style="width: 7%;">延迟</th>
+                            <th style="width: 22%;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for acc in accounts %}
+                        <tr id="row-{{ acc.id }}" data-is-default="{{ acc.is_default and '1' or '0' }}" {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}class="fastest-row"{% endif %}>
+                            <td>
+                                <div class="name-field">
+                                    {% if acc.is_default %}
+                                    <span class="star-badge" title="默认中转站">⭐</span>
+                                    {% endif %}
+                                    <input type="text" id="name-{{ acc.id }}" value="{{ acc.name }}" class="input" />
+                                </div>
+                            </td>
+                            <td>
+                                <div class="field-wrap">
+                                    <input type="url" id="url-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono" />
+                                    <button class="copy-btn" onclick="copyUrl('{{ acc.id }}', this)">📋 复制地址</button>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="field-wrap">
+                                    <select id="model-{{ acc.id }}" class="select">
+                                        <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                                    </select>
+                                    <button class="copy-btn" onclick="adminRefreshModels('{{ acc.id }}', this)" title="刷新模型列表">🔄 刷新</button>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="field-wrap">
+                                    <input type="text" id="key-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono" />
+                                    <button class="copy-btn" onclick="copyKey('{{ acc.id }}', this)">📋 复制 Key</button>
+                                </div>
+                            </td>
+                            <td id="latency-{{ acc.id }}">
+                                {% if acc.latency_ms is not none %}
+                                <span class="latency-badge success">{{ acc.latency_ms }}ms</span>
+                                {% else %}
+                                <span class="latency-badge gray">未测速</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="action-group">
+                                    <button class="btn btn-success btn-sm" onclick="adminTestAccount('{{ acc.id }}', this)">⚡ 测速</button>
+                                    <button class="btn btn-primary btn-sm" onclick="adminSaveAccount('{{ acc.id }}', this)">💾 保存</button>
+                                    {% if acc.is_default %}
+                                    <button class="btn btn-outline btn-sm" disabled>⭐ 默认</button>
+                                    {% else %}
+                                    <button class="btn btn-outline btn-sm" onclick="adminSetDefault('{{ acc.id }}', this)">⭐ 设为默认</button>
+                                    {% endif %}
+                                    <button class="btn btn-danger btn-sm" onclick="adminDeleteAccount('{{ acc.id }}', this)">🗑️ 删除</button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 账号卡片 - 手机端 -->
+            <div class="account-cards">
+                {% for acc in accounts %}
+                <div class="account-card {% if acc.latency_ms is not none and acc.latency_ms == fastest_latency %}fastest{% endif %}" id="row-mobile-{{ acc.id }}">
+                    <div class="account-card-latency" id="latency-mobile-{{ acc.id }}">
+                        {% if acc.latency_ms is not none %}
+                        <span class="latency-badge success">{{ acc.latency_ms }}ms</span>
+                        {% else %}
+                        <span class="latency-badge gray">未测速</span>
+                        {% endif %}
+                    </div>
+                    <div class="account-card-header">
+                        <div class="account-card-name">
+                            {% if acc.is_default %}
+                            <span class="star-badge" title="默认中转站">⭐</span>
+                            {% endif %}
+                            <input type="text" id="name-mobile-{{ acc.id }}" value="{{ acc.name }}" class="input" onchange="updateAccountName('{{ acc.id }}', this.value)" />
+                        </div>
+                    </div>
+                    <div class="account-card-body">
+                        <div class="account-card-field">
+                            <span class="account-card-label">API 地址</span>
+                            <input type="url" id="url-mobile-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono">
+                            <button class="copy-btn" onclick="copyUrl('{{ acc.id }}', this)">📋 复制地址</button>
+                        </div>
+                        <div class="account-card-field">
+                            <span class="account-card-label">模型</span>
+                            <select id="model-mobile-{{ acc.id }}" class="select">
+                                <option value="{{ acc.model }}" selected>{{ acc.model }}</option>
+                            </select>
+                            <button class="copy-btn" onclick="adminRefreshModelsMobile('{{ acc.id }}', this)">🔄 刷新模型</button>
+                        </div>
+                        <div class="account-card-field">
+                            <span class="account-card-label">API Key</span>
+                            <input type="text" id="key-mobile-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono">
+                            <button class="copy-btn" onclick="copyKey('{{ acc.id }}', this)">📋 复制 Key</button>
+                        </div>
+                    </div>
+                    <div class="account-card-actions">
+                        <button class="btn btn-success" onclick="adminTestAccount('{{ acc.id }}', this)">⚡ 测速</button>
+                        <button class="btn btn-primary" onclick="adminSaveAccountMobile('{{ acc.id }}', this)">💾 保存</button>
+                        {% if acc.is_default %}
+                        <button class="btn btn-outline" disabled>⭐ 默认</button>
+                        {% else %}
+                        <button class="btn btn-outline" onclick="adminSetDefault('{{ acc.id }}', this)">⭐ 设为默认</button>
+                        {% endif %}
+                        <button class="btn btn-danger" onclick="adminDeleteAccount('{{ acc.id }}', this)">🗑️ 删除</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <span class="empty-state-icon">📭</span>
+                <p class="empty-state-text">暂无账号，在上方添加</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 对话列表 -->
+        <div class="card" id="conversationsCard">
+            <div class="card-header">
+                <div class="conv-head">
+                    <div class="card-title">
+                        <span class="card-title-icon">💬</span>
+                        对话列表 (<span id="convTotalCount">{{ conversations|length }}</span>)
+                    </div>
+                    <div class="conv-search">
+                        <span class="conv-search-icon">🔍</span>
+                        <input type="text" id="convSearch" placeholder="搜索对话标题 / 预览内容...">
+                    </div>
+                    {% if conversations %}
+                    <button class="conv-btn del" id="clearAllConvBtn" style="flex-shrink:0;">
+                        <span>🗑</span>清空全部
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if conversations %}
+            <!-- 电脑端表格 -->
+            <div style="overflow-x: auto;">
+                <table class="conv-table" id="convTable">
+                    <thead>
+                        <tr>
+                            <th style="width:48%;">对话</th>
+                            <th style="width:8%;">消息</th>
+                            <th style="width:16%;">创建时间</th>
+                            <th style="width:16%;">更新时间</th>
+                            <th style="width:12%; text-align:right;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="convTbody">
+                        {% for c in conversations %}
+                        <tr class="conv-data-row" data-id="{{ c.id }}" data-search="{{ (c.title ~ ' ' ~ c.preview) | forceescape }}">
+                            <td>
+                                <div class="conv-row-main">
+                                    <div class="conv-avatar">{{ c.title[:1] if c.title and c.title != '新对话' else '💬' }}</div>
+                                    <div class="conv-info">
+                                        <div class="conv-title" title="{{ c.title }}">{{ c.title }}</div>
+                                        {% if c.preview %}
+                                        <div class="conv-preview">
+                                            <span class="conv-preview-tag {{ 'me' if c.preview.startswith('[我]') else 'ai' }}">{{ c.preview[:4] }}</span>
+                                            {{ c.preview[4:] }}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span class="msg-count-badge">{{ c.msg_count }}</span></td>
+                            <td style="font-size:12px;">{{ c.created_at[:19] }}</td>
+                            <td style="font-size:12px;">{{ c.updated_at[:19] }}</td>
+                            <td style="text-align:right;">
+                                <div class="conv-actions" style="justify-content:flex-end;">
+                                    <button class="conv-btn view" data-view="{{ c.id }}">
+                                        <span>👁</span>详情
+                                    </button>
+                                    <button class="conv-btn del" data-del="{{ c.id }}" data-title="{{ c.title }}">
+                                        <span>🗑</span>删除
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        <tr class="detail-row" id="detail-row-{{ c.id }}" style="display:none;">
+                            <td colspan="5">
+                                <div class="detail-wrap">
+                                    <div class="detail-title-bar">
+                                        <div class="detail-title">📄 {{ c.title }} — 完整对话内容 ({{ c.msg_count }} 条消息)</div>
+                                        <button class="detail-close" data-close-detail="{{ c.id }}" title="收起">×</button>
+                                    </div>
+                                    {% if c.msg_count == 0 %}
+                                    <div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">此对话暂无消息内容</div>
+                                    {% else %}
+                                    <div class="msg-list" data-messages="{{ c.messages_json | forceescape }}">
+                                        <!-- JS 渲染消息 -->
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 手机端卡片 -->
+            <div class="conv-cards" id="convCards">
+                {% for c in conversations %}
+                <div class="conv-card conv-data-row" data-id="{{ c.id }}" data-search="{{ (c.title ~ ' ' ~ c.preview) | forceescape }}">
+                    <div class="conv-row-main" style="margin-bottom:10px;">
+                        <div class="conv-avatar">{{ c.title[:1] if c.title and c.title != '新对话' else '💬' }}</div>
+                        <div class="conv-info">
+                            <div class="conv-title" style="font-size:14px;" title="{{ c.title }}">{{ c.title }}</div>
+                            {% if c.preview %}
+                            <div class="conv-preview">
+                                <span class="conv-preview-tag {{ 'me' if c.preview.startswith('[我]') else 'ai' }}">{{ c.preview[:4] }}</span>
+                                {{ c.preview[4:] }}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="conv-card-meta">
+                        <span class="msg-count-badge">📨 {{ c.msg_count }}</span>
+                        <span>🕐 {{ c.updated_at[:19] }}</span>
+                    </div>
+                    <div class="conv-actions" style="justify-content:flex-end; margin-top:12px;">
+                        <button class="conv-btn view" data-view-mobile="{{ c.id }}">👁 详情</button>
+                        <button class="conv-btn del" data-del="{{ c.id }}" data-title="{{ c.title }}">🗑 删除</button>
+                    </div>
+                    <!-- 手机端消息详情 -->
+                    <div class="mobile-detail" id="mobile-detail-{{ c.id }}" style="display:none; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);">
+                        {% if c.msg_count == 0 %}
+                        <div style="padding:12px;text-align:center;color:#9ca3af;font-size:13px;">暂无消息</div>
+                        {% else %}
+                        <div class="msg-list" data-messages="{{ c.messages_json | forceescape }}"></div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- 无搜索结果 -->
+            <div class="conv-empty" id="convNoResult" style="display:none;">
+                <div class="conv-empty-icon">🔍</div>
+                <div class="conv-empty-title">没有找到匹配的对话</div>
+                <div class="conv-empty-sub">试试换个关键词搜索吧</div>
+            </div>
+
+            {% else %}
+            <div class="conv-empty">
+                <div class="conv-empty-icon">💭</div>
+                <div class="conv-empty-title">暂无对话数据</div>
+                <div class="conv-empty-sub">去首页发一条消息，对话会自动同步到这里<br>（最多保留最近 30 天的对话记录）</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+        // ===== 主题切换（浅色 / 深色） =====
+        (function() {
+            var themeToggle = document.getElementById('themeToggle');
+            function applyIcon() {
+                var cur = document.documentElement.getAttribute('data-theme') || 'light';
+                if (themeToggle) {
+                    themeToggle.textContent = cur === 'dark' ? '☀️' : '🌙';
+                    themeToggle.title = cur === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+                }
+            }
+            applyIcon();
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    var cur = document.documentElement.getAttribute('data-theme') || 'light';
+                    var next = cur === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', next);
+                    try { localStorage.setItem('theme', next); } catch(e) {}
+                    applyIcon();
+                });
+            }
+        })();
+
+        // ===== 辅助函数 =====
+        // 给按钮添加点击反馈
+        function btnLoading(btn, loadingText) {
+            if (!btn) return;
+            btn.dataset.origText = btn.innerHTML;
+            btn.dataset.origDisabled = btn.disabled;
+            btn.innerHTML = loadingText || '⏳ 处理中...';
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.style.pointerEvents = 'none';
+        }
+        function btnDone(btn) {
+            if (!btn) return;
+            btn.innerHTML = btn.dataset.origText || btn.innerHTML;
+            btn.disabled = btn.dataset.origDisabled === 'true';
+            btn.style.opacity = '';
+            btn.style.pointerEvents = '';
+        }
+
+        function copyKey(id, btn) {
+            const input = document.getElementById('key-' + id) || document.getElementById('key-mobile-' + id);
+            if (!input) return;
+            if (btn) btnLoading(btn, '⏳');
+            navigator.clipboard.writeText(input.value).then(() => {
+                showToast('已复制 Key');
+                if (btn) btnDone(btn);
+            }).catch(() => {
+                showToast('复制失败');
+                if (btn) btnDone(btn);
+            });
+        }
+
+        function copyUrl(id, btn) {
+            const input = document.getElementById('url-' + id) || document.getElementById('url-mobile-' + id);
+            if (!input) return;
+            if (btn) btnLoading(btn, '⏳');
+            navigator.clipboard.writeText(input.value).then(() => {
+                showToast('已复制地址');
+                if (btn) btnDone(btn);
+            }).catch(() => {
+                showToast('复制失败');
+                if (btn) btnDone(btn);
+            });
+        }
+
+        function copyText(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            navigator.clipboard.writeText(el.textContent).then(() => {
+                showToast('已复制');
+            }).catch(() => {});
+        }
+
+        function showToast(text) {
+            const toast = document.createElement('div');
+            toast.textContent = text;
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#111827;color:white;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 10px 25px rgba(0,0,0,0.2);animation:fadeInDown 0.3s ease;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 1500);
+        }
+
+        function showAdminMsg(text, type) {
+            const el = document.getElementById('accountMsg');
+            el.textContent = text;
+            el.className = 'msg msg-' + type;
+            setTimeout(() => {
+                if (el.textContent === text) {
+                    el.className = 'msg';
+                    el.textContent = '';
+                }
+            }, 3000);
+        }
+
+        // ===== 账号操作 =====
+        async function adminSetDefault(id, btn) {
+            if (!confirm('确定要将此账号设为默认中转站吗？')) return;
+            if (btn) btnLoading(btn, '⏳ 设置中...');
+            try {
+                const resp = await fetch('/api/accounts/' + id + '/set-default', { method: 'POST' });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('已设为默认中转站', 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                    if (btn) btnDone(btn);
+                }
+            } catch (e) {
+                showAdminMsg('设置失败', 'fail');
+                if (btn) btnDone(btn);
+            }
+        }
+
+        async function adminSaveAccount(id, btn) {
+            const name = document.getElementById('name-' + id).value.trim();
+            const url = document.getElementById('url-' + id).value.trim();
+            const key = document.getElementById('key-' + id).value.trim();
+            const model = document.getElementById('model-' + id).value;
+            await saveAccount(id, name, url, key, model, btn);
+        }
+
+        async function adminSaveAccountMobile(id, btn) {
+            const name = document.getElementById('name-mobile-' + id).value.trim();
+            const url = document.getElementById('url-mobile-' + id).value.trim();
+            const key = document.getElementById('key-mobile-' + id).value.trim();
+            const model = document.getElementById('model-mobile-' + id).value;
+            await saveAccount(id, name, url, key, model, btn);
+        }
+
+        async function saveAccount(id, name, url, key, model, btn) {
+            if (!name || !url) {
+                showAdminMsg('名称和 API 地址不能为空', 'fail');
+                return;
+            }
+            if (btn) btnLoading(btn, '⏳ 保存中...');
+            try {
+                const resp = await fetch('/api/accounts/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+                });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('保存成功', 'success');
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                showAdminMsg('保存失败', 'fail');
+            } finally {
+                if (btn) btnDone(btn);
+            }
+        }
+
+        function updateAccountName(id, value) {
+            console.log('Name changed:', id, value);
+        }
+
+        // ===== 模型刷新 =====
+        document.getElementById('newRefreshModels').addEventListener('click', async function() {
+            const url = document.getElementById('newUrl').value.trim();
+            const key = document.getElementById('newKey').value.trim();
+            if (!url || !key) {
+                showAdminMsg('请先填写 API 地址和 Key', 'fail');
+                return;
+            }
+            const btn = this;
+            btn.textContent = '⏳';
+            btn.disabled = true;
+            const sel = document.getElementById('newModel');
+            sel.innerHTML = '<option value="">加载中...</option>';
+
+            try {
+                const resp = await fetch('/api/models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_url: url, api_key: key }),
+                });
+                const result = await resp.json();
+                sel.innerHTML = '';
+                if (result.ok && result.models.length > 0) {
+                    result.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m; opt.textContent = m;
+                        sel.appendChild(opt);
+                    });
+                    showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
+                } else {
+                    sel.innerHTML = '<option value="">未获取到模型</option>';
+                    showAdminMsg(result.message || '未获取到模型', 'fail');
+                }
+            } catch (e) {
+                sel.innerHTML = '<option value="">加载失败</option>';
+                showAdminMsg('网络错误', 'fail');
+            } finally {
+                btn.textContent = '↻';
+                btn.disabled = false;
+            }
+        });
+
+        async function adminRefreshModels(id, btn) {
+            if (btn) btnLoading(btn, '⏳ 刷新中...');
+            const sel = document.getElementById('model-' + id);
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">加载中...</option>';
+            const url = document.getElementById('url-' + id).value.trim();
+            const key = document.getElementById('key-' + id).value.trim();
+            await doRefreshModels(id, url, key, sel, currentVal, btn);
+        }
+
+        async function adminRefreshModelsMobile(id, btn) {
+            if (btn) btnLoading(btn, '⏳ 刷新中...');
+            const sel = document.getElementById('model-mobile-' + id);
+            const currentVal = sel.value;
+            sel.innerHTML = '<option value="">加载中...</option>';
+            const url = document.getElementById('url-mobile-' + id).value.trim();
+            const key = document.getElementById('key-mobile-' + id).value.trim();
+            await doRefreshModels(id, url, key, sel, currentVal, btn);
+        }
+
+        async function doRefreshModels(id, url, key, sel, currentVal, btn) {
+            try {
+                const resp = await fetch('/api/models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_url: url, api_key: key }),
+                });
+                const result = await resp.json();
+                sel.innerHTML = '';
+                if (result.ok && result.models.length > 0) {
+                    result.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m; opt.textContent = m;
+                        sel.appendChild(opt);
+                    });
+                    if (currentVal && [...sel.options].some(o => o.value === currentVal)) {
+                        sel.value = currentVal;
+                    }
+                    showAdminMsg('已加载 ' + result.models.length + ' 个模型', 'success');
+                } else {
+                    sel.innerHTML = '<option value="">未获取到模型</option>';
+                    showAdminMsg(result.message || '未获取到模型', 'fail');
+                }
+            } catch (e) {
+                sel.innerHTML = '<option value="">加载失败</option>';
+                showAdminMsg('网络错误', 'fail');
+            } finally {
+                if (btn) btnDone(btn);
+            }
+        }
+
+        // ===== 添加账号 =====
+        async function adminAddAccount(btn) {
+            const name = document.getElementById('newName').value.trim();
+            const url = document.getElementById('newUrl').value.trim();
+            const key = document.getElementById('newKey').value.trim();
+            const model = document.getElementById('newModel').value;
+            if (!name || !url || !key || !model) {
+                showAdminMsg('请填写完整信息（名称、地址、Key、模型）', 'fail');
+                return;
+            }
+            if (btn) btnLoading(btn, '⏳ 添加中...');
+            try {
+                const resp = await fetch('/api/accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, api_url: url, api_key: key, model }),
+                });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('添加成功，即将刷新', 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                    if (btn) btnDone(btn);
+                }
+            } catch (e) {
+                showAdminMsg('网络错误', 'fail');
+                if (btn) btnDone(btn);
+            }
+        }
+
+        // ===== 删除账号 =====
+        async function adminDeleteAccount(id, btn) {
+            if (!confirm('确定要删除这个账号吗？')) return;
+            if (btn) btnLoading(btn, '⏳ 删除中...');
+            try {
+                const resp = await fetch('/api/accounts/' + id, { method: 'DELETE' });
+                const result = await resp.json();
+                if (result.ok) {
+                    showAdminMsg('已删除', 'success');
+                    setTimeout(() => location.reload(), 800);
+                } else {
+                    showAdminMsg(result.message, 'fail');
+                    if (btn) btnDone(btn);
+                }
+            } catch (e) {
+                showAdminMsg('网络错误', 'fail');
+                if (btn) btnDone(btn);
+            }
+        }
+
+        // ===== 测速 =====
+        function _getTestMode() {
+            const toggle = document.getElementById('strictModeToggle');
+            return (toggle && toggle.checked) ? 'strict' : 'light';
+        }
+
+        async function adminTestAccount(id, btn) {
+            if (btn) btnLoading(btn, '⏳ 测速中...');
+            const mode = _getTestMode();
+            const latencyElDesktop = document.getElementById('latency-' + id);
+            const latencyElMobile = document.getElementById('latency-mobile-' + id);
+            [latencyElDesktop, latencyElMobile].forEach(el => {
+                if (el) el.innerHTML = '<span class="latency-badge loading">测速中...</span>';
+            });
+
+            const url = document.getElementById('url-' + id)?.value.trim() || document.getElementById('url-mobile-' + id)?.value.trim();
+            const key = document.getElementById('key-' + id)?.value.trim() || document.getElementById('key-mobile-' + id)?.value.trim();
+            const model = document.getElementById('model-' + id)?.value || document.getElementById('model-mobile-' + id)?.value;
+
+            try {
+                const start = Date.now();
+                const resp = await fetch('/api/check', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_url: url, api_key: key, model: model, mode: mode }),
+                });
+                const result = await resp.json();
+                const elapsed = Date.now() - start;
+
+                await fetch('/api/accounts/' + id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latency_ms: result.ok ? elapsed : null, last_speed_test: new Date().toISOString() }),
+                });
+
+                if (result.ok) {
+                    const tag = mode === 'strict' ? '⚡' : '✓';
+                    const html = `<span class="latency-badge success">${tag} ${elapsed}ms</span>`;
+                    [latencyElDesktop, latencyElMobile].forEach(el => {
+                        if (el) el.innerHTML = html;
+                    });
+                    showAdminMsg(result.message + '：' + elapsed + 'ms', 'success');
+                } else {
+                    const html = '<span class="latency-badge error">不可用</span>';
+                    [latencyElDesktop, latencyElMobile].forEach(el => {
+                        if (el) el.innerHTML = html;
+                    });
+                    showAdminMsg(result.message, 'fail');
+                }
+            } catch (e) {
+                const html = '<span class="latency-badge error">错误</span>';
+                [latencyElDesktop, latencyElMobile].forEach(el => {
+                    if (el) el.innerHTML = html;
+                });
+                showAdminMsg('测速请求失败', 'fail');
+            } finally {
+                if (btn) btnDone(btn);
+                updateFastestLabel();
+            }
+        }
+
+        async function adminSpeedTestAll(btn) {
+            showAdminMsg('正在测试所有账号...', 'info');
+            if (btn) btnLoading(btn, '⏳ 测速中...');
+
+            const rows = document.querySelectorAll('[id^="row-"]');
+            for (const row of rows) {
+                const id = row.id.replace('row-', '');
+                if (!id || id.includes('mobile')) continue;
+                await adminTestAccount(id);
+            }
+
+            if (btn) btnDone(btn);
+            updateFastestLabel();
+        }
+
+        // ===== 汇总收集账号信息 =====
+        function _collectAccountInfo() {
+            const info = [];
+            document.querySelectorAll('.account-table tbody tr').forEach(row => {
+                const id = row.id.replace('row-', '');
+                if (!id) return;
+                const name = document.getElementById('name-' + id)?.value || '';
+                const model = document.getElementById('model-' + id)?.value || '';
+                const latencyCell = document.getElementById('latency-' + id);
+                let latency = null;
+                if (latencyCell) {
+                    const badge = latencyCell.querySelector('.latency-badge.success');
+                    if (badge) latency = parseInt(badge.textContent);
+                }
+                const isDefault = row.getAttribute('data-is-default') === '1';
+                info.push({ id, name, model, latency, isDefault });
+            });
+            return info;
+        }
+
+        function _updateDefaultLabel(accounts) {
+            const def = accounts.find(a => a.isDefault);
+            const nameEl = document.getElementById('defaultName');
+            const modelEl = document.getElementById('defaultModel');
+            if (def) {
+                nameEl.textContent = def.name || '未命名';
+                modelEl.textContent = def.model || '--';
+            } else {
+                // 无默认则回落最快的，无则显示--
+                const valid = accounts.filter(a => a.latency != null).sort((a,b) => a.latency - b.latency)[0];
+                nameEl.textContent = valid ? (valid.name || '未命名') : '无';
+                modelEl.textContent = valid ? (valid.model || '--') : '--';
+            }
+        }
+
+        // ===== 更新最快标签 =====
+        function updateFastestLabel() {
+            const accounts = _collectAccountInfo();
+
+            let fastest = null;
+            let fastestId = null;
+            for (const a of accounts) {
+                if (a.latency != null && (!fastest || a.latency < fastest)) {
+                    fastest = a.latency;
+                    fastestId = a.id;
+                }
+            }
+
+            // 表格高亮
+            document.querySelectorAll('.account-table tbody tr').forEach(row => {
+                row.classList.remove('fastest-row');
+            });
+            if (fastestId) {
+                const row = document.getElementById('row-' + fastestId);
+                if (row) row.classList.add('fastest-row');
+            }
+
+            // 卡片高亮
+            document.querySelectorAll('.account-card').forEach(card => {
+                card.classList.remove('fastest');
+            });
+            if (fastestId) {
+                const card = document.getElementById('row-mobile-' + fastestId);
+                if (card) card.classList.add('fastest');
+            }
+
+            // 顶部汇总标签
+            const fastestAcc = accounts.find(a => a.id === fastestId);
+            if (fastestAcc) {
+                document.getElementById('fastestName').textContent = fastestAcc.name || '未命名';
+                document.getElementById('fastestModel').textContent = fastestAcc.model || '--';
+                document.getElementById('fastestMs').textContent = fastest + 'ms';
+            } else {
+                document.getElementById('fastestName').textContent = '无';
+                document.getElementById('fastestModel').textContent = '--';
+                document.getElementById('fastestMs').textContent = '--';
+            }
+
+            // 默认账号标签
+            _updateDefaultLabel(accounts);
+        }
+
+        // 全局样式：添加动画
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeInDown {
+                from { opacity: 0; transform: translate(-50%, -20px); }
+                to { opacity: 1; transform: translate(-50%, 0); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // ===== 对话列表逻辑 =====
+        // 渲染消息内容（支持 content 为字符串或数组）
+        function extractMsgContent(content) {
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) {
+                return content.map(x => x.type === 'text' ? (x.text || '') : '').join('\n');
+            }
+            return '';
+        }
+        function renderMsgList(containerEl) {
+            if (containerEl.dataset.rendered === '1') return;
+            try {
+                const msgs = JSON.parse(containerEl.dataset.messages || '[]');
+                if (!msgs.length) return;
+                let html = '';
+                for (const m of msgs) {
+                    const role = m.role === 'user' ? 'user' : 'assistant';
+                    const avatar = role === 'user' ? '我' : 'AI';
+                    const content = extractMsgContent(m.content) || '（无内容）';
+                    html += `<div class="msg-item ${role}">
+                        <div class="msg-av">${avatar}</div>
+                        <div class="msg-bubble">${escapeHtml(content)}</div>
+                    </div>`;
+                }
+                containerEl.innerHTML = html;
+                containerEl.dataset.rendered = '1';
+            } catch (e) {
+                containerEl.innerHTML = '<div style="color:#ef4444;font-size:12px;padding:8px;">消息内容解析失败</div>';
+                containerEl.dataset.rendered = '1';
+            }
+        }
+        function escapeHtml(s) {
+            return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        }
+
+        function initConversationsUI() {
+            const searchInput = document.getElementById('convSearch');
+            const totalEl = document.getElementById('convTotalCount');
+            const noResultEl = document.getElementById('convNoResult');
+            const allRows = document.querySelectorAll('.conv-data-row');
+            if (!searchInput || !allRows.length) return;
+
+            // 清空全部对话
+            const clearAllBtn = document.getElementById('clearAllConvBtn');
+            if (clearAllBtn) {
+                clearAllBtn.addEventListener('click', async () => {
+                    if (!confirm('⚠️ 确定要清空全部对话吗？\n\n此操作将删除所有对话记录，且不可恢复！')) return;
+                    if (!confirm('再次确认：真的要删除全部对话吗？')) return;
+                    btnLoading(clearAllBtn, '⏳ 清空中');
+                    try {
+                        const resp = await fetch('/api/conversations', { method: 'DELETE' });
+                        const result = await resp.json().catch(() => ({}));
+                        if (resp.ok && result.ok) {
+                            showAdminMsg('已清空全部 ' + (result.deleted_count || 0) + ' 条对话', 'ok');
+                            setTimeout(() => location.reload(), 800);
+                        } else {
+                            showAdminMsg('清空失败：' + (result.message || '未知错误'), 'fail');
+                        }
+                    } catch (err) {
+                        showAdminMsg('清空失败：' + err.message, 'fail');
+                    } finally {
+                        btnDone(clearAllBtn);
+                    }
+                });
+            }
+
+            // 搜索过滤
+            searchInput.addEventListener('input', () => {
+                const kw = searchInput.value.trim().toLowerCase();
+                let visibleCount = 0;
+                allRows.forEach(row => {
+                    const haystack = (row.dataset.search || '').toLowerCase();
+                    const match = !kw || haystack.includes(kw);
+                    row.style.display = match ? '' : 'none';
+                    // 电脑端：同时隐藏相邻的 detail-row
+                    if (row.tagName === 'TR') {
+                        const next = row.nextElementSibling;
+                        if (next && next.classList && next.classList.contains('detail-row')) {
+                            next.style.display = 'none';
+                        }
+                    } else {
+                        // 手机端卡片：详情区域重置为隐藏
+                        const inner = row.querySelector('.mobile-detail');
+                        if (inner) inner.style.display = 'none';
+                    }
+                    if (match) visibleCount++;
+                });
+                if (noResultEl) noResultEl.style.display = (visibleCount === 0) ? '' : 'none';
+            });
+
+            // 详情查看（电脑端）
+            document.querySelectorAll('[data-view]').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = btn.dataset.view;
+                    const row = document.getElementById('detail-row-' + id);
+                    if (!row) return;
+                    const isHidden = row.style.display === 'none' || !row.style.display;
+                    // 收起所有其他详情
+                    document.querySelectorAll('.detail-row').forEach(r => { if (r !== row) r.style.display = 'none'; });
+                    row.style.display = isHidden ? 'table-row' : 'none';
+                    if (isHidden) {
+                        const container = row.querySelector('.msg-list');
+                        if (container) renderMsgList(container);
+                    }
+                });
+            });
+            // 收起详情（电脑端）
+            document.querySelectorAll('[data-close-detail]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.closeDetail;
+                    const row = document.getElementById('detail-row-' + id);
+                    if (row) row.style.display = 'none';
+                });
+            });
+            // 详情查看（手机端）
+            document.querySelectorAll('[data-view-mobile]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.viewMobile;
+                    const area = document.getElementById('mobile-detail-' + id);
+                    if (!area) return;
+                    const isHidden = area.style.display === 'none';
+                    area.style.display = isHidden ? 'block' : 'none';
+                    if (isHidden) {
+                        const container = area.querySelector('.msg-list');
+                        if (container) renderMsgList(container);
+                    }
+                });
+            });
+            // 删除对话
+            document.querySelectorAll('[data-del]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.del;
+                    const title = btn.dataset.title || '该对话';
+                    if (!confirm(`确定删除对话「${title}」？此操作不可恢复`)) return;
+                    btnLoading(btn, '⏳ 删除中');
+                    try {
+                        const resp = await fetch(`/api/conversations/${id}`, { method: 'DELETE' });
+                        const result = await resp.json().catch(() => ({}));
+                        if (resp.ok && result.ok) {
+                            showAdminMsg('删除成功', 'ok');
+                            // 从 UI 移除
+                            allRows.forEach(row => {
+                                if (row.dataset.id === id) row.remove();
+                            });
+                            const detailRow = document.getElementById('detail-row-' + id);
+                            if (detailRow) detailRow.remove();
+                            const mobileDetail = document.getElementById('mobile-detail-' + id);
+                            if (mobileDetail) mobileDetail.remove();
+                            const remain = document.querySelectorAll('.conv-data-row').length;
+                            if (totalEl) totalEl.textContent = remain;
+                            if (remain === 0) {
+                                // 全部删完 → 刷新页面显示空态
+                                location.reload();
+                            }
+                        } else {
+                            showAdminMsg('删除失败：' + (result.message || '未知错误'), 'fail');
+                        }
+                    } catch (err) {
+                        showAdminMsg('删除失败：' + err.message, 'fail');
+                    } finally {
+                        btnDone(btn);
+                    }
+                });
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(updateFastestLabel, 100);
+            initConversationsUI();
+        });
+    </script>
+</body>
+</html>
