@@ -15,7 +15,7 @@
 - **浅色 / 深色双主题**：一键切换浅色（紫色调）与深色（青绿科技风）模式，整页适配，偏好自动记忆
 - **Sub2API / NewAPI 账号池管理**：记录账号密码、一键查询余额、读取密钥/渠道分组详情，支持批量刷新
 - **响应式设计**：电脑端表格 + 手机端卡片，自适应布局
-- **后台对话管理**：查看对话内容预览、搜索、展开详情、单条/批量删除
+- **转发账号一键切换**：后台「转发 API」卡片下拉选择转发账号（即默认账号），无需在 API 请求里传 `account` 参数
 
 ## 快速部署
 
@@ -72,7 +72,7 @@ gunicorn app:app --timeout 600
 |------|------|
 | ⚡ 测速 | 测试该账号的响应延迟 |
 | 💾 保存 | 修改账号信息后保存 |
-| ⭐ 设为默认 | 设为默认中转站（默认账号不可取消，只能切换到其他账号） |
+| ⭐ 设为默认 / 取消默认 | 设置或取消默认中转站（无默认账号时，自动选择延迟最低的账号） |
 | 🗑️ 删除 | 删除该账号 |
 | 📋 复制地址 | 复制 API 地址到剪贴板 |
 | 📋 复制 Key | 复制 API Key 到剪贴板 |
@@ -89,19 +89,6 @@ gunicorn app:app --timeout 600
 | **严格测速** | 真实发送对话请求，消耗少量 Token，可验证完整链路 |
 
 在「全部测速」按钮旁的开关切换模式。
-
-#### 对话列表管理
-
-后台底部「对话列表」区域显示所有用户对话：
-
-| 功能 | 说明 |
-|------|------|
-| 🔍 搜索 | 按对话标题或预览内容过滤 |
-| 👁 详情 | 点击展开完整对话消息（气泡视图） |
-| 🗑 删除 | 删除单条对话（带二次确认） |
-| 🗑 清空全部 | 一键清空所有对话（双重确认防误删） |
-
-对话列表显示：头像 + 标题 + `[我]`/`[AI]` 彩色标签 + 最后消息预览 + 消息数 + 创建/更新时间。
 
 ### 2. 对话页面
 
@@ -142,7 +129,8 @@ gunicorn app:app --timeout 600
 #### 端点
 
 ```
-POST https://你的域名/v1/chat/completions
+POST https://你的域名/v1/chat/completions   # OpenAI 兼容 Chat Completions
+POST https://你的域名/v1/responses          # OpenAI Responses API（Codex CLI 等）
 ```
 
 #### 认证
@@ -157,7 +145,7 @@ Authorization: Bearer 你的PROXY_API_KEY
 
 **方式一：自动选择（推荐）**
 
-不传额外参数，系统自动选择默认账号或最快的可用账号。
+不传额外参数，系统使用后台「转发账号」下拉中选择的默认账号（可在后台一键切换），无默认则选最快的可用账号。
 
 ```bash
 curl https://你的域名/v1/chat/completions \
@@ -198,6 +186,24 @@ curl https://你的域名/v1/chat/completions \
     "messages": [{"role": "user", "content": "你好"}]
   }'
 ```
+
+#### 方式四：Responses API（Codex CLI 等）
+
+`/v1/responses` 端点兼容 OpenAI Responses API，供 Codex CLI 等默认走该协议的客户端使用。内部会把请求转成 Chat Completions 转发到上游中转站，再把响应（含流式事件）转回 Responses API 格式，因此任何 OpenAI 兼容上游都能用。
+
+**Codex CLI 配置示例（`~/.codex/config.toml`）：**
+
+```toml
+model_provider = "myproxy"
+
+[model_providers.myproxy]
+name = "myproxy"
+base_url = "https://你的域名/v1"
+env_key = "MYPROXY_API_KEY"
+wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/completions
+```
+
+在系统环境变量中设置 `MYPROXY_API_KEY` 为你的 `PROXY_API_KEY`，模型填 `auto` 即自动使用账号在后台配置的模型。
 
 #### 在第三方 AI 工具中使用
 
@@ -242,7 +248,7 @@ curl https://你的域名/v1/chat/completions \
 ├── templates/
 │   ├── index.html      # 对话页面（浅色/深色双主题）
 │   ├── admin.html      # 后台管理页面（浅色/深色双主题）
-│   └── account-pool.html # Sub2API / NewAPI 账号池管理页
+│   └── account-pool.html # Sub2API / NewAPI 账号池管理页（浅色/深色双主题）
 ├── requirements.txt    # Python 依赖
 ├── Procfile            # 部署配置（Gunicorn --timeout 600）
 └── README.md           # 本文件
