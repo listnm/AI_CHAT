@@ -648,7 +648,7 @@ body{
     </div>
     <div class="header-actions">
         <button class="header-btn" id="themeToggle" title="切换深浅模式" onclick="toggleTheme()">🌙</button>
-        <button class="header-btn" onclick="logout()">退出</button>
+        <button class="header-btn" onclick="backToAdmin()">🛠️ 后台管理</button>
     </div>
 </div>
 </header>
@@ -2763,24 +2763,11 @@ applyThemeIcon();
 document.addEventListener('DOMContentLoaded', applyThemeIcon);
 
 /* =========================================================
-退出
+返回后台
 ========================================================= */
 
-async function logout(){
-
-try{
-    await fetch(
-        '/admin/logout',
-        {
-            method:'POST',
-            credentials:'same-origin'
-        }
-    );
-}finally{
-    location.href =
-        '/admin';
-}
-
+function backToAdmin(){
+    location.href = '/admin';
 }
 
 /* =========================================================
