@@ -1234,35 +1234,27 @@ def chat():
 # ================================================================
 
 
-def _select_account(account_name: str = "", model: str = "") -> dict | None:
+def _select_account(account_name: str = "") -> dict | None:
     """
     选择账号：
     - 指定 account_name → 按名称匹配
-    - 指定 model（非 auto）→ 先按模型名精确匹配账号，找不到就用默认/最快的
-    - model=auto 或未指定 → 优先使用默认账号，没有则选最快的
+    - 不指定 → 优先使用被设为默认的账号，没有则选最快的
     """
     accounts = _load_accounts()
     if not accounts:
         return None
 
-    # 1. 指定了 account → 按名称精确匹配
     if account_name:
         for a in accounts:
             if a.get("name", "").strip() == account_name.strip():
                 return a
 
-    # 2. 指定了具体 model（非 auto）→ 按账号配置的 model 精确匹配
-    #    这样当客户端传 model=gpt-5.4 时，能找到配了 gpt-5.4 的那个账号
-    if model and model != "auto":
-        for a in accounts:
-            if a.get("model", "").strip() == model.strip():
-                return a
-
-    # 3. fallback：默认账号 → 最快账号
+    # 优先使用默认账号
     for a in accounts:
         if a.get("is_default"):
             return a
 
+    # 按延迟排序选最快的
     valid = [a for a in accounts if a.get("latency_ms") is not None]
     if valid:
         valid.sort(key=lambda a: a["latency_ms"])
@@ -1310,11 +1302,8 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 选择账号：
-    # 1. 指定 account → 按名称匹配
-    # 2. model=auto → 按默认/最快选择（不按模型匹配，用账号自带的模型）
-    # 3. 指定具体 model → 按模型名自动匹配正确的账号
-    account = _select_account(account_name, model) if not is_auto else _select_account()
+    # 选择账号：指定 account 则用该账号，否则用默认/最快的
+    account = _select_account(account_name) if not is_auto else _select_account()
     if not account:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
@@ -1330,25 +1319,14 @@ def proxy_chat_completions():
         "Content-Type": "application/json",
     }
     # 透传客户端请求的参数（top_p/tools/response_format/frequency_penalty 等），
-    # 对 max_tokens 做智能处理：
-    # - 客户端未传 → 不添加（由上游按自身上限输出）
-    # - 客户端传了小值（≤ 4096，如 Trae/Cursor 默认值）→ 替换为 16384，
-    #   防止回复在约 2000 中文字处被截断
-    # - 客户端传了较大值（> 4096）→ 原样透传，尊重用户意图
-    # 注意：不能完全丢弃 max_tokens，否则 Claude 等 API 会返回 400 错误
-    _reserved = {"account", "model", "messages", "stream"}
+    # 但强制丢弃 max_tokens。原因：Trae/Cursor 等客户端默认会传 max_tokens=4096
+    # 之类的小值，透传到上游后回复被截断在约 2000 中文字。丢弃后由上游模型按
+    # 自身上限输出（如 GPT-4o 16K、Claude 8K）。
+    _reserved = {"account", "model", "messages", "stream", "max_tokens"}
     payload = {k: v for k, v in data.items() if k not in _reserved}
     payload["model"] = effective_model
     payload["messages"] = messages
     payload["stream"] = stream
-    # 处理 max_tokens：保留但优化小值
-    if "max_tokens" not in payload:
-        # 客户端未传 max_tokens，某些 API（如 Claude）要求此字段，
-        # 设置一个较大的默认值以兼容
-        payload["max_tokens"] = 16384
-    elif isinstance(payload["max_tokens"], (int, float)) and payload["max_tokens"] <= 4096:
-        # 客户端传了小值，替换为更大值防止截断
-        payload["max_tokens"] = 16384
 
     try:
         # timeout 用元组 (connect_timeout, read_timeout)：
