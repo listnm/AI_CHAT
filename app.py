@@ -13,6 +13,7 @@ import hashlib
 import sqlite3
 import threading
 import requests
+from urllib.parse import quote
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, Response, stream_with_context
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -612,6 +613,23 @@ def api_accounts_set_default(account_id):
         return {"ok": False, "message": "账号不存在"}
     _save_accounts(accounts)
     return {"ok": True, "message": "已设为默认中转站"}
+
+
+@app.route("/api/accounts/<account_id>/unset-default", methods=["POST"])
+def api_accounts_unset_default(account_id):
+    """取消默认中转站（无默认账号后，转发时自动回退到最快的账号）"""
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
+    accounts = _load_accounts()
+    found = False
+    for acc in accounts:
+        if acc["id"] == account_id:
+            acc["is_default"] = False
+            found = True
+    if not found:
+        return {"ok": False, "message": "账号不存在"}
+    _save_accounts(accounts)
+    return {"ok": True, "message": "已取消默认中转站"}
 
 
 @app.route("/api/accounts/speedtest", methods=["POST"])
@@ -1272,6 +1290,17 @@ def _make_provider_info(account: dict) -> dict:
     }
 
 
+def _ascii_header(value: str) -> str:
+    """HTTP 响应头只允许 ASCII（latin-1）。账号名/模型名含中文等非 ASCII 字符时，
+    直接写入会触发 werkzeug 的 UnicodeEncodeError，响应发送失败，客户端表现为 502。
+    这里将不可编码部分做百分号编码（RFC 3986），保证响应头始终能正常发送。"""
+    try:
+        value.encode("latin-1")
+        return value
+    except UnicodeEncodeError:
+        return quote(value, safe="")
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
@@ -1302,8 +1331,9 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 选择账号：指定 account 则用该账号，否则用默认/最快的
-    account = _select_account(account_name) if not is_auto else _select_account()
+    # 选择账号：指定 account 则用该账号（model=auto 时也尊重 account），
+    # 未指定则用默认/最快的（_select_account 内部处理）
+    account = _select_account(account_name)
     if not account:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
@@ -1408,8 +1438,8 @@ def proxy_chat_completions():
                 "X-Accel-Buffering": "no",
                 "Connection": "keep-alive",
                 # 账号信息通过响应头透出，不污染 SSE 流
-                "X-Provider-Name": provider_info.get("name", ""),
-                "X-Provider-Model": provider_info.get("effective_model", ""),
+                "X-Provider-Name": _ascii_header(provider_info.get("name", "")),
+                "X-Provider-Model": _ascii_header(provider_info.get("effective_model", "")),
             }
         )
     else:
@@ -1421,8 +1451,8 @@ def proxy_chat_completions():
                 response=json.dumps(resp_data, ensure_ascii=False),
                 mimetype="application/json; charset=utf-8",
                 headers={
-                    "X-Provider-Name": provider_info.get("name", ""),
-                    "X-Provider-Model": provider_info.get("effective_model", ""),
+                    "X-Provider-Name": _ascii_header(provider_info.get("name", "")),
+                    "X-Provider-Model": _ascii_header(provider_info.get("effective_model", "")),
                 }
             )
         except Exception as e:
