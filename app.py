@@ -1414,6 +1414,17 @@ def proxy_chat_completions():
                             print(f"[proxy-stream] done: chunks={chunk_count} bytes={byte_count}", flush=True)
                             yield "data: [DONE]\n\n"
                             return
+                        # 上游在流中返回错误（如限流/暂时不可用）：OpenAI SSE 没有标准错误
+                        # 事件，透传原始 error 行会导致客户端解析失败（如 Codex CLI 报
+                        # "Turn execution failed"）。这里记录日志并以 [DONE] 干净收尾。
+                        try:
+                            _err = json.loads(data_content)
+                            if isinstance(_err, dict) and _err.get("error"):
+                                print(f"[proxy-stream] upstream error mid-stream: {json.dumps(_err, ensure_ascii=False)[:300]}", flush=True)
+                                yield "data: [DONE]\n\n"
+                                return
+                        except Exception:
+                            pass
                         yield b"data: " + data_content + b"\n\n"
                     elif line.startswith(b":"):
                         continue
@@ -1645,6 +1656,24 @@ def _responses_stream_generator(upstream, resp_id, created_at, effective_model):
                 evt = json.loads(content)
             except Exception:
                 continue
+            # 上游在流中返回错误：以 response.failed 干净收尾，避免客户端
+            # （Codex CLI 等）解析到非标准 data 行而报 "Turn execution failed"
+            if isinstance(evt, dict) and evt.get("error"):
+                err_obj = evt["error"]
+                err_msg = err_obj.get("message", str(err_obj)) if isinstance(err_obj, dict) else str(err_obj)
+                print(f"[responses-stream] upstream error mid-stream: {err_msg}", flush=True)
+                yield _responses_sse("response.failed", {
+                    "type": "response.failed",
+                    "response": {
+                        "id": resp_id,
+                        "object": "response",
+                        "created_at": created_at,
+                        "status": "failed",
+                        "model": effective_model,
+                        "error": {"code": "upstream_error", "message": err_msg},
+                    },
+                })
+                return
             choices = evt.get("choices") or []
             if not choices:
                 if evt.get("usage"):
