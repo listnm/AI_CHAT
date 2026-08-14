@@ -423,40 +423,14 @@ def admin():
             "is_default": acc.get("is_default", False),
         })
 
-    convs = _load_conversations()
-    conv_summary = []
-    for c in convs:
-        msgs = c.get("messages", [])
-        preview = ""
-        if msgs:
-            # 取最后一条消息作为预览（最多 100 字符）
-            last = msgs[-1]
-            content = last.get("content", "")
-            if isinstance(content, list):
-                for part in content:
-                    if part.get("type") == "text":
-                        content = part.get("text", "")
-                        break
-                else:
-                    content = ""
-            content = str(content).replace("\r", " ").replace("\n", " ").strip()
-            preview = ("[AI] " if last.get("role") == "assistant" else "[我] ") + content[:100]
-        conv_summary.append({
-            "id": c["id"],
-            "title": c.get("title", "新对话"),
-            "msg_count": len(msgs),
-            "preview": preview,
-            "messages_json": json.dumps(msgs, ensure_ascii=False),
-            "created_at": c.get("created_at", ""),
-            "updated_at": c.get("updated_at", ""),
-        })
-
     # 找出最快延迟
     fastest_latency = None
     for acc in safe_accounts:
         if acc.get("latency_ms") is not None:
             if fastest_latency is None or acc["latency_ms"] < fastest_latency:
                 fastest_latency = acc["latency_ms"]
+
+    default_account_id = next((a["id"] for a in safe_accounts if a.get("is_default")), "")
 
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
@@ -465,7 +439,7 @@ def admin():
         "admin.html",
         logged_in=True,
         accounts=safe_accounts,
-        conversations=conv_summary,
+        default_account_id=default_account_id,
         base_url=base_url,
         proxy_url=proxy_url,
         proxy_models_url=proxy_url,
