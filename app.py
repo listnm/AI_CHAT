@@ -1319,14 +1319,25 @@ def proxy_chat_completions():
         "Content-Type": "application/json",
     }
     # 透传客户端请求的参数（top_p/tools/response_format/frequency_penalty 等），
-    # 但强制丢弃 max_tokens。原因：Trae/Cursor 等客户端默认会传 max_tokens=4096
-    # 之类的小值，透传到上游后回复被截断在约 2000 中文字。丢弃后由上游模型按
-    # 自身上限输出（如 GPT-4o 16K、Claude 8K）。
-    _reserved = {"account", "model", "messages", "stream", "max_tokens"}
+    # 对 max_tokens 做智能处理：
+    # - 客户端未传 → 不添加（由上游按自身上限输出）
+    # - 客户端传了小值（≤ 4096，如 Trae/Cursor 默认值）→ 替换为 16384，
+    #   防止回复在约 2000 中文字处被截断
+    # - 客户端传了较大值（> 4096）→ 原样透传，尊重用户意图
+    # 注意：不能完全丢弃 max_tokens，否则 Claude 等 API 会返回 400 错误
+    _reserved = {"account", "model", "messages", "stream"}
     payload = {k: v for k, v in data.items() if k not in _reserved}
     payload["model"] = effective_model
     payload["messages"] = messages
     payload["stream"] = stream
+    # 处理 max_tokens：保留但优化小值
+    if "max_tokens" not in payload:
+        # 客户端未传 max_tokens，某些 API（如 Claude）要求此字段，
+        # 设置一个较大的默认值以兼容
+        payload["max_tokens"] = 16384
+    elif isinstance(payload["max_tokens"], (int, float)) and payload["max_tokens"] <= 4096:
+        # 客户端传了小值，替换为更大值防止截断
+        payload["max_tokens"] = 16384
 
     try:
         # timeout 用元组 (connect_timeout, read_timeout)：
