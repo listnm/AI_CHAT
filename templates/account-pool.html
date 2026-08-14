@@ -4,22 +4,62 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>账号池管理</title>
+<script>
+    (function() {
+        try {
+            var t = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', t);
+        } catch(e) {}
+    })();
+</script>
 <style>
 :root{
-    --primary:#6366f1;
-    --primary-dark:#4f46e5;
-    --success:#10b981;
+    --primary:#3b82f6;
+    --primary-hover:#2563eb;
+    --primary-light:#eff6ff;
+    --success:#22c55e;
+    --success-light:#f0fdf4;
     --danger:#ef4444;
+    --danger-light:#fef2f2;
     --warning:#f59e0b;
+    --warning-light:#fffbeb;
     --info:#0ea5e9;
-    --text:#111827;
-    --muted:#6b7280;
-    --border:#e5e7eb;
+    --info-light:#f0f9ff;
+    --text:#0f172a;
+    --text-secondary:#64748b;
+    --muted:#94a3b8;
+    --border:#e2e8f0;
+    --border-light:#f1f5f9;
     --bg:#f8fafc;
     --card:#ffffff;
-    --soft:#f3f4f6;
-    --shadow:0 8px 30px rgba(15,23,42,.08);
-    --radius:16px;
+    --soft:#f1f5f9;
+    --shadow:0 1px 3px rgba(0,0,0,0.06);
+    --radius:12px;
+    --font-mono:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace;
+    color-scheme:light;
+}
+[data-theme="dark"]{
+    --primary:#60a5fa;
+    --primary-hover:#3b82f6;
+    --primary-light:rgba(96,165,250,0.12);
+    --success:#4ade80;
+    --success-light:rgba(74,222,128,0.12);
+    --danger:#f87171;
+    --danger-light:rgba(248,113,113,0.12);
+    --warning:#fbbf24;
+    --warning-light:rgba(251,191,36,0.12);
+    --info:#38bdf8;
+    --info-light:rgba(56,189,248,0.12);
+    --text:#f1f5f9;
+    --text-secondary:#94a3b8;
+    --muted:#64748b;
+    --border:#1e293b;
+    --border-light:#1e293b;
+    --bg:#0b0f1a;
+    --card:#111827;
+    --soft:#1e293b;
+    --shadow:0 1px 3px rgba(0,0,0,0.3);
+    color-scheme:dark;
 }
 *{
     box-sizing:border-box;
@@ -35,17 +75,19 @@ body{
         "PingFang SC",
         "Microsoft YaHei",
         sans-serif;
+    -webkit-font-smoothing:antialiased;
 }
 /* =========================
    Header
 ========================= */
 .header{
-    background:linear-gradient(135deg,#6366f1,#8b5cf6);
-    color:#fff;
-    padding:18px 20px;
+    background:var(--card);
+    color:var(--text);
+    padding:16px 20px;
     position:sticky;
     top:0;
     z-index:50;
+    border-bottom:1px solid var(--border);
 }
 .header-inner{
     max-width:1280px;
@@ -59,28 +101,38 @@ body{
     display:flex;
     align-items:center;
     gap:10px;
-    font-size:19px;
-    font-weight:800;
+    font-size:18px;
+    font-weight:700;
 }
 .title-icon{
-    width:38px;
-    height:38px;
-    border-radius:11px;
-    background:rgba(255,255,255,.18);
+    width:36px;
+    height:36px;
+    border-radius:10px;
+    background:var(--primary);
+    color:#fff;
     display:grid;
     place-items:center;
+    font-size:18px;
 }
 .header-actions{
     display:flex;
     gap:8px;
 }
 .header-btn{
-    border:0;
-    border-radius:9px;
-    background:rgba(255,255,255,.15);
-    color:#fff;
-    padding:8px 12px;
+    border:1px solid var(--border);
+    border-radius:8px;
+    background:var(--card);
+    color:var(--text-secondary);
+    padding:7px 12px;
     cursor:pointer;
+    font-size:13px;
+    font-family:inherit;
+    font-weight:500;
+    transition:all 0.15s;
+}
+.header-btn:hover{
+    background:var(--soft);
+    color:var(--text);
 }
 /* =========================
    Container
@@ -88,33 +140,36 @@ body{
 .container{
     max-width:1280px;
     margin:auto;
-    padding:20px;
+    padding:24px;
 }
 /* =========================
    Message
 ========================= */
 .message{
     display:none;
-    padding:11px 14px;
-    border-radius:10px;
-    margin-bottom:14px;
+    padding:10px 16px;
+    border-radius:8px;
+    margin-bottom:16px;
     font-size:13px;
-    font-weight:600;
+    font-weight:500;
 }
 .message.show{
     display:block;
 }
 .message.success{
-    background:rgba(16,185,129,.12);
+    background:var(--success-light);
     color:var(--success);
+    border:1px solid var(--success);
 }
 .message.error{
-    background:rgba(239,68,68,.12);
+    background:var(--danger-light);
     color:var(--danger);
+    border:1px solid var(--danger);
 }
 .message.info{
-    background:rgba(99,102,241,.12);
+    background:var(--primary-light);
     color:var(--primary);
+    border:1px solid var(--primary);
 }
 /* =========================
    Stats
@@ -123,24 +178,25 @@ body{
     display:grid;
     grid-template-columns:repeat(4,1fr);
     gap:14px;
-    margin-bottom:18px;
+    margin-bottom:20px;
 }
 .stat{
     background:var(--card);
     border:1px solid var(--border);
-    border-radius:14px;
-    padding:16px;
+    border-radius:var(--radius);
+    padding:18px;
     box-shadow:var(--shadow);
 }
 .stat-label{
     color:var(--muted);
     font-size:12px;
-    font-weight:700;
+    font-weight:500;
 }
 .stat-value{
-    font-size:26px;
-    font-weight:800;
-    margin-top:5px;
+    font-size:28px;
+    font-weight:700;
+    margin-top:4px;
+    color:var(--text);
 }
 /* =========================
    Toolbar
@@ -155,7 +211,7 @@ body{
     align-items:center;
     gap:10px;
     flex-wrap:wrap;
-    margin-bottom:14px;
+    margin-bottom:16px;
 }
 .search{
     flex:1;
@@ -166,49 +222,65 @@ body{
 .textarea{
     width:100%;
     border:1px solid var(--border);
-    background:#fff;
+    background:var(--bg);
     color:var(--text);
-    border-radius:10px;
+    border-radius:8px;
     padding:10px 12px;
     outline:none;
+    font-size:14px;
+    font-family:inherit;
+    transition:all 0.15s;
 }
 .input:focus,
 .select:focus,
 .textarea:focus{
     border-color:var(--primary);
-    box-shadow:0 0 0 3px rgba(99,102,241,.12);
+    box-shadow:0 0 0 3px var(--primary-light);
+}
+.input::placeholder,
+.textarea::placeholder{
+    color:var(--muted);
 }
 /* =========================
    Buttons
 ========================= */
 .btn{
     border:0;
-    border-radius:10px;
+    border-radius:8px;
     padding:9px 13px;
     min-height:38px;
     font-size:13px;
-    font-weight:700;
+    font-weight:500;
     display:inline-flex;
     align-items:center;
     justify-content:center;
     gap:6px;
     cursor:pointer;
+    transition:all 0.15s;
+    font-family:inherit;
+}
+.btn:active{
+    transform:scale(0.97);
 }
 .btn:disabled{
-    opacity:.55;
+    opacity:.45;
     cursor:not-allowed;
 }
 .btn-primary{
     background:var(--primary);
     color:#fff;
 }
-.btn-primary:hover{
-    background:var(--primary-dark);
+.btn-primary:hover:not(:disabled){
+    background:var(--primary-hover);
 }
 .btn-outline{
     background:var(--card);
-    color:var(--text);
+    color:var(--text-secondary);
     border:1px solid var(--border);
+}
+.btn-outline:hover:not(:disabled){
+    background:var(--soft);
+    color:var(--text);
 }
 .btn-success{
     background:var(--success);
@@ -244,8 +316,8 @@ body{
     border-bottom:1px solid var(--border);
 }
 .panel-title{
-    font-size:17px;
-    font-weight:800;
+    font-size:16px;
+    font-weight:600;
 }
 /* =========================
    Table
@@ -261,21 +333,24 @@ table{
 th,
 td{
     text-align:left;
-    padding:13px 12px;
-    border-bottom:1px solid var(--border);
+    padding:12px;
+    border-bottom:1px solid var(--border-light);
     vertical-align:middle;
 }
 th{
-    background:var(--soft);
+    background:var(--bg);
     color:var(--muted);
     font-size:11px;
-    font-weight:800;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    border-bottom:1px solid var(--border);
 }
 td{
     font-size:13px;
 }
 .account-name{
-    font-weight:800;
+    font-weight:600;
 }
 .meta{
     margin-top:4px;
@@ -291,21 +366,21 @@ td{
     align-items:center;
     gap:4px;
     padding:4px 8px;
-    border-radius:999px;
+    border-radius:6px;
     font-size:11px;
-    font-weight:800;
+    font-weight:600;
     white-space:nowrap;
 }
 .badge-newapi{
-    background:rgba(245,158,11,.13);
+    background:var(--warning-light);
     color:var(--warning);
 }
 .badge-sub2api{
-    background:rgba(14,165,233,.12);
+    background:var(--info-light);
     color:var(--info);
 }
 .badge-success{
-    background:rgba(16,185,129,.13);
+    background:var(--success-light);
     color:var(--success);
 }
 .badge-muted{
@@ -368,7 +443,7 @@ td{
 }
 .mobile-card{
     border:1px solid var(--border);
-    border-radius:15px;
+    border-radius:var(--radius);
     padding:15px;
     background:var(--card);
 }
@@ -377,7 +452,7 @@ td{
     justify-content:space-between;
     gap:10px;
     padding-bottom:12px;
-    border-bottom:1px solid var(--border);
+    border-bottom:1px solid var(--border-light);
     margin-bottom:12px;
 }
 .mobile-grid{
@@ -388,7 +463,7 @@ td{
 .mobile-field-label{
     color:var(--muted);
     font-size:10px;
-    font-weight:800;
+    font-weight:600;
     margin-bottom:4px;
 }
 .mobile-field-value{
@@ -414,7 +489,7 @@ td{
     display:none;
     position:fixed;
     inset:0;
-    background:rgba(0,0,0,.58);
+    background:rgba(0,0,0,.5);
     z-index:100;
     align-items:center;
     justify-content:center;
@@ -427,11 +502,12 @@ td{
     width:min(900px,100%);
     max-height:90vh;
     background:var(--card);
-    border-radius:18px;
+    border-radius:14px;
     overflow:hidden;
-    box-shadow:0 25px 70px rgba(0,0,0,.3);
+    box-shadow:0 25px 60px rgba(0,0,0,.25);
     display:flex;
     flex-direction:column;
+    border:1px solid var(--border);
 }
 .modal-header{
     padding:16px 18px;
@@ -441,22 +517,29 @@ td{
     justify-content:space-between;
 }
 .modal-title{
-    font-weight:800;
-    font-size:17px;
+    font-weight:600;
+    font-size:16px;
 }
 .modal-close{
     border:0;
     background:transparent;
     color:var(--muted);
-    font-size:25px;
+    font-size:22px;
     cursor:pointer;
+    padding:4px 8px;
+    border-radius:6px;
+    transition:all 0.15s;
+}
+.modal-close:hover{
+    background:var(--soft);
+    color:var(--text);
 }
 .modal-body{
     padding:18px;
     overflow:auto;
 }
 .modal-footer{
-    padding:13px 18px;
+    padding:12px 18px;
     border-top:1px solid var(--border);
     display:flex;
     justify-content:flex-end;
@@ -468,12 +551,12 @@ td{
 .group-info{
     background:var(--soft);
     border:1px solid var(--border);
-    border-radius:12px;
+    border-radius:10px;
     padding:14px;
     margin-bottom:14px;
 }
 .group-info-title{
-    font-weight:800;
+    font-weight:600;
     margin-bottom:6px;
 }
 .group-info-note{
@@ -483,7 +566,7 @@ td{
 }
 .group-detail{
     border:1px solid var(--border);
-    border-radius:12px;
+    border-radius:10px;
     padding:12px;
     margin-bottom:9px;
 }
@@ -494,7 +577,7 @@ td{
     gap:10px;
 }
 .group-detail-name{
-    font-weight:800;
+    font-weight:600;
 }
 .group-detail-meta{
     color:var(--muted);
@@ -523,10 +606,10 @@ td{
         display:flex;
     }
     .container{
-        padding:13px;
+        padding:16px;
     }
     .header{
-        padding:13px;
+        padding:14px 16px;
     }
 }
 @media(max-width:560px){
@@ -555,11 +638,11 @@ td{
 <header class="header">
     <div class="header-inner">
     <div class="title">
-        <div class="title-icon">🗂️</div>
+        <div class="title-icon">🗂</div>
         <div>账号池管理</div>
     </div>
     <div class="header-actions">
-        <button class="header-btn" onclick="toggleTheme()">🌓</button>
+        <button class="header-btn" id="themeToggle" onclick="toggleTheme()" title="切换主题">🌙</button>
         <button class="header-btn" onclick="logout()">退出</button>
     </div>
 </div>
@@ -2645,16 +2728,26 @@ if(
 ========================================================= */
 
 function toggleTheme(){
-
-const dark =
-    document.body.dataset.theme ===
-    'dark';
-document.body.dataset.theme =
-    dark
-        ? 'light'
-        : 'dark';
-
+    var el = document.documentElement;
+    var cur = el.getAttribute('data-theme') || 'light';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    el.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch(e) {}
+    var btn = document.getElementById('themeToggle');
+    if (btn) {
+        btn.textContent = next === 'dark' ? '☀️' : '🌙';
+        btn.title = next === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+    }
 }
+
+(function() {
+    var btn = document.getElementById('themeToggle');
+    var cur = document.documentElement.getAttribute('data-theme') || 'light';
+    if (btn) {
+        btn.textContent = cur === 'dark' ? '☀️' : '🌙';
+        btn.title = cur === 'dark' ? '切换到浅色模式' : '切换到深色模式';
+    }
+})();
 
 /* =========================================================
 退出
