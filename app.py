@@ -1460,6 +1460,462 @@ def proxy_chat_completions():
 
 
 # ================================================================
+#  OpenAI Responses API 兼容转发端点（/v1/responses）
+#  供 Codex CLI 等默认走 Responses API 的客户端使用：
+#  请求转换为 chat/completions 转发到上游中转站，再把响应（含流式）
+#  转回 Responses API 格式。认证与账号选择逻辑与 /v1/chat/completions 一致。
+# ================================================================
+
+def _responses_input_to_messages(instructions, input_items):
+    """Responses API 的 input 列表 → chat completions messages"""
+    messages = []
+    if instructions:
+        messages.append({"role": "system", "content": instructions})
+    for item in input_items or []:
+        if isinstance(item, str):
+            messages.append({"role": "user", "content": item})
+            continue
+        if not isinstance(item, dict):
+            continue
+        typ = item.get("type")
+        if typ == "message" or "role" in item:
+            role = item.get("role", "user")
+            content = item.get("content", "")
+            if isinstance(content, list):
+                parts = []
+                for p in content:
+                    if not isinstance(p, dict):
+                        continue
+                    pt = p.get("type")
+                    if pt in ("input_text", "output_text", "text"):
+                        parts.append({"type": "text", "text": p.get("text", "")})
+                    elif pt == "input_image":
+                        parts.append({"type": "image_url",
+                                      "image_url": {"url": p.get("image_url") or p.get("data") or ""}})
+                    elif pt == "refusal":
+                        parts.append({"type": "text", "text": p.get("refusal", "")})
+                content = parts if parts else ""
+            messages.append({"role": role, "content": content})
+        elif typ == "function_call":
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": item.get("call_id") or item.get("id") or ("call_" + uuid.uuid4().hex[:16]),
+                    "type": "function",
+                    "function": {"name": item.get("name", ""), "arguments": item.get("arguments", "")},
+                }],
+            })
+        elif typ == "function_call_output":
+            messages.append({
+                "role": "tool",
+                "tool_call_id": item.get("call_id", ""),
+                "content": "" if item.get("output") is None else str(item.get("output")),
+            })
+        # reasoning 等其他类型直接忽略
+    return messages
+
+
+def _responses_tools_to_chat(tools):
+    """Responses API 的 tools → chat completions tools（仅保留 function 工具）"""
+    out = []
+    for t in tools or []:
+        if not isinstance(t, dict) or t.get("type") != "function":
+            continue
+        fn = {
+            "name": t.get("name", ""),
+            "description": t.get("description", ""),
+            "parameters": t.get("parameters") or {"type": "object", "properties": {}},
+        }
+        if t.get("strict") is not None:
+            fn["strict"] = t["strict"]
+        out.append({"type": "function", "function": fn})
+    return out or None
+
+
+def _responses_tool_choice_to_chat(tc):
+    """Responses API 的 tool_choice → chat completions 格式"""
+    if not tc or tc in ("auto", "none", "required"):
+        return tc
+    if isinstance(tc, dict) and tc.get("type") == "function":
+        return {"type": "function", "function": {"name": tc.get("name", "")}}
+    return "auto"
+
+
+def _chat_usage_to_responses(usage):
+    """chat completions usage → Responses API usage"""
+    usage = usage or {}
+    details = usage.get("completion_tokens_details") or {}
+    return {
+        "input_tokens": usage.get("prompt_tokens", 0),
+        "output_tokens": usage.get("completion_tokens", 0),
+        "total_tokens": usage.get("total_tokens", 0),
+        "output_tokens_details": {"reasoning_tokens": details.get("reasoning_tokens", 0)},
+    }
+
+
+def _chat_message_to_responses_items(message):
+    """chat completions 的单条 message → Responses API output items"""
+    items = []
+    text_parts = []
+    content = message.get("content")
+    if content:
+        text_parts.append({"type": "output_text", "text": str(content), "annotations": []})
+    if text_parts:
+        items.append({
+            "type": "message",
+            "id": "msg_" + uuid.uuid4().hex[:24],
+            "status": "completed",
+            "role": "assistant",
+            "content": text_parts,
+        })
+    for tc in message.get("tool_calls") or []:
+        fn = tc.get("function") or {}
+        items.append({
+            "type": "function_call",
+            "id": "fc_" + uuid.uuid4().hex[:24],
+            "status": "completed",
+            "call_id": tc.get("id") or ("call_" + uuid.uuid4().hex[:16]),
+            "name": fn.get("name", ""),
+            "arguments": fn.get("arguments", ""),
+        })
+    return items
+
+
+def _chat_response_to_responses(chat_json, model):
+    """非流式 chat/completions 响应 → Responses API 响应体"""
+    choice = (chat_json.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    items = _chat_message_to_responses_items(message)
+    finish = choice.get("finish_reason")
+    output_text = ""
+    for it in items:
+        if it.get("type") == "message":
+            output_text = "".join(p.get("text", "") for p in it.get("content", []))
+    return {
+        "id": "resp_" + uuid.uuid4().hex[:24],
+        "object": "response",
+        "created_at": int(time.time()),
+        "status": "completed" if finish != "length" else "incomplete",
+        "model": model,
+        "output": items,
+        "output_text": output_text,
+        "usage": _chat_usage_to_responses(chat_json.get("usage")),
+    }
+
+
+def _responses_sse(event, obj):
+    """Responses API 流式事件行"""
+    return f"event: {event}\ndata: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+def _responses_stream_generator(upstream, resp_id, created_at, effective_model):
+    """把上游 chat/completions 的 SSE 流转成 Responses API 的 SSE 事件流"""
+    skeleton = {
+        "id": resp_id,
+        "object": "response",
+        "created_at": created_at,
+        "status": "in_progress",
+        "model": effective_model,
+        "output": [],
+    }
+    yield _responses_sse("response.created", {"type": "response.created", "response": skeleton})
+    yield _responses_sse("response.in_progress", {"type": "response.in_progress", "response": skeleton})
+
+    msg_item = None      # {item_id, text}
+    funcs = {}           # tool index -> {index, item_id, call_id, name, args}
+    finish = None
+    usage = None
+    buffer = b""
+
+    for chunk in upstream.iter_content(chunk_size=None):
+        if not chunk:
+            continue
+        buffer += chunk
+        while b"\n" in buffer:
+            line, buffer = buffer.split(b"\n", 1)
+            line = line.strip()
+            if not line or not line.startswith(b"data: "):
+                continue
+            content = line[6:].strip()
+            if content == b"[DONE]":
+                buffer = b""
+                break
+            try:
+                evt = json.loads(content)
+            except Exception:
+                continue
+            choices = evt.get("choices") or []
+            if not choices:
+                if evt.get("usage"):
+                    usage = evt["usage"]
+                continue
+            ch = choices[0]
+            if ch.get("finish_reason"):
+                finish = ch["finish_reason"]
+            delta = ch.get("delta") or {}
+
+            text = delta.get("content")
+            if text:
+                if msg_item is None:
+                    msg_item = {"item_id": "msg_" + uuid.uuid4().hex[:24], "text": ""}
+                    yield _responses_sse("response.output_item.added", {
+                        "type": "response.output_item.added",
+                        "output_index": 0,
+                        "item": {
+                            "id": msg_item["item_id"],
+                            "type": "message",
+                            "status": "in_progress",
+                            "role": "assistant",
+                            "content": [],
+                        },
+                    })
+                    yield _responses_sse("response.content_part.added", {
+                        "type": "response.content_part.added",
+                        "item_id": msg_item["item_id"],
+                        "output_index": 0,
+                        "content_index": 0,
+                        "part": {"type": "output_text", "text": "", "annotations": []},
+                    })
+                msg_item["text"] += text
+                yield _responses_sse("response.output_text.delta", {
+                    "type": "response.output_text.delta",
+                    "item_id": msg_item["item_id"],
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": text,
+                })
+
+            for tc in delta.get("tool_calls") or []:
+                idx = tc.get("index", 0)
+                fn = tc.get("function") or {}
+                if idx not in funcs:
+                    funcs[idx] = {
+                        "index": len(funcs),
+                        "item_id": "fc_" + uuid.uuid4().hex[:24],
+                        "call_id": tc.get("id") or ("call_" + uuid.uuid4().hex[:16]),
+                        "name": fn.get("name") or "",
+                        "args": "",
+                    }
+                    yield _responses_sse("response.output_item.added", {
+                        "type": "response.output_item.added",
+                        "output_index": funcs[idx]["index"],
+                        "item": {
+                            "id": funcs[idx]["item_id"],
+                            "type": "function_call",
+                            "status": "in_progress",
+                            "call_id": funcs[idx]["call_id"],
+                            "name": funcs[idx]["name"],
+                            "arguments": "",
+                        },
+                    })
+                args = fn.get("arguments")
+                if args:
+                    funcs[idx]["args"] += args
+                    yield _responses_sse("response.function_call_arguments.delta", {
+                        "type": "response.function_call_arguments.delta",
+                        "item_id": funcs[idx]["item_id"],
+                        "output_index": funcs[idx]["index"],
+                        "delta": args,
+                    })
+
+    # 流结束：补齐各 item 的 done 事件与最终 response
+    output_items = []
+    if msg_item is not None:
+        output_items.append({
+            "type": "message",
+            "id": msg_item["item_id"],
+            "status": "completed",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": msg_item["text"], "annotations": []}],
+        })
+        yield _responses_sse("response.output_text.done", {
+            "type": "response.output_text.done",
+            "item_id": msg_item["item_id"],
+            "output_index": 0,
+            "content_index": 0,
+            "text": msg_item["text"],
+        })
+        yield _responses_sse("response.content_part.done", {
+            "type": "response.content_part.done",
+            "item_id": msg_item["item_id"],
+            "output_index": 0,
+            "content_index": 0,
+            "part": {"type": "output_text", "text": msg_item["text"], "annotations": []},
+        })
+        yield _responses_sse("response.output_item.done", {
+            "type": "response.output_item.done",
+            "output_index": 0,
+            "item": output_items[-1],
+        })
+    for idx in sorted(funcs):
+        f = funcs[idx]
+        output_items.append({
+            "type": "function_call",
+            "id": f["item_id"],
+            "status": "completed",
+            "call_id": f["call_id"],
+            "name": f["name"],
+            "arguments": f["args"],
+        })
+        yield _responses_sse("response.function_call_arguments.done", {
+            "type": "response.function_call_arguments.done",
+            "item_id": f["item_id"],
+            "output_index": f["index"],
+            "arguments": f["args"],
+        })
+        yield _responses_sse("response.output_item.done", {
+            "type": "response.output_item.done",
+            "output_index": f["index"],
+            "item": output_items[-1],
+        })
+
+    final_response = {
+        "id": resp_id,
+        "object": "response",
+        "created_at": created_at,
+        "status": "completed" if finish != "length" else "incomplete",
+        "model": effective_model,
+        "output": output_items,
+        "output_text": msg_item["text"] if msg_item else "",
+        "usage": _chat_usage_to_responses(usage),
+    }
+    yield _responses_sse("response.completed", {"type": "response.completed", "response": final_response})
+
+
+@app.route("/v1/responses", methods=["POST"])
+@app.route("/responses", methods=["POST"])
+def proxy_responses():
+    """
+    OpenAI Responses API 兼容端点（Codex CLI 等客户端默认走这里）。
+    请求与响应的协议转换：
+      - input/instructions/tools/reasoning  → chat/completions 消息
+      - chat/completions 流式响应           → Responses API SSE 事件
+    账号选择与 /v1/chat/completions 完全一致（model=auto 用账号配置的模型）。
+    """
+    auth = request.headers.get("Authorization", "")
+    expected = "Bearer " + PROXY_API_KEY
+    if auth != expected:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}, "ok": False}, 401
+
+    data = request.get_json(force=True) or {}
+    account_name = data.get("account", "")
+    model = data.get("model", "")
+    is_auto = model == "auto"
+    stream = data.get("stream", False)
+
+    account = _select_account(account_name)
+    if not account:
+        return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
+
+    api_url = normalize_api_url(account["api_url"])
+    api_key = (account["api_key"] or "").strip()
+    effective_model = account["model"] if is_auto else (model or account["model"])
+
+    messages = _responses_input_to_messages(data.get("instructions"), data.get("input"))
+    if not messages:
+        return {"error": {"message": "input is required", "type": "invalid_request"}, "ok": False}, 400
+
+    provider_info = _make_provider_info(account)
+    provider_info["effective_model"] = effective_model
+
+    # 丢弃 Responses API 专属字段与 max_output_tokens（与 chat 端点一致，
+    # 避免客户端传的小 max 截断上游输出）
+    _reserved = {
+        "account", "model", "stream", "instructions", "input", "store", "include",
+        "metadata", "prompt_cache_key", "previous_response_id", "truncation", "user",
+        "max_output_tokens",
+    }
+    payload = {k: v for k, v in data.items() if k not in _reserved}
+    payload["model"] = effective_model
+    payload["messages"] = messages
+    payload["stream"] = stream
+
+    if isinstance(data.get("reasoning"), dict):
+        effort = data["reasoning"].get("effort")
+        if effort:
+            payload["reasoning_effort"] = effort
+        payload.pop("reasoning", None)
+    if isinstance(data.get("text"), dict):
+        fmt = data["text"].get("format") or {}
+        if fmt.get("type") == "json_schema" and fmt.get("schema"):
+            payload["response_format"] = {"type": "json_schema", "json_schema": fmt["schema"]}
+        elif fmt.get("type") == "json_object":
+            payload["response_format"] = {"type": "json_object"}
+        payload.pop("text", None)
+    tools = _responses_tools_to_chat(data.get("tools"))
+    if tools:
+        payload["tools"] = tools
+    else:
+        payload.pop("tools", None)
+    tool_choice = _responses_tool_choice_to_chat(data.get("tool_choice"))
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
+    else:
+        payload.pop("tool_choice", None)
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        upstream = requests.post(
+            api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
+        )
+        upstream.raise_for_status()
+        upstream.encoding = "utf-8"
+    except requests.exceptions.Timeout:
+        return {"error": {"message": "Upstream API timeout", "type": "timeout"}, "ok": False}, 504
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code
+        try:
+            body = e.response.json()
+            err_obj = body.get("error") if isinstance(body, dict) else None
+            if isinstance(err_obj, dict):
+                msg = err_obj.get("message", str(e))
+            elif isinstance(err_obj, str):
+                msg = err_obj
+            else:
+                msg = body.get("message", str(e)) if isinstance(body, dict) else str(e)
+        except Exception:
+            msg = str(e)
+        return {"error": {"message": msg, "type": "upstream_error", "code": status}, "ok": False}, status
+    except requests.exceptions.RequestException as e:
+        return {"error": {"message": str(e), "type": "connection_error"}, "ok": False}, 502
+
+    base_headers = {
+        "X-Provider-Name": _ascii_header(provider_info.get("name", "")),
+        "X-Provider-Model": _ascii_header(provider_info.get("effective_model", "")),
+    }
+
+    if stream:
+        resp_id = "resp_" + uuid.uuid4().hex[:24]
+        created_at = int(time.time())
+        return Response(
+            stream_with_context(_responses_stream_generator(upstream, resp_id, created_at, effective_model)),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+                **base_headers,
+            }
+        )
+    else:
+        try:
+            resp_data = upstream.json()
+            converted = _chat_response_to_responses(resp_data, effective_model)
+            return app.response_class(
+                response=json.dumps(converted, ensure_ascii=False),
+                mimetype="application/json; charset=utf-8",
+                headers=base_headers,
+            )
+        except Exception as e:
+            return {"error": {"message": f"Failed to parse upstream response: {str(e)}", "type": "parse_error"}, "ok": False}, 502
+
+
+# ================================================================
 #  Sub2API / NewAPI 账号池（SQLite 存储，密码加密）
 # ================================================================
 
