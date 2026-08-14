@@ -1234,27 +1234,35 @@ def chat():
 # ================================================================
 
 
-def _select_account(account_name: str = "") -> dict | None:
+def _select_account(account_name: str = "", model: str = "") -> dict | None:
     """
     选择账号：
     - 指定 account_name → 按名称匹配
-    - 不指定 → 优先使用被设为默认的账号，没有则选最快的
+    - 指定 model（非 auto）→ 先按模型名精确匹配账号，找不到就用默认/最快的
+    - model=auto 或未指定 → 优先使用默认账号，没有则选最快的
     """
     accounts = _load_accounts()
     if not accounts:
         return None
 
+    # 1. 指定了 account → 按名称精确匹配
     if account_name:
         for a in accounts:
             if a.get("name", "").strip() == account_name.strip():
                 return a
 
-    # 优先使用默认账号
+    # 2. 指定了具体 model（非 auto）→ 按账号配置的 model 精确匹配
+    #    这样当客户端传 model=gpt-5.4 时，能找到配了 gpt-5.4 的那个账号
+    if model and model != "auto":
+        for a in accounts:
+            if a.get("model", "").strip() == model.strip():
+                return a
+
+    # 3. fallback：默认账号 → 最快账号
     for a in accounts:
         if a.get("is_default"):
             return a
 
-    # 按延迟排序选最快的
     valid = [a for a in accounts if a.get("latency_ms") is not None]
     if valid:
         valid.sort(key=lambda a: a["latency_ms"])
@@ -1302,8 +1310,11 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 选择账号：指定 account 则用该账号，否则用默认/最快的
-    account = _select_account(account_name) if not is_auto else _select_account()
+    # 选择账号：
+    # 1. 指定 account → 按名称匹配
+    # 2. model=auto → 按默认/最快选择（不按模型匹配，用账号自带的模型）
+    # 3. 指定具体 model → 按模型名自动匹配正确的账号
+    account = _select_account(account_name, model) if not is_auto else _select_account()
     if not account:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
 
