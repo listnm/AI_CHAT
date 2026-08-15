@@ -397,19 +397,6 @@
         }
         .acct-trigger:hover { background: var(--bg-hover); border-color: var(--primary); }
         .acct-trigger .at-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .acct-trigger .at-model {
-            background: var(--primary-soft);
-            color: var(--primary-text);
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 600;
-            padding: 1px 7px;
-            border-radius: 999px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 150px;
-        }
         .acct-trigger .at-chev { color: var(--text-muted); }
 
         .icon-btn {
@@ -489,7 +476,6 @@
         }
         .acct-item .ai-main { flex: 1; min-width: 0; }
         .acct-item .ai-name { font-weight: 600; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .acct-item .ai-model { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
         .acct-item .ai-right { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
         .acct-item .ai-check { color: var(--primary-text); }
         .acct-item .ai-default { color: var(--warning); }
@@ -637,10 +623,9 @@
                 <textarea id="messageInput" class="pg-input-textarea" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行…" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
                 <div class="pg-input-footer">
                     <div class="pg-input-left">
-                        <button class="acct-trigger" id="acctTrigger" title="选择账号（模型使用后台配置）">
+                        <button class="acct-trigger" id="acctTrigger" title="选择账号">
                             <span id="atIcon"></span>
                             <span class="at-name" id="atName">加载中…</span>
-                            <span class="at-model" id="atModel"></span>
                             <span class="at-chev" id="atChev"></span>
                         </button>
                     </div>
@@ -723,7 +708,7 @@ var generation = 0;
 var acctPopOpen = false;
 var paramPopOpen = false;
 
-var chatInner, chatScroll, messageInput, sendBtn, atName, atModel, atIcon, atChev, acctTrigger,
+var chatInner, chatScroll, messageInput, sendBtn, atName, atIcon, atChev, acctTrigger,
     paramBtn, paramBadge, clearBtn, toastEl, toastTimer;
 
 /* ================================================================
@@ -937,6 +922,7 @@ function selectAccount(accountId) {
     config.model = (acc.model || '').split(/[,，]/)[0].trim() || '';
     saveConfigSoon();
     updateAcctTrigger();
+    closeAcctSelector();
     // 后台未配置模型时兜底取第一个可用模型
     if (!config.model) {
         fetchModels(acc.id).then(function (m) {
@@ -989,8 +975,6 @@ function updateAcctTrigger() {
     var acc = accounts.find(function (a) { return a.id === config.accountId; });
     atIcon.innerHTML = icon('server');
     atName.textContent = acc ? acc.name : '选择账号';
-    atModel.textContent = config.model || (acc && acc.model ? String(acc.model).split(/[,，]/)[0] : '');
-    atModel.style.display = atModel.textContent ? '' : 'none';
     atChev.innerHTML = icon('chevronDown');
 }
 
@@ -1008,7 +992,7 @@ function openAcctSelector() {
 
     var title = document.createElement('div');
     title.className = 'pop-title';
-    title.textContent = '选择账号（模型使用后台配置）';
+    title.textContent = '选择账号';
     pop.appendChild(title);
 
     if (!accounts.length) {
@@ -1020,13 +1004,11 @@ function openAcctSelector() {
         accounts.forEach(function (a) {
             var btn = document.createElement('button');
             btn.className = 'acct-item' + (a.id === config.accountId ? ' active' : '');
-            var m = (a.model || '').split(/[,，]/)[0].trim() || '未配置模型';
             btn.innerHTML =
                 '<span class="ai-icon">' + icon('server') + '</span>' +
                 '<span class="ai-main">' +
                 '<span class="ai-name">' + escHtml(a.name) +
                 (a.is_default ? '<span class="ai-default">★</span>' : '') + '</span>' +
-                '<span class="ai-model">' + escHtml(m) + '</span>' +
                 '</span>' +
                 '<span class="ai-right">' +
                 (a.latency_ms != null ? escHtml(a.latency_ms + 'ms') : '') +
@@ -1799,7 +1781,6 @@ function init() {
     messageInput = $('messageInput');
     sendBtn = $('sendBtn');
     atName = $('atName');
-    atModel = $('atModel');
     atIcon = $('atIcon');
     atChev = $('atChev');
     acctTrigger = $('acctTrigger');
@@ -1856,6 +1837,12 @@ function init() {
     window.addEventListener('resize', function () {
         if (acctPopOpen) positionPopover($('acctPop'), acctTrigger, 10);
         if (paramPopOpen) positionPopover($('paramPop'), paramBtn, 10);
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            if (acctPopOpen) closeAcctSelector();
+            if (paramPopOpen) closeParamPopover();
+        }
     });
 
     if (!messages.length) renderEmptyState('游乐场', '选择账号后即可开始测试对话，模型与参数会随请求发送。');
