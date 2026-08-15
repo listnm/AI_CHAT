@@ -1045,6 +1045,25 @@ def _select_account(account_name: str = "") -> dict | None:
     return accounts[0]
 
 
+@app.route("/api/playground/account", methods=["GET"])
+def api_playground_account():
+    """
+    游乐场用：只返回后台「转发账号」（默认账号）的信息，不暴露全部账号列表。
+    与 /v1/chat/completions 的默认账号选择逻辑一致：默认账号优先，否则选最快的。
+    """
+    if not _require_login():
+        return {"ok": False, "message": "请先登录"}, 401
+    account = _select_account("")
+    if not account:
+        return {"ok": True, "account": None}
+    return {"ok": True, "account": {
+        "id": account["id"],
+        "name": account.get("name", ""),
+        "model": account.get("model", ""),
+        "latency_ms": account.get("latency_ms"),
+    }}
+
+
 def _make_provider_info(account: dict) -> dict:
     """生成账号信息描述"""
     return {

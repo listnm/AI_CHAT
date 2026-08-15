@@ -392,12 +392,45 @@
             padding: 5px 10px;
             font-size: 13px;
             color: var(--text);
-            max-width: 340px;
-            transition: border-color 0.15s, background 0.15s;
+            max-width: 420px;
         }
-        .acct-trigger:hover { background: var(--bg-hover); border-color: var(--primary); }
+        .acct-trigger .at-icon { color: var(--primary-text); display: flex; }
+        .acct-trigger .at-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            background: var(--bg-hover);
+            padding: 1px 7px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
         .acct-trigger .at-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .acct-trigger .at-chev { color: var(--text-muted); }
+        .acct-trigger .at-model {
+            background: var(--primary-soft);
+            color: var(--primary-text);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 1px 7px;
+            border-radius: 999px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+        .acct-trigger .at-latency { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        .acct-trigger .at-refresh {
+            background: none;
+            border: none;
+            width: 24px; height: 24px;
+            border-radius: 7px;
+            color: var(--text-muted);
+            display: flex; align-items: center; justify-content: center;
+            margin-left: 2px;
+            transition: background 0.15s, color 0.15s;
+        }
+        .acct-trigger .at-refresh:hover { background: var(--bg-hover); color: var(--primary-text); }
+        .acct-trigger .at-refresh.spinning { animation: spin 0.8s linear infinite; }
 
         .icon-btn {
             background: none;
@@ -437,7 +470,7 @@
         .send-btn.stop:hover { background: var(--danger); }
         .pg-input-hint { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
 
-        /* ===== 弹层 ===== */
+        /* ===== 弹层（参数面板） ===== */
         .popover-mask { position: fixed; inset: 0; z-index: 90; }
         .popover {
             position: fixed;
@@ -448,37 +481,6 @@
             box-shadow: var(--shadow-lg);
             overflow: hidden;
         }
-        .acct-pop { width: 320px; max-width: calc(100vw - 24px); max-height: 420px; overflow-y: auto; padding: 8px; }
-        .pop-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px 4px; }
-        .acct-item {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            background: none;
-            border: none;
-            border-radius: 10px;
-            padding: 8px 9px;
-            font-size: 13px;
-            color: var(--text);
-            text-align: left;
-            transition: background 0.12s;
-        }
-        .acct-item:hover { background: var(--bg-hover); }
-        .acct-item.active { background: var(--primary-light); }
-        .acct-item .ai-icon {
-            width: 30px; height: 30px;
-            border-radius: 9px;
-            background: var(--primary-soft);
-            color: var(--primary-text);
-            display: flex; align-items: center; justify-content: center;
-            flex-shrink: 0;
-        }
-        .acct-item .ai-main { flex: 1; min-width: 0; }
-        .acct-item .ai-name { font-weight: 600; display: flex; align-items: center; gap: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .acct-item .ai-right { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
-        .acct-item .ai-check { color: var(--primary-text); }
-        .acct-item .ai-default { color: var(--warning); }
 
         /* 参数面板 */
         .params-pop { width: 360px; max-width: calc(100vw - 24px); max-height: 480px; overflow-y: auto; padding: 14px; }
@@ -623,11 +625,14 @@
                 <textarea id="messageInput" class="pg-input-textarea" rows="1" placeholder="输入消息，Enter 发送，Shift+Enter 换行…" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
                 <div class="pg-input-footer">
                     <div class="pg-input-left">
-                        <button class="acct-trigger" id="acctTrigger" title="选择账号">
-                            <span id="atIcon"></span>
+                        <div class="acct-trigger" id="acctTrigger" title="转发账号（在管理后台「转发 API」中选择）">
+                            <span class="at-icon" id="atIcon"></span>
+                            <span class="at-label">转发</span>
                             <span class="at-name" id="atName">加载中…</span>
-                            <span class="at-chev" id="atChev"></span>
-                        </button>
+                            <span class="at-model" id="atModel"></span>
+                            <span class="at-latency" id="atLatency"></span>
+                            <button class="at-refresh" id="atRefresh" title="刷新转发账号"></button>
+                        </div>
                     </div>
                     <div class="pg-input-right">
                         <button class="icon-btn" id="paramBtn" title="参数设置"></button>
@@ -701,14 +706,13 @@ function defaultParamEnabled() {
 var config = defaultConfig();
 var paramEnabled = defaultParamEnabled();
 var messages = [];
-var accounts = [];
 var streaming = false;
 var abortController = null;
 var generation = 0;
-var acctPopOpen = false;
 var paramPopOpen = false;
 
-var chatInner, chatScroll, messageInput, sendBtn, atName, atIcon, atChev, acctTrigger,
+var chatInner, chatScroll, messageInput, sendBtn, atName, atIcon, atModel, atLatency,
+    atRefresh, acctTrigger,
     paramBtn, paramBadge, clearBtn, toastEl, toastTimer;
 
 /* ================================================================
@@ -883,20 +887,35 @@ function sanitizeMessagesOnLoad(list) {
 }
 
 /* ================================================================
- *  账号加载（模型直接用后台配置，无需前端选择）
+ *  转发账号加载：只使用后台「转发账号」及其模型，不暴露全部账号
  * ================================================================ */
-function loadAccounts() {
-    return fetch('/api/accounts')
+var fwd = null; // {id, name, model, latency_ms}
+
+function loadForwardAccount() {
+    return fetch('/api/playground/account')
         .then(function (r) { return r.json(); })
         .then(function (res) {
-            if (!res.ok) throw new Error(res.message || '获取账号失败');
-            accounts = res.accounts || [];
-            return accounts;
+            if (!res.ok) throw new Error(res.message || '获取转发账号失败');
+            fwd = res.account || null;
+            updateAcctTrigger();
+            // 转发账号未配置模型时兜底取上游模型列表第一个
+            if (fwd && !fwd.model) {
+                fetchModels(fwd.id).then(function (m) {
+                    if (m) {
+                        fwd.model = m;
+                        updateAcctTrigger();
+                    } else {
+                        showToast('转发账号未配置模型，请先在管理后台设置');
+                    }
+                });
+            }
+            return fwd;
         })
         .catch(function (e) {
-            accounts = [];
-            showToast('加载账号失败：' + e.message);
-            return [];
+            fwd = null;
+            updateAcctTrigger();
+            showToast('加载转发账号失败：' + e.message);
+            return null;
         });
 }
 
@@ -915,120 +934,31 @@ function fetchModels(accountId) {
         .catch(function () { return ''; });
 }
 
-function selectAccount(accountId) {
-    var acc = accounts.find(function (a) { return a.id === accountId; });
-    if (!acc) return;
-    config.accountId = acc.id;
-    config.model = (acc.model || '').split(/[,，]/)[0].trim() || '';
-    saveConfigSoon();
-    updateAcctTrigger();
-    closeAcctSelector();
-    // 后台未配置模型时兜底取第一个可用模型
-    if (!config.model) {
-        fetchModels(acc.id).then(function (m) {
-            if (m) {
-                config.model = m;
-                saveConfigSoon();
-                updateAcctTrigger();
-            } else {
-                showToast('该账号未配置模型，请先在管理后台设置');
-            }
-        });
-    }
-}
-
-function getDefaultAccount() {
-    var def = accounts.find(function (a) { return a.is_default; });
-    if (def) return def;
-    var valid = accounts.filter(function (a) { return a.latency_ms != null; });
-    if (valid.length) {
-        valid.sort(function (a, b) { return a.latency_ms - b.latency_ms; });
-        return valid[0];
-    }
-    return accounts[0] || null;
-}
-
-function initAccounts() {
-    loadAccounts().then(function (list) {
-        if (!list.length) {
-            renderEmptyState(
-                '还没有 API 账号',
-                '请先到 <a href="/admin">管理后台</a> 添加 API 中转站账号并配置模型，再回到这里测试。'
-            );
-            updateAcctTrigger();
-            return;
-        }
-        var target = null;
-        if (config.accountId) {
-            target = list.find(function (a) { return a.id === config.accountId; }) || getDefaultAccount();
-        } else {
-            target = getDefaultAccount();
-        }
-        selectAccount(target.id);
-    });
-}
-
-/* ================================================================
- *  账号选择器（单列账号列表，模型来自后台配置）
- * ================================================================ */
 function updateAcctTrigger() {
-    var acc = accounts.find(function (a) { return a.id === config.accountId; });
     atIcon.innerHTML = icon('server');
-    atName.textContent = acc ? acc.name : '选择账号';
-    atChev.innerHTML = icon('chevronDown');
-}
-
-function openAcctSelector() {
-    if (acctPopOpen) return;
-    acctPopOpen = true;
-    closeParamPopover();
-    var mask = document.createElement('div');
-    mask.className = 'popover-mask';
-    mask.id = 'acctMask';
-    mask.addEventListener('click', closeAcctSelector);
-    var pop = document.createElement('div');
-    pop.className = 'popover acct-pop';
-    pop.id = 'acctPop';
-
-    var title = document.createElement('div');
-    title.className = 'pop-title';
-    title.textContent = '选择账号';
-    pop.appendChild(title);
-
-    if (!accounts.length) {
-        var empty = document.createElement('div');
-        empty.style.cssText = 'padding:14px;font-size:12.5px;color:var(--text-muted);';
-        empty.textContent = '暂无账号，请先到管理后台添加。';
-        pop.appendChild(empty);
-    } else {
-        accounts.forEach(function (a) {
-            var btn = document.createElement('button');
-            btn.className = 'acct-item' + (a.id === config.accountId ? ' active' : '');
-            btn.innerHTML =
-                '<span class="ai-icon">' + icon('server') + '</span>' +
-                '<span class="ai-main">' +
-                '<span class="ai-name">' + escHtml(a.name) +
-                (a.is_default ? '<span class="ai-default">★</span>' : '') + '</span>' +
-                '</span>' +
-                '<span class="ai-right">' +
-                (a.latency_ms != null ? escHtml(a.latency_ms + 'ms') : '') +
-                (a.id === config.accountId ? '<span class="ai-check">' + icon('check') + '</span>' : '') +
-                '</span>';
-            btn.addEventListener('click', function () { selectAccount(a.id); });
-            pop.appendChild(btn);
-        });
+    atRefresh.innerHTML = icon('refresh');
+    if (!fwd) {
+        atName.textContent = '未设置转发账号';
+        atModel.textContent = '';
+        atLatency.textContent = '';
+        if (!messages.length) {
+            renderEmptyState(
+                '还没有转发账号',
+                '请先到 <a href="/admin">管理后台</a> 添加 API 中转站账号，并在「转发 API」卡片中选择转发账号，再回到这里测试。'
+            );
+        }
+        return;
     }
-
-    document.body.appendChild(mask);
-    document.body.appendChild(pop);
-    positionPopover(pop, acctTrigger, 10);
-}
-
-function closeAcctSelector() {
-    if (!acctPopOpen) return;
-    acctPopOpen = false;
-    var mask = $('acctMask'); if (mask) mask.remove();
-    var pop = $('acctPop'); if (pop) pop.remove();
+    atName.textContent = fwd.name;
+    atModel.textContent = fwd.model || '未配置模型';
+    atLatency.textContent = fwd.latency_ms != null ? fwd.latency_ms + 'ms' : '';
+    if (!messages.length) {
+        renderEmptyState(
+            '游乐场',
+            '通过转发账号「' + escHtml(fwd.name) + '」测试对话，模型：<code>' + escHtml(fwd.model || '未配置') + '</code>，点击下方快捷提示或直接输入消息开始。'
+        );
+        renderPrompts();
+    }
 }
 
 function positionPopover(pop, anchor, gap) {
@@ -1057,7 +987,6 @@ function updateParamBadge() {
 function openParamPopover() {
     if (paramPopOpen) return;
     paramPopOpen = true;
-    closeAcctSelector();
     var mask = document.createElement('div');
     mask.className = 'popover-mask';
     mask.id = 'paramMask';
@@ -1366,8 +1295,8 @@ function buildPayload() {
         return { role: m.from, content: latestContent(m) };
     }).filter(function (m) { return m.content; });
     var payload = {
-        account_id: config.accountId,
-        model: config.model,
+        account_id: fwd.id,
+        model: fwd.model,
         messages: msgs,
         stream: true,
     };
@@ -1383,8 +1312,8 @@ function doSend(text) {
     var content = (text != null ? text : messageInput.value).trim();
     if (!content) return;
     if (streaming) return;
-    if (!config.accountId || !accounts.length) { showToast('请先到管理后台添加账号'); return; }
-    if (!config.model) { showToast('该账号未配置模型，请先在管理后台设置'); return; }
+    if (!fwd) { showToast('未设置转发账号，请先到管理后台设置'); return; }
+    if (!fwd.model) { showToast('转发账号未配置模型，请先在管理后台设置'); return; }
 
     var gen = ++generation;
     var t0 = Date.now();
@@ -1782,7 +1711,9 @@ function init() {
     sendBtn = $('sendBtn');
     atName = $('atName');
     atIcon = $('atIcon');
-    atChev = $('atChev');
+    atModel = $('atModel');
+    atLatency = $('atLatency');
+    atRefresh = $('atRefresh');
     acctTrigger = $('acctTrigger');
     paramBtn = $('paramBtn');
     clearBtn = $('clearBtn');
@@ -1793,21 +1724,28 @@ function init() {
     paramBadge = $('paramBadge');
     clearBtn.innerHTML = icon('trash');
     sendBtn.innerHTML = icon('send');
+    atRefresh.innerHTML = icon('refresh');
 
     var savedConfig = readStorage(STORAGE_KEYS.CONFIG, null);
     if (savedConfig && typeof savedConfig === 'object') {
         config = Object.assign(defaultConfig(), savedConfig);
         if (typeof config.stream !== 'boolean') config.stream = true;
     }
+    // 账号与模型始终来自后台「转发账号」，不沿用旧的本地配置
+    delete config.accountId;
+    delete config.model;
     paramEnabled = Object.assign(defaultParamEnabled(), readStorage(STORAGE_KEYS.PARAMS, {}));
     messages = sanitizeMessagesOnLoad(readStorage(STORAGE_KEYS.MESSAGES, []));
 
     updateParamBadge();
-    updateAcctTrigger();
     applyThemeIcon();
 
     $('themeToggle').addEventListener('click', toggleTheme);
-    acctTrigger.addEventListener('click', function () { openAcctSelector(); });
+    atRefresh.addEventListener('click', function () {
+        var btn = atRefresh;
+        btn.classList.add('spinning');
+        loadForwardAccount().then(function () { setTimeout(function () { btn.classList.remove('spinning'); }, 400); });
+    });
     paramBtn.addEventListener('click', function () { openParamPopover(); });
     clearBtn.addEventListener('click', function () { confirmClear(); });
     sendBtn.addEventListener('click', function () {
@@ -1835,20 +1773,16 @@ function init() {
         }
     });
     window.addEventListener('resize', function () {
-        if (acctPopOpen) positionPopover($('acctPop'), acctTrigger, 10);
         if (paramPopOpen) positionPopover($('paramPop'), paramBtn, 10);
     });
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') {
-            if (acctPopOpen) closeAcctSelector();
-            if (paramPopOpen) closeParamPopover();
-        }
+        if (e.key === 'Escape' && paramPopOpen) closeParamPopover();
     });
 
-    if (!messages.length) renderEmptyState('游乐场', '选择账号后即可开始测试对话，模型与参数会随请求发送。');
+    if (!messages.length) renderEmptyState('游乐场', '正在加载转发账号…');
     else renderMessages();
 
-    initAccounts();
+    loadForwardAccount();
     messageInput.focus();
 }
 
