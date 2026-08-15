@@ -8,14 +8,13 @@ import os
 import json
 import time
 import uuid
-import base64
 import hashlib
 import sqlite3
 import threading
 import requests
 from urllib.parse import quote
-from datetime import datetime, timedelta
-from flask import Flask, render_template, request, Response, stream_with_context
+from datetime import datetime
+from flask import Flask, render_template, request, Response, stream_with_context, redirect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
@@ -147,17 +146,6 @@ _accounts_dll = """
     );
 """
 
-_conversations_dll = """
-    CREATE TABLE IF NOT EXISTS conversations (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL DEFAULT '新对话',
-        messages TEXT NOT NULL DEFAULT '[]',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-    );
-"""
-
-
 _POOL_NEW_COLUMNS_DDL = [
     "ALTER TABLE pool_accounts ADD COLUMN selected_group TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_id TEXT",
@@ -225,7 +213,7 @@ def _init_db():
     conn = _get_db()
     try:
         try:
-            conn.executescript(_accounts_dll + _conversations_dll)
+            conn.executescript(_accounts_dll)
         except Exception:
             pass
         _ensure_pool_table(conn)
@@ -375,11 +363,18 @@ def normalize_api_url(url: str) -> str:
 
 @app.route("/")
 def index():
-    """渲染主页面"""
+    """首页：原对话页已移除，跳转到游乐场"""
+    return redirect("/playground")
+
+
+@app.route("/playground")
+@app.route("/playground/")
+def playground():
+    """new-api 风格游乐场：选账号/模型 + 参数面板 + 流式对话"""
     from flask import session as flask_session
     # 前端用户自动标记为已登录（仅限对话 API，不能访问 /admin）
     flask_session["user_logged_in"] = True
-    return render_template("index.html")
+    return render_template("playground.html")
 
 
 # ================================================================
@@ -484,6 +479,7 @@ def api_accounts_list():
             "model": acc.get("model", ""),
             "latency_ms": acc.get("latency_ms", None),
             "last_speed_test": acc.get("last_speed_test", None),
+            "is_default": acc.get("is_default", False),
             "api_key_preview": acc.get("api_key", "")[:8] + "..." if acc.get("api_key") else "",
         }
         safe_list.append(safe)
@@ -873,218 +869,7 @@ def api_models():
 
 
 # ================================================================
-#  文件上传
-# ================================================================
-
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-ALLOWED_EXTENSIONS = {
-    "jpg", "jpeg", "png", "gif", "webp",  # 图片
-    "txt", "py", "js", "ts", "jsx", "tsx", "html", "css", "json", "xml", "yaml", "yml", "md", "csv",  # 文本
-    "pdf", "doc", "docx",  # 文档
-}
-
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-
-
-def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
-
-
-@app.route("/api/upload", methods=["POST"])
-def api_upload():
-    """
-    上传文件接口
-    返回文件类型、内容（base64 图片或纯文本），供前端构造消息
-    """
-    if "file" not in request.files:
-        return {"ok": False, "message": "未选择文件"}
-
-    file = request.files["file"]
-    if file.filename == "" or not allowed_file(file.filename):
-        return {"ok": False, "message": "不支持的文件类型"}
-
-    # 检查文件大小
-    file.seek(0, os.SEEK_END)
-    size = file.tell()
-    file.seek(0)
-    if size > MAX_FILE_SIZE:
-        return {"ok": False, "message": "文件超过 20MB 限制"}
-
-    ext = file.filename.rsplit(".", 1)[1].lower()
-    file_bytes = file.read()
-
-    # 图片类型：返回 base64
-    if ext in ("jpg", "jpeg", "png", "gif", "webp"):
-        b64 = base64.b64encode(file_bytes).decode("utf-8")
-        mime = f"image/{'jpeg' if ext == 'jpg' else ext}"
-        return {
-            "ok": True,
-            "type": "image",
-            "filename": file.filename,
-            "mime": mime,
-            "data": b64,
-        }
-
-    # 文本类型：返回纯文本内容
-    try:
-        text = file_bytes.decode("utf-8")
-        return {
-            "ok": True,
-            "type": "text",
-            "filename": file.filename,
-            "data": text[:50000],  # 限制 50000 字符
-        }
-    except UnicodeDecodeError:
-        return {"ok": False, "message": "无法解析文件内容，请使用纯文本文件"}
-
-
-# ================================================================
-#  对话管理（SQLite 存储，每日自动清理旧对话）
-# ================================================================
-
-
-def _load_conversations() -> list:
-    """从数据库加载所有对话"""
-    conn = _get_db()
-    try:
-        rows = conn.execute("SELECT * FROM conversations ORDER BY updated_at DESC").fetchall()
-        result = []
-        for row in rows:
-            result.append({
-                "id": row["id"],
-                "title": row["title"],
-                "messages": json.loads(row["messages"]),
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            })
-        return result
-    finally:
-        conn.close()
-
-
-def _save_conversations(convs: list):
-    """全量保存对话列表到数据库"""
-    conn = _get_db()
-    try:
-        conn.execute("DELETE FROM conversations")
-        for c in convs:
-            conn.execute(
-                "INSERT INTO conversations (id, title, messages, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-                (c["id"], c.get("title", "新对话"), json.dumps(c.get("messages", [])), c.get("created_at", ""), c.get("updated_at", ""))
-            )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def _cleanup_old_conversations():
-    """删除超过 30 天的对话"""
-    now = datetime.now()
-    cutoff = (now - timedelta(days=30)).isoformat()
-    conn = _get_db()
-    try:
-        conn.execute("DELETE FROM conversations WHERE updated_at < ?", (cutoff,))
-        conn.commit()
-    finally:
-        conn.close()
-
-
-@app.route("/api/conversations", methods=["GET"])
-def api_conversations_list():
-    """获取所有对话列表（不含消息内容，仅元信息）"""
-    if not _require_login():
-        return {"ok": False, "conversations": [], "message": "请先登录"}, 401
-    _cleanup_old_conversations()
-    convs = _load_conversations()
-    # 按更新时间倒序
-    convs.sort(key=lambda c: c.get("updated_at", ""), reverse=True)
-    summary = [{"id": c["id"], "title": c.get("title", "新对话"), "created_at": c.get("created_at"), "updated_at": c.get("updated_at")} for c in convs]
-    return {"ok": True, "conversations": summary}
-
-
-@app.route("/api/conversations", methods=["POST"])
-def api_conversations_create():
-    """创建新对话"""
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
-    data = request.get_json(force=True) or {}
-    title = data.get("title", "新对话")
-    now = datetime.now().isoformat()
-    conv = {
-        "id": str(uuid.uuid4()),
-        "title": title,
-        "messages": [],
-        "created_at": now,
-        "updated_at": now,
-    }
-    convs = _load_conversations()
-    convs.append(conv)
-    _save_conversations(convs)
-    return {"ok": True, "conversation": conv}
-
-
-@app.route("/api/conversations/<conv_id>", methods=["GET"])
-def api_conversations_get(conv_id):
-    """获取单个对话的完整消息"""
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
-    convs = _load_conversations()
-    for c in convs:
-        if c["id"] == conv_id:
-            return {"ok": True, "conversation": c}
-    return {"ok": False, "message": "对话不存在"}
-
-
-@app.route("/api/conversations/<conv_id>", methods=["DELETE"])
-def api_conversations_delete(conv_id):
-    """删除指定对话"""
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
-    convs = _load_conversations()
-    new_list = [c for c in convs if c["id"] != conv_id]
-    if len(new_list) == len(convs):
-        return {"ok": False, "message": "对话不存在"}
-    _save_conversations(new_list)
-    return {"ok": True, "message": "对话已删除"}
-
-
-@app.route("/api/conversations", methods=["DELETE"])
-def api_conversations_delete_all():
-    """清空全部对话"""
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
-    convs = _load_conversations()
-    count = len(convs)
-    _save_conversations([])
-    return {"ok": True, "message": "所有对话已清空", "deleted_count": count}
-
-
-@app.route("/api/conversations/<conv_id>/messages", methods=["PUT"])
-def api_conversations_save_messages(conv_id):
-    """保存对话的消息列表"""
-    if not _require_login():
-        return {"ok": False, "message": "请先登录"}, 401
-    data = request.get_json(force=True)
-    messages = data.get("messages", [])
-    convs = _load_conversations()
-    for c in convs:
-        if c["id"] == conv_id:
-            c["messages"] = messages
-            c["updated_at"] = datetime.now().isoformat()
-            # 自动生成标题（取第一条用户消息的前 30 个字符）
-            for m in messages:
-                if m.get("role") == "user" and isinstance(m.get("content"), str):
-                    c["title"] = m["content"][:30]
-                    break
-            _save_conversations(convs)
-            return {"ok": True, "message": "已保存"}
-    return {"ok": False, "message": "对话不存在"}
-
-
-# ================================================================
-#  流式对话接口
+#  流式对话接口（游乐场 / 测试用）
 # ================================================================
 
 @app.route("/chat", methods=["POST"])
@@ -1118,7 +903,8 @@ def chat():
     if account:
         api_url = normalize_api_url(account["api_url"])
         api_key = (account["api_key"] or "").strip()
-        model = account["model"]
+        # 允许前端指定模型（游乐场可选列表中的任意模型），缺省用账号配置的模型
+        model = (data.get("model") or "").strip() or account["model"]
     else:
         api_url = normalize_api_url(data.get("api_url", ""))
         api_key = (data.get("api_key") or "").strip()
@@ -1140,12 +926,17 @@ def chat():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    # 游乐场参数面板：只透传前端显式给出的参数（new-api 语义：未启用的参数不发送）
     payload = {
         "model": model,
         "messages": messages,
         "stream": True,
-        "temperature": 0.7,
     }
+    for key in ("temperature", "top_p", "max_tokens", "frequency_penalty", "presence_penalty", "seed"):
+        if key in data and data[key] is not None:
+            payload[key] = data[key]
+    if "temperature" not in payload:
+        payload["temperature"] = 0.7
 
     try:
         upstream_response = requests.post(
@@ -3717,7 +3508,6 @@ def api_pool_refresh_all():
 def _migrate_old_data():
     """从旧 JSON 文件迁移数据到数据库（兼容升级）"""
     old_accounts_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "accounts.json")
-    old_conversations_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conversations.json")
 
     # 迁移账号
     if os.path.exists(old_accounts_file):
@@ -3732,20 +3522,6 @@ def _migrate_old_data():
             os.rename(old_accounts_file, old_accounts_file + ".bak")
         except Exception as e:
             print(f"迁移 accounts.json 失败: {e}")
-
-    # 迁移对话
-    if os.path.exists(old_conversations_file):
-        try:
-            with open(old_conversations_file, "r", encoding="utf-8") as f:
-                old_convs = json.load(f)
-            if isinstance(old_convs, list) and old_convs:
-                existing = _load_conversations()
-                if not existing:
-                    _save_conversations(old_convs)
-                    print(f"已迁移 {len(old_convs)} 个对话从 conversations.json 到数据库")
-            os.rename(old_conversations_file, old_conversations_file + ".bak")
-        except Exception as e:
-            print(f"迁移 conversations.json 失败: {e}")
 
 
 # 在模块加载时初始化数据库（支持 gunicorn）
