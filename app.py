@@ -12,12 +12,30 @@ import hashlib
 import sqlite3
 import threading
 import requests
+from requests.adapters import HTTPAdapter
 from urllib.parse import quote
 from datetime import datetime
 from flask import Flask, render_template, request, Response, stream_with_context, redirect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+
+# 上游连接池：每个工作线程复用 TCP/TLS 连接，避免每次 API 调用重新握手。
+# 不配置自动重试，避免 POST 请求被重复提交；失败直接返回给客户端。
+_upstream_local = threading.local()
+
+
+def _get_upstream_session():
+    session = getattr(_upstream_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=32, pool_maxsize=64, max_retries=0, pool_block=False)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        _upstream_local.session = session
+    return session
+
+
 # 禁用模板缓存，开发阶段修改 templates 立刻生效
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 try:
@@ -1147,8 +1165,8 @@ def proxy_chat_completions():
         # - 连接建立 30s 足够
         # - 单次读 chunk 600s（流式时相邻 chunk 之间的间隔通常很小，但长输出
         #   时上游可能间隔较久才推下一块）
-        upstream = requests.post(
-            api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
+        upstream = _get_upstream_session().post(
+            api_url, headers=headers, json=payload, stream=stream, timeout=(8, 600),
         )
         upstream.raise_for_status()
         # 强制 UTF-8 编码，防止上游 SSE 未指定 charset 导致中文乱码
@@ -1181,7 +1199,7 @@ def proxy_chat_completions():
             buffer = b""
             chunk_count = 0
             byte_count = 0
-            for chunk in upstream.iter_content(chunk_size=None):
+            for chunk in upstream.iter_content(chunk_size=1024):
                 if not chunk:
                     continue
                 chunk_count += 1
@@ -1423,7 +1441,7 @@ def _responses_stream_generator(upstream, resp_id, created_at, effective_model):
     usage = None
     buffer = b""
 
-    for chunk in upstream.iter_content(chunk_size=None):
+    for chunk in upstream.iter_content(chunk_size=1024):
         if not chunk:
             continue
         buffer += chunk
@@ -1673,8 +1691,8 @@ def proxy_responses():
     }
 
     try:
-        upstream = requests.post(
-            api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
+        upstream = _get_upstream_session().post(
+            api_url, headers=headers, json=payload, stream=stream, timeout=(8, 600),
         )
         upstream.raise_for_status()
         upstream.encoding = "utf-8"
