@@ -353,6 +353,45 @@ def _find_account(account_id: str) -> dict | None:
 #  URL 规范化
 # ================================================================
 
+def _upstream_models_url(chat_url: str) -> str:
+    """从聊天接口地址推导同一上游的 models 地址。"""
+    url = chat_url.rstrip("/")
+    if url.endswith("/chat/completions"):
+        return url[:-len("/chat/completions")] + "/models"
+    return url + "/models"
+
+
+def _resolve_effective_model(account: dict, requested_model: str = "") -> str:
+    """解析最终上游模型：请求模型 > 后台账号模型 > 上游 models 第一个。"""
+    requested_model = (requested_model or "").strip()
+    if requested_model and requested_model != "auto":
+        return requested_model
+
+    configured = (account.get("model") or "").strip()
+    if configured:
+        return configured.split(",")[0].strip()
+
+    api_url = normalize_api_url(account.get("api_url", ""))
+    api_key = (account.get("api_key") or "").strip()
+    if not api_url or not api_key:
+        return ""
+    try:
+        resp = _get_upstream_session().get(
+            _upstream_models_url(api_url),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            timeout=(8, 15),
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        items = body.get("data", []) if isinstance(body, dict) else []
+        for item in items:
+            if isinstance(item, dict) and str(item.get("id", "")).strip():
+                return str(item["id"]).strip()
+    except Exception as exc:
+        print(f"[model-resolve] upstream models lookup failed: {exc}", flush=True)
+    return ""
+
+
 def normalize_api_url(url: str) -> str:
     """
     自动补全 API URL 路径
@@ -1116,19 +1155,15 @@ def proxy_models():
     if not account:
         return {"object": "list", "data": []}
 
-    model = (account.get("model") or "").strip()
+    model = _resolve_effective_model(account, account.get("model", ""))
     models = []
     if model:
-        # 账号后台通常配置单个模型；兼容历史上逗号分隔的配置写法。
-        for model_id in model.replace("，", ",").split(","):
-            model_id = model_id.strip()
-            if model_id:
-                models.append({
-                    "id": model_id,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "proxy",
-                })
+        models.append({
+            "id": model,
+            "object": "model",
+            "created": 0,
+            "owned_by": "proxy",
+        })
     return {"object": "list", "data": models}
 
 
@@ -1173,7 +1208,9 @@ def proxy_chat_completions():
     api_key = (account["api_key"] or "").strip()
     # OpenAI/Sub2API 语义：显式模型名原样转发，供上游渠道或模型映射处理。
     # 只有 model=auto 或请求缺少 model 时，才回退到账号后台配置模型。
-    effective_model = account["model"] if (is_auto or not model) else model
+    effective_model = _resolve_effective_model(account, model)
+    if not effective_model:
+        return {"error": {"message": "Model name not specified, model name cannot be empty", "type": "invalid_request_error"}}, 400
     provider_info = _make_provider_info(account)
     provider_info["effective_model"] = effective_model
 
@@ -1186,9 +1223,7 @@ def proxy_chat_completions():
     _reserved = {"account", "model", "messages", "stream", "max_tokens", "max_completion_tokens"}
     payload = {k: v for k, v in data.items() if k not in _reserved}
     # 新版 OpenAI 客户端可能发送 max_completion_tokens；多数兼容上游仍使用 max_tokens。
-    max_tokens = data.get("max_completion_tokens") or data.get("max_tokens")
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
+    payload["model"] = effective_model
     payload["messages"] = messages
     payload["stream"] = stream
 
@@ -1662,6 +1697,10 @@ def proxy_responses():
     if not account:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}}, 503
 
+    effective_model = _resolve_effective_model(account, model)
+    if not effective_model:
+        return {"error": {"message": "Model name not specified, model name cannot be empty", "type": "invalid_request_error"}}, 400
+
     chat_url = normalize_api_url(account["api_url"])
     responses_url = chat_url
     if chat_url.endswith("/chat/completions"):
@@ -1670,8 +1709,7 @@ def proxy_responses():
     # 只有内部 account 字段不转发；Responses 请求体其余字段保持 OpenAI 原格式。
     payload = dict(data)
     payload.pop("account", None)
-    if not model or model == "auto":
-        payload["model"] = account.get("model", "")
+    payload["model"] = effective_model
 
     headers = {
         "Authorization": "Bearer " + (account["api_key"] or "").strip(),
