@@ -1133,6 +1133,7 @@ def proxy_models():
 
 
 @app.route("/v1/chat/completions", methods=["POST"])
+@app.route("/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
     OpenAI 兼容的 API 转发端点
@@ -1170,9 +1171,9 @@ def proxy_chat_completions():
 
     api_url = normalize_api_url(account["api_url"])
     api_key = (account["api_key"] or "").strip()
-    # 没有显式指定账号时，统一使用后台转发账号配置的模型。
-    # 这样客户端传入的占位模型名（如 gpt-4o / claude-3.5）不会导致上游模型不存在。
-    effective_model = account["model"] if (is_auto or not account_name) else (model or account["model"])
+    # OpenAI/Sub2API 语义：显式模型名原样转发，供上游渠道或模型映射处理。
+    # 只有 model=auto 或请求缺少 model 时，才回退到账号后台配置模型。
+    effective_model = account["model"] if (is_auto or not model) else model
     provider_info = _make_provider_info(account)
     provider_info["effective_model"] = effective_model
 
@@ -1672,7 +1673,8 @@ def proxy_responses():
 
     api_url = normalize_api_url(account["api_url"])
     api_key = (account["api_key"] or "").strip()
-    effective_model = account["model"] if (is_auto or not account_name) else (model or account["model"])
+    # Responses 也遵循 OpenAI/Sub2API 模型语义：显式模型名原样保留，auto/缺省才回退后台模型。
+    effective_model = account["model"] if (is_auto or not model) else model
 
     messages = _responses_input_to_messages(data.get("instructions"), data.get("input"))
     if not messages:

@@ -125,8 +125,12 @@ gunicorn app:app --timeout 600
 #### 端点
 
 ```
+GET  https://你的域名/v1/models             # OpenAI 兼容模型列表
+GET  https://你的域名/models                 # 兼容别名
 POST https://你的域名/v1/chat/completions   # OpenAI 兼容 Chat Completions
+POST https://你的域名/chat/completions       # 兼容别名
 POST https://你的域名/v1/responses          # OpenAI Responses API（Codex CLI 等）
+POST https://你的域名/responses              # 兼容别名
 ```
 
 #### 认证
@@ -141,7 +145,7 @@ Authorization: Bearer 你的PROXY_API_KEY
 
 **方式一：自动选择（推荐）**
 
-不传额外参数，系统使用后台「转发账号」下拉中选择的默认账号（可在后台一键切换），无默认则选最快的可用账号。
+不传 `account` 时，系统使用后台「转发账号」下拉中选择的默认账号（无默认则选最快的可用账号）。客户端传入的 `model` 会按 OpenAI/Sub2API 语义保留并转发，适合后台配置了模型映射或多个上游模型的场景；如果 `model` 缺省或设为 `auto`，才使用该账号后台配置的模型。
 
 ```bash
 curl https://你的域名/v1/chat/completions \
@@ -171,7 +175,7 @@ curl https://你的域名/v1/chat/completions \
 
 **方式三：model=auto（兼容 AI 工具）**
 
-将 `model` 设为 `auto`，系统自动选择最优账号和模型。适合在第三方 AI 工具中使用。
+将 `model` 设为 `auto`，系统自动选择最优账号并使用该账号后台配置的模型。适合客户端必须传 model、但希望由后台决定实际模型的场景。
 
 ```bash
 curl https://你的域名/v1/chat/completions \
