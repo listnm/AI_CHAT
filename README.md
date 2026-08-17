@@ -209,6 +209,10 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 2. **API Key**：你的 `PROXY_API_KEY`
 3. **模型**：填写 `auto`，或具体模型名如 `gpt-4o`
 
+> 兼容 OpenAI 的客户端通常会自动请求 `GET /v1/models`。本应用只返回当前后台「转发 API」卡片所选账号的模型，不会暴露其他账号。
+>
+> **地址填写注意**：客户端的 Base URL 请填写到 `/v1`，不要填写完整的 `/v1/chat/completions`。如果客户端要求填写完整接口地址，则使用 `https://你的域名/v1/chat/completions`；Responses API 客户端使用 `https://你的域名/v1/responses`。
+
 支持流式（`stream: true`）和非流式响应，中文编码正常无乱码。
 
 #### 响应格式

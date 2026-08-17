@@ -1103,6 +1103,35 @@ def _ascii_header(value: str) -> str:
         return quote(value, safe="")
 
 
+@app.route("/v1/models", methods=["GET"])
+@app.route("/models", methods=["GET"])
+def proxy_models():
+    """OpenAI 兼容模型列表：只公开当前默认转发账号配置的模型。"""
+    auth = request.headers.get("Authorization", "")
+    expected = "Bearer " + PROXY_API_KEY
+    if auth != expected:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}}, 401
+
+    account = _select_account("")
+    if not account:
+        return {"object": "list", "data": []}
+
+    model = (account.get("model") or "").strip()
+    models = []
+    if model:
+        # 账号后台通常配置单个模型；兼容历史上逗号分隔的配置写法。
+        for model_id in model.replace("，", ",").split(","):
+            model_id = model_id.strip()
+            if model_id:
+                models.append({
+                    "id": model_id,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "proxy",
+                })
+    return {"object": "list", "data": models}
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
@@ -1141,8 +1170,9 @@ def proxy_chat_completions():
 
     api_url = normalize_api_url(account["api_url"])
     api_key = (account["api_key"] or "").strip()
-    # model=auto 时使用账号配置的模型名，否则用请求的 model
-    effective_model = account["model"] if is_auto else (model or account["model"])
+    # 没有显式指定账号时，统一使用后台转发账号配置的模型。
+    # 这样客户端传入的占位模型名（如 gpt-4o / claude-3.5）不会导致上游模型不存在。
+    effective_model = account["model"] if (is_auto or not account_name) else (model or account["model"])
     provider_info = _make_provider_info(account)
     provider_info["effective_model"] = effective_model
 
@@ -1150,13 +1180,14 @@ def proxy_chat_completions():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
-    # 透传客户端请求的参数（top_p/tools/response_format/frequency_penalty 等），
-    # 但强制丢弃 max_tokens。原因：Trae/Cursor 等客户端默认会传 max_tokens=4096
-    # 之类的小值，透传到上游后回复被截断在约 2000 中文字。丢弃后由上游模型按
-    # 自身上限输出（如 GPT-4o 16K、Claude 8K）。
-    _reserved = {"account", "model", "messages", "stream", "max_tokens"}
+    # 透传客户端请求的参数（top_p/tools/response_format/frequency_penalty 等）。
+    # 同时兼容 max_completion_tokens：统一转换为上游常见的 max_tokens 字段。
+    _reserved = {"account", "model", "messages", "stream", "max_tokens", "max_completion_tokens"}
     payload = {k: v for k, v in data.items() if k not in _reserved}
-    payload["model"] = effective_model
+    # 新版 OpenAI 客户端可能发送 max_completion_tokens；多数兼容上游仍使用 max_tokens。
+    max_tokens = data.get("max_completion_tokens") or data.get("max_tokens")
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     payload["messages"] = messages
     payload["stream"] = stream
 
@@ -1641,7 +1672,7 @@ def proxy_responses():
 
     api_url = normalize_api_url(account["api_url"])
     api_key = (account["api_key"] or "").strip()
-    effective_model = account["model"] if is_auto else (model or account["model"])
+    effective_model = account["model"] if (is_auto or not account_name) else (model or account["model"])
 
     messages = _responses_input_to_messages(data.get("instructions"), data.get("input"))
     if not messages:
