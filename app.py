@@ -1649,6 +1649,84 @@ def _responses_stream_generator(upstream, resp_id, created_at, effective_model):
 @app.route("/v1/responses", methods=["POST"])
 @app.route("/responses", methods=["POST"])
 def proxy_responses():
+    """标准 OpenAI Responses API 直通转发，不转换为 Chat Completions。"""
+    auth = request.headers.get("Authorization", "")
+    expected = "Bearer " + PROXY_API_KEY
+    if auth != expected:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}}, 401
+
+    data = request.get_json(force=True) or {}
+    account_name = data.get("account", "")
+    model = data.get("model", "")
+    account = _select_account(account_name)
+    if not account:
+        return {"error": {"message": "No available accounts in pool", "type": "server_error"}}, 503
+
+    chat_url = normalize_api_url(account["api_url"])
+    responses_url = chat_url
+    if chat_url.endswith("/chat/completions"):
+        responses_url = chat_url[:-len("/chat/completions")] + "/responses"
+
+    # 只有内部 account 字段不转发；Responses 请求体其余字段保持 OpenAI 原格式。
+    payload = dict(data)
+    payload.pop("account", None)
+    if not model or model == "auto":
+        payload["model"] = account.get("model", "")
+
+    headers = {
+        "Authorization": "Bearer " + (account["api_key"] or "").strip(),
+        "Content-Type": request.headers.get("Content-Type", "application/json"),
+    }
+    stream = bool(payload.get("stream", False))
+    try:
+        upstream = _get_upstream_session().post(
+            responses_url, headers=headers, json=payload, stream=stream, timeout=(8, 600),
+        )
+        upstream.raise_for_status()
+        upstream.encoding = "utf-8"
+    except requests.exceptions.Timeout:
+        return {"error": {"message": "Upstream API timeout", "type": "timeout"}}, 504
+    except requests.exceptions.HTTPError as e:
+        status = e.response.status_code
+        try:
+            body = e.response.json()
+            return body, status
+        except Exception:
+            return {"error": {"message": e.response.text[:1000], "type": "upstream_error"}}, status
+    except requests.exceptions.RequestException as e:
+        return {"error": {"message": str(e), "type": "connection_error"}}, 502
+
+    provider_headers = {
+        "X-Provider-Name": _ascii_header(account.get("name", "")),
+        "X-Provider-Model": _ascii_header(payload.get("model", "")),
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    }
+    if stream:
+        content_type = upstream.headers.get("Content-Type", "text/event-stream; charset=utf-8")
+        def generate_responses():
+            try:
+                for chunk in upstream.iter_content(chunk_size=1024):
+                    if chunk:
+                        yield chunk
+            finally:
+                upstream.close()
+        return Response(
+            stream_with_context(generate_responses()),
+            status=upstream.status_code,
+            content_type=content_type,
+            headers={**provider_headers, "Connection": "keep-alive"},
+        )
+
+    try:
+        body = upstream.content
+        content_type = upstream.headers.get("Content-Type", "application/json; charset=utf-8")
+        return Response(body, status=upstream.status_code, content_type=content_type, headers=provider_headers)
+    finally:
+        upstream.close()
+
+
+def proxy_responses_legacy():
     """
     OpenAI Responses API 兼容端点（Codex CLI 等客户端默认走这里）。
     请求与响应的协议转换：

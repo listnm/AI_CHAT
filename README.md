@@ -189,7 +189,7 @@ curl https://你的域名/v1/chat/completions \
 
 #### 方式四：Responses API（Codex CLI 等）
 
-`/v1/responses` 端点兼容 OpenAI Responses API，供 Codex CLI 等默认走该协议的客户端使用。内部会把请求转成 Chat Completions 转发到上游中转站，再把响应（含流式事件）转回 Responses API 格式，因此任何 OpenAI 兼容上游都能用。
+`/v1/responses` 端点按标准 OpenAI Responses API 直通到后台转发账号对应的上游 `/v1/responses`，请求体、非流式响应和流式 SSE 均不转换为 Chat Completions 格式。客户端可直接使用 Responses API 的 `input`、`instructions`、`tools`、`stream` 等字段。
 
 **Codex CLI 配置示例（`~/.codex/config.toml`）：**
 
