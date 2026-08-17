@@ -216,6 +216,8 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 > 兼容 OpenAI 的客户端通常会自动请求 `GET /v1/models`。本应用只返回当前后台「转发 API」卡片所选账号的模型，不会暴露其他账号。
 >
 > **地址填写注意**：客户端的 Base URL 请填写到 `/v1`，不要填写完整的 `/v1/chat/completions`。如果客户端要求填写完整接口地址，则使用 `https://你的域名/v1/chat/completions`；Responses API 客户端使用 `https://你的域名/v1/responses`。
+>
+> **WorkBuddy / Anthropic 客户端**：使用同一个 Base URL `https://你的域名/v1`，API Key 填 `PROXY_API_KEY`。客户端请求 `/v1/messages` 时，服务端会将 Anthropic Messages 请求转换为后台 OpenAI 兼容上游，并返回 Anthropic 标准响应与 SSE；不要把 Anthropic 请求发到 `/v1/chat/completions`。
 
 支持流式（`stream: true`）和非流式响应，中文编码正常无乱码。
 

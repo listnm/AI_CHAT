@@ -1142,6 +1142,216 @@ def _ascii_header(value: str) -> str:
         return quote(value, safe="")
 
 
+def _anthropic_auth_ok():
+    """兼容 Anthropic x-api-key 与 OpenAI Bearer 认证。"""
+    key = (request.headers.get("x-api-key") or "").strip()
+    bearer = request.headers.get("Authorization", "")
+    return key == PROXY_API_KEY or bearer == "Bearer " + PROXY_API_KEY
+
+
+def _anthropic_text(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for block in value:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+            elif block.get("type") == "image" and block.get("source", {}).get("type") == "base64":
+                parts.append("[image]")
+        return "".join(parts)
+    return "" if value is None else str(value)
+
+
+def _anthropic_content_to_openai(content):
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return _anthropic_text(content)
+    parts = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        typ = block.get("type")
+        if typ == "text":
+            parts.append({"type": "text", "text": block.get("text", "")})
+        elif typ == "image":
+            source = block.get("source") or {}
+            if source.get("type") == "base64" and source.get("media_type") and source.get("data"):
+                parts.append({"type": "image_url", "image_url": {"url": "data:%s;base64,%s" % (source["media_type"], source["data"])}})
+            elif source.get("type") == "url" and source.get("url"):
+                parts.append({"type": "image_url", "image_url": {"url": source["url"]}})
+        elif typ == "tool_result":
+            # tool_result 由消息转换器单独处理
+            continue
+    return parts or ""
+
+
+def _anthropic_messages_to_openai(data):
+    out = []
+    system = data.get("system")
+    if system:
+        out.append({"role": "system", "content": _anthropic_text(system)})
+    for message in data.get("messages") or []:
+        if not isinstance(message, dict):
+            continue
+        role = message.get("role", "user")
+        content = message.get("content", "")
+        blocks = content if isinstance(content, list) else []
+        tool_uses = [b for b in blocks if isinstance(b, dict) and b.get("type") == "tool_use"]
+        tool_results = [b for b in blocks if isinstance(b, dict) and b.get("type") == "tool_result"]
+        text_content = _anthropic_content_to_openai(content)
+        if role == "assistant" and tool_uses:
+            calls = []
+            for b in tool_uses:
+                calls.append({"id": b.get("id", "call_" + uuid.uuid4().hex[:16]), "type": "function", "function": {"name": b.get("name", ""), "arguments": json.dumps(b.get("input") or {}, ensure_ascii=False)}})
+            msg = {"role": "assistant", "content": text_content if text_content else None, "tool_calls": calls}
+            out.append(msg)
+        elif tool_results:
+            for b in tool_results:
+                out.append({"role": "tool", "tool_call_id": b.get("tool_use_id", ""), "content": _anthropic_text(b.get("content", ""))})
+        else:
+            out.append({"role": role, "content": text_content})
+    return out
+
+
+def _anthropic_tools_to_openai(tools):
+    out = []
+    for tool in tools or []:
+        if not isinstance(tool, dict) or not tool.get("name"):
+            continue
+        out.append({"type": "function", "function": {"name": tool["name"], "description": tool.get("description", ""), "parameters": tool.get("input_schema") or {"type": "object", "properties": {}}}})
+    return out or None
+
+
+def _anthropic_tool_choice_to_openai(choice):
+    if not isinstance(choice, dict):
+        return None
+    typ = choice.get("type")
+    if typ == "auto":
+        return "auto"
+    if typ == "any":
+        return "required"
+    if typ == "tool" and choice.get("name"):
+        return {"type": "function", "function": {"name": choice["name"]}}
+    return None
+
+
+def _anthropic_message_response(chat, model):
+    choice = (chat.get("choices") or [{}])[0]
+    msg = choice.get("message") or {}
+    content = []
+    if msg.get("content"):
+        content.append({"type": "text", "text": str(msg["content"])})
+    for call in msg.get("tool_calls") or []:
+        fn = call.get("function") or {}
+        try:
+            inp = json.loads(fn.get("arguments", "{}"))
+        except Exception:
+            inp = {}
+        content.append({"type": "tool_use", "id": call.get("id", "call_" + uuid.uuid4().hex[:16]), "name": fn.get("name", ""), "input": inp})
+    finish = choice.get("finish_reason")
+    stop_reason = "tool_use" if msg.get("tool_calls") else ("max_tokens" if finish == "length" else "end_turn")
+    usage = chat.get("usage") or {}
+    return {"id": chat.get("id", "msg_" + uuid.uuid4().hex[:24]), "type": "message", "role": "assistant", "model": model, "content": content, "stop_reason": stop_reason, "stop_sequence": None, "usage": {"input_tokens": usage.get("prompt_tokens", 0), "output_tokens": usage.get("completion_tokens", 0)}}
+
+
+def _anthropic_error(message, status=400, error_type="invalid_request_error"):
+    return {"type": "error", "error": {"type": error_type, "message": message}}, status
+
+
+@app.route("/v1/messages/count_tokens", methods=["POST"])
+@app.route("/messages/count_tokens", methods=["POST"])
+def anthropic_count_tokens():
+    if not _anthropic_auth_ok():
+        return _anthropic_error("Invalid API Key", 401, "authentication_error")
+    data = request.get_json(force=True) or {}
+    text = _anthropic_text(data.get("system", "")) + " " + " ".join(_anthropic_text(m.get("content", "")) for m in data.get("messages") or [] if isinstance(m, dict))
+    text += " " + " ".join(str(t.get("name", "")) + " " + str(t.get("description", "")) for t in data.get("tools") or [] if isinstance(t, dict))
+    return {"input_tokens": max(1, (len(text) + 3) // 4)}
+
+
+@app.route("/v1/messages", methods=["POST"])
+@app.route("/messages", methods=["POST"])
+def anthropic_messages():
+    if not _anthropic_auth_ok():
+        return _anthropic_error("Invalid API Key", 401, "authentication_error")
+    data = request.get_json(force=True) or {}
+    account = _select_account("")
+    if not account:
+        return _anthropic_error("No available accounts in pool", 503, "api_error")
+    model = _resolve_effective_model(account, data.get("model", ""))
+    if not model:
+        return _anthropic_error("model is required", 400)
+    messages = _anthropic_messages_to_openai(data)
+    if not messages:
+        return _anthropic_error("messages is required", 400)
+    payload = {"model": model, "messages": messages, "stream": bool(data.get("stream", False)), "max_tokens": data.get("max_tokens", 4096)}
+    for key in ("temperature", "top_p", "stop_sequences"):
+        if key in data:
+            payload["stop" if key == "stop_sequences" else key] = data[key]
+    tools = _anthropic_tools_to_openai(data.get("tools"))
+    if tools:
+        payload["tools"] = tools
+    choice = _anthropic_tool_choice_to_openai(data.get("tool_choice"))
+    if choice is not None:
+        payload["tool_choice"] = choice
+    api_url = normalize_api_url(account["api_url"])
+    headers = {"Authorization": "Bearer " + (account["api_key"] or "").strip(), "Content-Type": "application/json"}
+    try:
+        upstream = _get_upstream_session().post(api_url, headers=headers, json=payload, stream=payload["stream"], timeout=(8, 600))
+        upstream.raise_for_status()
+        upstream.encoding = "utf-8"
+    except requests.exceptions.HTTPError as e:
+        try:
+            return _anthropic_error(e.response.json().get("error", {}).get("message", str(e)), e.response.status_code, "api_error")
+        except Exception:
+            return _anthropic_error(str(e), e.response.status_code, "api_error")
+    except requests.exceptions.RequestException as e:
+        return _anthropic_error(str(e), 502, "api_error")
+    if not payload["stream"]:
+        try:
+            return _anthropic_message_response(upstream.json(), model)
+        finally:
+            upstream.close()
+    return Response(stream_with_context(_anthropic_stream(upstream, model)), mimetype="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _anthropic_stream(upstream, model):
+    msg_id = "msg_" + uuid.uuid4().hex[:24]
+    yield "event: message_start\ndata: " + json.dumps({"type": "message_start", "message": {"id": msg_id, "type": "message", "role": "assistant", "model": model, "content": [], "stop_reason": None, "stop_sequence": None, "usage": {"input_tokens": 0, "output_tokens": 0}}}, ensure_ascii=False) + "\n\n"
+    yield "event: content_block_start\ndata: " + json.dumps({"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}, ensure_ascii=False) + "\n\n"
+    buf = b""
+    for chunk in upstream.iter_content(chunk_size=1024):
+        if not chunk:
+            continue
+        buf += chunk
+        while b"\n" in buf:
+            line, buf = buf.split(b"\n", 1)
+            line = line.strip()
+            if not line.startswith(b"data: "):
+                continue
+            raw = line[6:]
+            if raw.strip() == b"[DONE]":
+                yield "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                yield "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":0}}\n\n"
+                yield "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                upstream.close()
+                return
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                continue
+            delta = ((obj.get("choices") or [{}])[0].get("delta") or {})
+            if delta.get("content"):
+                yield "event: content_block_delta\ndata: " + json.dumps({"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": delta["content"]}}, ensure_ascii=False) + "\n\n"
+    yield "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+    yield "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    upstream.close()
+
+
 @app.route("/v1/models", methods=["GET"])
 @app.route("/models", methods=["GET"])
 def proxy_models():
