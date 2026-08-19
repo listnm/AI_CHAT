@@ -3068,13 +3068,11 @@ XAI_AUTHORIZE_URL = os.environ.get("XAI_OAUTH_AUTHORIZE_URL", "https://auth.x.ai
 XAI_TOKEN_URL = os.environ.get("XAI_OAUTH_TOKEN_URL", "https://auth.x.ai/oauth2/token")
 XAI_CLIENT_ID = os.environ.get("XAI_OAUTH_CLIENT_ID", "b1a00492-073a-47ea-816f-4c329264a828")
 XAI_SCOPE = os.environ.get("XAI_OAUTH_SCOPE", "openid profile email offline_access grok-cli:access api:access")
-XAI_REDIRECT_URI = os.environ.get("XAI_OAUTH_REDIRECT_URI", "")
+XAI_REDIRECT_URI = os.environ.get("XAI_OAUTH_REDIRECT_URI", "http://127.0.0.1:56121/callback")
 
 
 def _xai_redirect_uri():
-    if XAI_REDIRECT_URI:
-        return XAI_REDIRECT_URI
-    return request.host_url.rstrip("/") + "/api/grok/oauth/callback"
+    return XAI_REDIRECT_URI
 
 
 def _pkce_pair():
@@ -3104,7 +3102,11 @@ def api_grok_oauth_start():
 
 
 @app.route("/api/grok/oauth/callback", methods=["GET"])
+@app.route("/callback", methods=["GET"])
 def api_grok_oauth_callback():
+    error = (request.args.get("error") or "").strip()
+    if error:
+        return "授权失败：" + error, 400
     state = (request.args.get("state") or "").strip()
     code = (request.args.get("code") or "").strip()
     if not state or not code:
