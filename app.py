@@ -292,6 +292,36 @@ def _ensure_pool_table(conn):
             pass
 
 
+def _ensure_grok_columns(conn):
+    """独立补齐 grok_accounts 字段，兼容此前创建过不完整表结构的数据库。"""
+    conn.execute(_GROK_ACCOUNTS_DDL)
+    columns = {
+        "refresh_token_encrypted": "TEXT",
+        "client_id_encrypted": "TEXT",
+        "team_id": "TEXT",
+        "subject_id": "TEXT",
+        "expires_at": "TEXT",
+        "token_version": "TEXT",
+        "notes": "TEXT",
+        "status": "TEXT NOT NULL DEFAULT 'active'",
+        "last_error": "TEXT",
+        "last_latency_ms": "INTEGER",
+        "last_test_at": "TEXT",
+        "last_used_at": "TEXT",
+        "model": "TEXT NOT NULL DEFAULT ''",
+    }
+    if getattr(conn, "_using_pg", False):
+        rows = conn.execute("SELECT column_name FROM information_schema.columns WHERE table_name='grok_accounts'").fetchall()
+        existing = {r["column_name"] for r in rows}
+    else:
+        rows = conn.execute("PRAGMA table_info(grok_accounts)").fetchall()
+        existing = {r["name"] for r in rows}
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE grok_accounts ADD COLUMN {name} {definition}")
+    conn.commit()
+
+
 def _init_db():
     """初始化数据库表结构"""
     conn = _get_db()
@@ -303,6 +333,7 @@ def _init_db():
             conn.executescript(_PROXY_SETTINGS_DDL)
         except Exception:
             pass
+        _ensure_grok_columns(conn)
         _ensure_pool_table(conn)
         # 兼容旧 accounts 表：添加 is_default 列（如果不存在）
         try:
@@ -367,11 +398,19 @@ def _load_accounts() -> list:
         rows = conn.execute("SELECT * FROM accounts ORDER BY is_default DESC, latency_ms ASC").fetchall()
         result = []
         for row in rows:
+            decrypt_error = False
+            try:
+                api_key = _decrypt(row["api_key_encrypted"])
+            except Exception:
+                # 保留账号元数据，避免单个旧密钥解密失败导致全部账号消失。
+                api_key = ""
+                decrypt_error = True
             result.append({
                 "id": row["id"],
                 "name": row["name"],
                 "api_url": row["api_url"],
-                "api_key": _decrypt(row["api_key_encrypted"]),
+                "api_key": api_key,
+                "api_key_decrypt_error": decrypt_error,
                 "model": row["model"],
                 "latency_ms": row["latency_ms"],
                 "last_speed_test": row["last_speed_test"],
@@ -538,7 +577,8 @@ def admin():
             "api_url": acc.get("api_url", ""),
             "model": acc.get("model", ""),
             "api_key": acc.get("api_key", ""),
-            "api_key_preview": acc["api_key"][:12] + "..." if acc.get("api_key") else "",
+            "api_key_decrypt_error": acc.get("api_key_decrypt_error", False),
+            "api_key_preview": acc["api_key"][:12] + "..." if acc.get("api_key") else ("密钥需重新填写" if acc.get("api_key_decrypt_error") else ""),
             "latency_ms": acc.get("latency_ms"),
             "last_speed_test": acc.get("last_speed_test"),
             "is_default": acc.get("is_default", False),
