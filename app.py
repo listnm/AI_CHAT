@@ -3324,6 +3324,7 @@ def _grok_mask_email(email):
 def _grok_safe(row):
     expires = row["expires_at"] if isinstance(row, dict) else row["expires_at"]
     return {
+        "id": row["id"], "name": row["name"],
         "model": row["model"] if "model" in row.keys() else "", "email": _grok_mask_email(row["email"]),
         "platform": row["platform"], "base_url": row["base_url"],
         "has_access_token": bool(row["access_token_encrypted"]),
@@ -3447,6 +3448,8 @@ def api_grok_models(account_id):
     conn = _get_db()
     row = conn.execute("SELECT * FROM grok_accounts WHERE id=?", (account_id,)).fetchone()
     conn.close()
+    if not row:
+        return {"ok": False, "message": "账号不存在"}, 404
     if request.method == "PUT":
         selected = str((request.get_json(force=True) or {}).get("model") or "").strip()
         if not selected:
