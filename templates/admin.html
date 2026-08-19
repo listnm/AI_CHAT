@@ -956,7 +956,6 @@
                 <span>AI 对话管理后台</span>
             </div>
             <div class="admin-nav">
-                <a href="/api">🔑 API 账号</a>
                 <a href="/playground">🎮 游乐场</a>
                 <a href="/acc">🗂️ 账号池</a>
                 <span class="base-url">{{ base_url }}</span>
@@ -969,62 +968,54 @@
     </div>
 
     <div class="container">
-        <!-- 转发 API 信息 -->
-        <div class="card api-info-card">
-            <div class="card-header">
-                <div class="card-title">
-                    <span class="card-title-icon">🔗</span>
-                    OpenAI 兼容转发 API
+            <!-- 兼容转发服务信息 -->
+            <div class="card api-info-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-title-icon">🔗</span>
+                        兼容转发服务
+                    </div>
+                </div>
+                <div class="api-info-box">
+                    <div class="api-row">
+                        <span class="api-label">服务地址</span>
+                        <span class="api-value" id="proxyUrl">{{ proxy_url }}</span>
+                        <button class="copy-btn" onclick="copyText('proxyUrl')">📋 复制</button>
+                    </div>
+                    <div class="api-row">
+                        <span class="api-label">访问密钥</span>
+                        <span class="api-value" id="proxyKey">{{ proxy_api_key }}</span>
+                        <button class="copy-btn" onclick="copyText('proxyKey')">📋 复制</button>
+                    </div>
+                    <div class="api-row">
+                        <span class="api-label">转发账号</span>
+                        <select class="select" id="proxyAccountSelect" data-default="{{ default_account_id }}" onchange="onProxyAccountChange(this)" style="flex:1;min-width:0;">
+                            <option value="">自动选择（默认/最快）</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}" {% if acc.is_default %}selected{% endif %}>{{ acc.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">默认使用</span>
+                    </div>
+                </div>
+                <div class="usage-tips">
+                    <div class="usage-tips-title">💡 三种使用方式</div>
+                    <ul class="tip-list">
+                        <li class="tip-item">
+                            <span class="method" style="color:#6366f1;">方式一：自动</span>
+                            <span>不传 <code>account</code> 参数，系统使用上方选择的 ⭐默认账号，无默认则选最快的</span>
+                        </li>
+                        <li class="tip-item">
+                            <span class="method" style="color:#10b981;">方式二：手动</span>
+                            <span>传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站</span>
+                        </li>
+                        <li class="tip-item">
+                            <span class="method" style="color:#f59e0b;">方式三：自动优选</span>
+                            <span>传 <code>"model": "auto"</code>，自动选最优账号（兼容各种工具）</span>
+                        </li>
+                    </ul>
                 </div>
             </div>
-            <div class="api-info-box">
-                <div class="api-row">
-                    <span class="api-label">API 地址</span>
-                    <span class="api-value" id="proxyUrl">{{ proxy_url }}</span>
-                    <button class="copy-btn" onclick="copyText('proxyUrl')">📋 复制</button>
-                </div>
-                <div class="api-row">
-                    <span class="api-label">API Key</span>
-                    <span class="api-value" id="proxyKey">{{ proxy_api_key }}</span>
-                    <button class="copy-btn" onclick="copyText('proxyKey')">📋 复制</button>
-                </div>
-                <div class="api-row">
-                    <span class="api-label">转发方式</span>
-                    <select class="select" id="proxyProviderSelect" onchange="onProxyProviderChange(this)" style="flex:1;min-width:0;">
-                        <option value="accounts" {% if proxy_provider != 'grok' %}selected{% endif %}>普通 API 账号（默认/最快）</option>
-                        <option value="grok" {% if proxy_provider == 'grok' %}selected{% endif %} {% if not grok_available %}disabled{% endif %}>Grok OAuth（{{ grok_available }} 个可用）</option>
-                    </select>
-                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">客户端无需改配置</span>
-                </div>
-                <div class="api-row">
-                    <span class="api-label">转发账号</span>
-                    <select class="select" id="proxyAccountSelect" data-default="{{ default_account_id }}" onchange="onProxyAccountChange(this)" style="flex:1;min-width:0;">
-                        <option value="">自动选择（默认/最快）</option>
-                        {% for acc in accounts %}
-                        <option value="{{ acc.id }}" {% if acc.is_default %}selected{% endif %}>{{ acc.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">方式一默认使用</span>
-                </div>
-            </div>
-            <div class="usage-tips">
-                <div class="usage-tips-title">💡 三种使用方式</div>
-                <ul class="tip-list">
-                    <li class="tip-item">
-                        <span class="method" style="color:#6366f1;">方式一：自动</span>
-                        <span>不传 <code>account</code> 参数，系统使用上方选择的 ⭐默认账号，无默认则选最快的</span>
-                    </li>
-                    <li class="tip-item">
-                        <span class="method" style="color:#10b981;">方式二：手动</span>
-                        <span>传 <code>"account": "账号名称"</code>，精确指定使用哪个中转站</span>
-                    </li>
-                    <li class="tip-item">
-                        <span class="method" style="color:#f59e0b;">方式三：auto</span>
-                        <span>传 <code>"model": "auto"</code>，自动选最优账号（兼容各种 AI 工具）</span>
-                    </li>
-                </ul>
-            </div>
-        </div>
 
         <!-- 账号管理 -->
         <div class="card">
@@ -1066,12 +1057,12 @@
                         <input type="text" id="newName" class="input" placeholder="账号名称（如: aihub.top）">
                     </div>
                     <div class="form-group">
-                        <input type="url" id="newUrl" class="input" placeholder="API 地址 https://...">
+                        <input type="url" id="newUrl" class="input" placeholder="服务地址 https://...">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <input type="password" id="newKey" class="input input-mono" placeholder="API Key">
+                        <input type="password" id="newKey" class="input input-mono" placeholder="访问密钥">
                     </div>
                 </div>
                 <div class="form-row">
@@ -1096,9 +1087,9 @@
                     <thead>
                         <tr>
                             <th style="width: 16%;">名称</th>
-                            <th style="width: 20%;">API 地址</th>
+                            <th style="width: 20%;">服务地址</th>
                             <th style="width: 15%;">模型</th>
-                            <th style="width: 20%;">API Key</th>
+                            <th style="width: 20%;">访问密钥</th>
                             <th style="width: 7%;">延迟</th>
                             <th style="width: 22%;">操作</th>
                         </tr>
@@ -1180,7 +1171,7 @@
                     </div>
                     <div class="account-card-body">
                         <div class="account-card-field">
-                            <span class="account-card-label">API 地址</span>
+                            <span class="account-card-label">服务地址</span>
                             <input type="url" id="url-mobile-{{ acc.id }}" value="{{ acc.api_url }}" class="input input-mono">
                             <button class="copy-btn" onclick="copyUrl('{{ acc.id }}', this)">📋 复制地址</button>
                         </div>
@@ -1192,7 +1183,7 @@
                             <button class="copy-btn" onclick="adminRefreshModelsMobile('{{ acc.id }}', this)">🔄 刷新模型</button>
                         </div>
                         <div class="account-card-field">
-                            <span class="account-card-label">API Key</span>
+                            <span class="account-card-label">访问密钥</span>
                             <input type="text" id="key-mobile-{{ acc.id }}" value="{{ acc.api_key }}" class="input input-mono">
                             <button class="copy-btn" onclick="copyKey('{{ acc.id }}', this)">📋 复制 Key</button>
                         </div>
@@ -1355,16 +1346,6 @@
             }
         }
 
-        // 转发账号下拉：选账号 → 设为默认；选自动 → 取消默认
-        async function onProxyProviderChange(sel) {
-            try {
-                const resp = await fetch('/api/proxy-settings', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider: sel.value})});
-                const result = await resp.json();
-                if (!result.ok) { showAdminMsg(result.message || '切换失败', 'fail'); return; }
-                showAdminMsg(result.provider === 'grok' ? '已切换到 Grok OAuth 转发' : '已切换到普通 API 账号转发', 'success');
-            } catch (e) { showAdminMsg('切换失败：' + e.message, 'fail'); }
-        }
-
         async function onProxyAccountChange(sel) {
             const id = sel.value;
             const defId = sel.dataset.default;
@@ -1409,7 +1390,7 @@
 
         async function saveAccount(id, name, url, key, model, btn) {
             if (!name || !url) {
-                showAdminMsg('名称和 API 地址不能为空', 'fail');
+                showAdminMsg('名称和 服务地址不能为空', 'fail');
                 return;
             }
             if (btn) btnLoading(btn, '⏳ 保存中...');
@@ -1441,7 +1422,7 @@
             const url = document.getElementById('newUrl').value.trim();
             const key = document.getElementById('newKey').value.trim();
             if (!url || !key) {
-                showAdminMsg('请先填写 API 地址和 Key', 'fail');
+                showAdminMsg('请先填写 服务地址和 Key', 'fail');
                 return;
             }
             const btn = this;
