@@ -9,12 +9,14 @@ import json
 import time
 import uuid
 import hashlib
+import secrets
+import base64
 import sqlite3
 import threading
 import requests
 from requests.adapters import HTTPAdapter
 from urllib.parse import quote
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, Response, stream_with_context, redirect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -164,6 +166,20 @@ _accounts_dll = """
     );
 """
 
+_GROK_OAUTH_SESSIONS_DDL = """
+    CREATE TABLE IF NOT EXISTS grok_oauth_sessions (
+        id TEXT PRIMARY KEY,
+        state TEXT NOT NULL UNIQUE,
+        nonce TEXT NOT NULL,
+        code_verifier TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0
+    );
+"""
+
+
 _GROK_ACCOUNTS_DDL = """
     CREATE TABLE IF NOT EXISTS grok_accounts (
         id TEXT PRIMARY KEY,
@@ -260,6 +276,7 @@ def _init_db():
         try:
             conn.executescript(_accounts_dll)
             conn.executescript(_GROK_ACCOUNTS_DDL)
+            conn.executescript(_GROK_OAUTH_SESSIONS_DDL)
         except Exception:
             pass
         _ensure_pool_table(conn)
@@ -3047,9 +3064,103 @@ def _pool_get_full_token_key(pool_type: str, base_url: str, token: str, key_id, 
     return None, last_err or "未能获取完整密钥"
 
 
-# ================================================================
-#  Grok OAuth JSON 账号导入与管理（管理员专用）
-# ================================================================
+XAI_AUTHORIZE_URL = os.environ.get("XAI_OAUTH_AUTHORIZE_URL", "https://auth.x.ai/oauth2/authorize")
+XAI_TOKEN_URL = os.environ.get("XAI_OAUTH_TOKEN_URL", "https://auth.x.ai/oauth2/token")
+XAI_CLIENT_ID = os.environ.get("XAI_OAUTH_CLIENT_ID", "b1a00492-073a-47ea-816f-4c329264a828")
+XAI_SCOPE = os.environ.get("XAI_OAUTH_SCOPE", "openid profile email offline_access grok-cli:access api:access")
+XAI_REDIRECT_URI = os.environ.get("XAI_OAUTH_REDIRECT_URI", "")
+
+
+def _xai_redirect_uri():
+    if XAI_REDIRECT_URI:
+        return XAI_REDIRECT_URI
+    return request.host_url.rstrip("/") + "/api/grok/oauth/callback"
+
+
+def _pkce_pair():
+    verifier = secrets.token_urlsafe(32)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+@app.route("/api/grok/oauth/start", methods=["GET"])
+def api_grok_oauth_start():
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    verifier, challenge = _pkce_pair()
+    state = secrets.token_hex(32)
+    nonce = secrets.token_hex(16)
+    redirect_uri = _xai_redirect_uri()
+    now = datetime.now()
+    conn = _get_db()
+    try:
+        conn.execute("INSERT INTO grok_oauth_sessions (id,state,nonce,code_verifier,redirect_uri,created_at,expires_at) VALUES (?,?,?,?,?,?,?)", (str(uuid.uuid4()), state, nonce, verifier, redirect_uri, now.isoformat(), (now + timedelta(minutes=30)).isoformat()))
+        conn.commit()
+    finally:
+        conn.close()
+    from urllib.parse import urlencode
+    query = urlencode({"response_type": "code", "client_id": XAI_CLIENT_ID, "redirect_uri": redirect_uri, "scope": XAI_SCOPE, "state": state, "nonce": nonce, "code_challenge": challenge, "code_challenge_method": "S256", "plan": "grok"})
+    return {"ok": True, "authorization_url": XAI_AUTHORIZE_URL + "?" + query}
+
+
+@app.route("/api/grok/oauth/callback", methods=["GET"])
+def api_grok_oauth_callback():
+    state = (request.args.get("state") or "").strip()
+    code = (request.args.get("code") or "").strip()
+    if not state or not code:
+        return "授权失败：缺少 state 或 code", 400
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM grok_oauth_sessions WHERE state=? AND consumed=0", (state,)).fetchone()
+    if not row or row["expires_at"] < datetime.now().isoformat():
+        conn.close(); return "授权失败：OAuth 会话无效或已过期", 400
+    try:
+        resp = _get_upstream_session().post(XAI_TOKEN_URL, data={"grant_type":"authorization_code","client_id":XAI_CLIENT_ID,"code":code,"redirect_uri":row["redirect_uri"],"code_verifier":row["code_verifier"]}, headers={"User-Agent":"sub2api-grok-oauth/1.0"}, timeout=(8,20))
+        if resp.status_code < 200 or resp.status_code >= 300:
+            conn.close(); return "授权失败：token 交换被拒绝", 502
+        token = resp.json()
+        access = str(token.get("access_token") or "").strip()
+        refresh = str(token.get("refresh_token") or "").strip()
+        if not access:
+            conn.close(); return "授权失败：响应中没有 access_token", 502
+        claims = {}
+        try:
+            parts = access.split(".")
+            if len(parts) >= 2:
+                claims = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)).decode())
+        except Exception:
+            pass
+        subject = str(claims.get("sub") or uuid.uuid4())
+        email = str(claims.get("email") or "")
+        expires = str(token.get("expires_at") or "")
+        now = datetime.now().isoformat()
+        stable = "oauth:" + subject
+        existing = conn.execute("SELECT id FROM grok_accounts WHERE stable_key=?", (stable,)).fetchone()
+        values = ("Grok OAuth " + (email or subject[:12]), email, "grok", "https://cli-chat-proxy.grok.com/v1", _encrypt(access), _encrypt(refresh) if refresh else None, _encrypt(XAI_CLIENT_ID), str(claims.get("team_id") or ""), subject, expires, "", "OAuth 授权导入", now)
+        if existing:
+            conn.execute("UPDATE grok_accounts SET name=?,email=?,platform=?,base_url=?,access_token_encrypted=?,refresh_token_encrypted=?,client_id_encrypted=?,team_id=?,subject_id=?,expires_at=?,token_version=?,notes=?,status='active',last_error=NULL,updated_at=? WHERE stable_key=?", values + (stable,))
+        else:
+            conn.execute("INSERT INTO grok_accounts (id,stable_key,name,email,platform,base_url,access_token_encrypted,refresh_token_encrypted,client_id_encrypted,team_id,subject_id,expires_at,token_version,notes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active',?,?)", (str(uuid.uuid4()), stable) + values + (now,))
+        conn.execute("UPDATE grok_oauth_sessions SET consumed=1 WHERE state=?", (state,)); conn.commit()
+        return redirect("/api?oauth=success")
+    except Exception:
+        conn.rollback(); return "授权失败：服务端处理异常", 502
+    finally:
+        conn.close()
+
+
+def _grok_refresh_token(row):
+    if not row["refresh_token_encrypted"]:
+        return False, "没有 refresh_token"
+    refresh = _decrypt(row["refresh_token_encrypted"])
+    client_id = _decrypt(row["client_id_encrypted"]) if row["client_id_encrypted"] else XAI_CLIENT_ID
+    resp = _get_upstream_session().post(XAI_TOKEN_URL, data={"grant_type":"refresh_token","client_id":client_id,"refresh_token":refresh}, headers={"User-Agent":"sub2api-grok-oauth/1.0"}, timeout=(8,20))
+    if resp.status_code < 200 or resp.status_code >= 300:
+        return False, "OAuth refresh 被拒绝（HTTP %s）" % resp.status_code
+    token = resp.json(); access = str(token.get("access_token") or "").strip()
+    if not access: return False, "OAuth refresh 响应缺少 access_token"
+    new_refresh = str(token.get("refresh_token") or refresh).strip()
+    expires = str(token.get("expires_at") or "")
+    return (access, new_refresh, expires), ""
 
 
 def _grok_mask_email(email):
@@ -3187,7 +3298,21 @@ def api_grok_test(account_id):
 def api_grok_refresh(account_id):
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
-    return {"ok": False, "message": "Grok OAuth 刷新端点尚未配置，请重新导入最新 JSON"}, 501
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM grok_accounts WHERE id = ?", (account_id,)).fetchone()
+    if not row:
+        conn.close(); return {"ok": False, "message": "账号不存在"}, 404
+    try:
+        result, error = _grok_refresh_token(row)
+        if error:
+            return {"ok": False, "message": error}, 502
+        access, refresh, expires = result
+        conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), expires, datetime.now().isoformat(), account_id)); conn.commit()
+        return {"ok": True, "message": "OAuth token 已刷新"}
+    except Exception:
+        return {"ok": False, "message": "OAuth 刷新失败"}, 502
+    finally:
+        conn.close()
 
 
 @app.route("/api/grok/accounts/<account_id>", methods=["DELETE"])
@@ -3600,7 +3725,7 @@ def api_pool_groups_get(pool_id):
             needs_refresh = True
         elif updated_at:
             try:
-                from datetime import datetime as _dt
+                from datetime import datetime, timedelta as _dt
                 last = _dt.fromisoformat(updated_at)
                 if (_dt.now() - last).total_seconds() > 300:
                     needs_refresh = True

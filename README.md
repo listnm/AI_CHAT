@@ -238,16 +238,19 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 }
 ```
 
-### 5. Grok OAuth 账号导入（管理员）
+### 5. Grok OAuth 账号管理（管理员）
 
-访问 `/api`（需要管理员登录）可导入 Sub2API/grokcli 导出的 Grok OAuth JSON：
+访问 `/api`（需要管理员登录）可按 Sub2API/xAI 的 PKCE OAuth 流程授权 Grok：
 
-- 支持顶层 `accounts` 数组、`platform: "grok"`、`credentials.base_url` 与 OAuth token 字段
-- `access_token`、`refresh_token`、`client_id` 使用现有加密密钥加密保存
+- 默认授权地址：`https://auth.x.ai/oauth2/authorize`
+- 默认 token/refresh 地址：`https://auth.x.ai/oauth2/token`
+- 授权使用 `state`、`nonce`、PKCE `S256`，回调地址为 `/api/grok/oauth/callback`
+- 授权成功后服务端加密保存 access_token、refresh_token、client_id
+- 页面提供 OAuth 授权、token 刷新、连接测试和删除
+- 仍兼容导入 Sub2API/grokcli 导出的 JSON，重复导入会更新账号
 - 页面只显示脱敏邮箱、Base URL、过期时间、凭据是否存在和连接测试结果，不显示完整 token
-- 支持重复导入更新、批量导入、连接测试、删除账号
-- 当前不自动把 Grok OAuth 账号接入 OpenAI/Anthropic 转发，也不会猜测 OAuth 刷新端点
-- 这个功能是账号凭据导入，不是 Sub2API 的 redeem code/余额兑换接口
+- 当前不会把 Grok OAuth 账号自动接入 OpenAI/Anthropic 转发，先用于安全账号管理和测试
+- 这个功能是 OAuth/账号凭据管理，不是 Sub2API 的 redeem code/余额兑换接口
 
 > 安全提示：OAuth access token、refresh token、Cookie 和 API Key 都是敏感凭据。不要把真实 token 提交到代码仓库、聊天记录或截图中；如果凭据已经公开，应立即撤销并重新授权。
 
