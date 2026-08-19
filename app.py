@@ -166,6 +166,15 @@ _accounts_dll = """
     );
 """
 
+_PROXY_SETTINGS_DDL = """
+    CREATE TABLE IF NOT EXISTS proxy_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+"""
+
+
 _GROK_OAUTH_SESSIONS_DDL = """
     CREATE TABLE IF NOT EXISTS grok_oauth_sessions (
         id TEXT PRIMARY KEY,
@@ -277,6 +286,7 @@ def _init_db():
             conn.executescript(_accounts_dll)
             conn.executescript(_GROK_ACCOUNTS_DDL)
             conn.executescript(_GROK_OAUTH_SESSIONS_DDL)
+            conn.executescript(_PROXY_SETTINGS_DDL)
         except Exception:
             pass
         _ensure_pool_table(conn)
@@ -528,6 +538,12 @@ def admin():
                 fastest_latency = acc["latency_ms"]
 
     default_account_id = next((a["id"] for a in safe_accounts if a.get("is_default")), "")
+    proxy_provider = _proxy_provider_setting()
+    settings_conn = _get_db()
+    try:
+        grok_available = settings_conn.execute("SELECT COUNT(*) AS n FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != ''").fetchone()["n"]
+    finally:
+        settings_conn.close()
 
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
@@ -542,6 +558,8 @@ def admin():
         proxy_models_url=proxy_url,
         proxy_api_key=PROXY_API_KEY,
         fastest_latency=fastest_latency,
+        proxy_provider=proxy_provider,
+        grok_available=grok_available,
     ), 200, {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 
@@ -1324,9 +1342,10 @@ def anthropic_messages():
     if not _anthropic_auth_ok():
         return _anthropic_error("Invalid API Key", 401, "authentication_error")
     data = request.get_json(force=True) or {}
-    account = _select_account("")
-    if not account:
+    provider = _proxy_provider("")
+    if not provider:
         return _anthropic_error("No available accounts in pool", 503, "api_error")
+    account = provider.get("account") or {"id":provider["id"],"name":provider["name"],"api_url":provider["api_url"],"api_key":provider["api_key"],"model":provider.get("model","")}
     model = _resolve_effective_model(account, data.get("model", ""))
     if not model:
         return _anthropic_error("model is required", 400)
@@ -1343,8 +1362,8 @@ def anthropic_messages():
     choice = _anthropic_tool_choice_to_openai(data.get("tool_choice"))
     if choice is not None:
         payload["tool_choice"] = choice
-    api_url = normalize_api_url(account["api_url"])
-    headers = {"Authorization": "Bearer " + (account["api_key"] or "").strip(), "Content-Type": "application/json"}
+    api_url = normalize_api_url(provider["api_url"])
+    headers = {"Authorization": "Bearer " + (provider["api_key"] or "").strip(), "Content-Type": "application/json"}
     try:
         upstream = _get_upstream_session().post(api_url, headers=headers, json=payload, stream=payload["stream"], timeout=(8, 600))
         upstream.raise_for_status()
@@ -1406,11 +1425,11 @@ def proxy_models():
     if auth != expected:
         return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}}, 401
 
-    account = _select_account("")
-    if not account:
+    provider = _proxy_provider("")
+    if not provider:
         return {"object": "list", "data": []}
-
-    model = _resolve_effective_model(account, account.get("model", ""))
+    account = provider.get("account") or {"id":provider["id"],"name":provider["name"],"api_url":provider["api_url"],"api_key":provider["api_key"],"model":provider.get("model","")}
+    model = _resolve_effective_model(account, provider.get("model", ""))
     models = []
     if model:
         models.append({
@@ -1420,6 +1439,47 @@ def proxy_models():
             "owned_by": "proxy",
         })
     return {"object": "list", "data": models}
+
+
+
+def _grok_provider():
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT * FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != '' ORDER BY last_latency_ms ASC, updated_at DESC LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return None
+    try:
+        expires = str(row["expires_at"] or "")
+        if expires:
+            exp = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            now = datetime.now(exp.tzinfo) if exp.tzinfo else datetime.now()
+            if (exp - now).total_seconds() < 300 and row["refresh_token_encrypted"]:
+                result, error = _grok_refresh_token(row)
+                if error:
+                    return None
+                access, refresh, new_exp = result
+                conn = _get_db()
+                try:
+                    conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), new_exp, datetime.now().isoformat(), row["id"]))
+                    conn.commit()
+                finally:
+                    conn.close()
+                row = dict(row)
+                row["access_token_encrypted"] = _encrypt(access)
+    except Exception:
+        pass
+    return {"kind":"grok", "id":row["id"], "name":row["name"], "model":"", "api_url":row["base_url"], "api_key":_decrypt(row["access_token_encrypted"]), "row":row}
+
+
+def _proxy_provider(account_name=""):
+    if _proxy_provider_setting() == "grok" and not account_name:
+        return _grok_provider()
+    acc = _select_account(account_name)
+    if not acc:
+        return None
+    return {"kind":"accounts", "id":acc["id"], "name":acc["name"], "model":acc.get("model",""), "api_url":acc["api_url"], "api_key":acc["api_key"], "account":acc}
 
 
 @app.route("/v1/chat/completions", methods=["POST"])
@@ -1453,14 +1513,12 @@ def proxy_chat_completions():
     if not messages:
         return {"error": {"message": "messages is required", "type": "invalid_request"}, "ok": False}, 400
 
-    # 选择账号：指定 account 则用该账号（model=auto 时也尊重 account），
-    # 未指定则用默认/最快的（_select_account 内部处理）
-    account = _select_account(account_name)
-    if not account:
+    provider = _proxy_provider(account_name)
+    if not provider:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
-
-    api_url = normalize_api_url(account["api_url"])
-    api_key = (account["api_key"] or "").strip()
+    account = provider.get("account") or {"id":provider["id"],"name":provider["name"],"api_url":provider["api_url"],"api_key":provider["api_key"],"model":provider.get("model","")}
+    api_url = normalize_api_url(provider["api_url"])
+    api_key = (provider["api_key"] or "").strip()
     # OpenAI/Sub2API 语义：显式模型名原样转发，供上游渠道或模型映射处理。
     # 只有 model=auto 或请求缺少 model 时，才回退到账号后台配置模型。
     effective_model = _resolve_effective_model(account, model)
@@ -1948,10 +2006,10 @@ def proxy_responses():
     data = request.get_json(force=True) or {}
     account_name = data.get("account", "")
     model = data.get("model", "")
-    account = _select_account(account_name)
-    if not account:
+    provider = _proxy_provider(account_name)
+    if not provider:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}}, 503
-
+    account = provider.get("account") or {"id":provider["id"],"name":provider["name"],"api_url":provider["api_url"],"api_key":provider["api_key"],"model":provider.get("model","")}
     effective_model = _resolve_effective_model(account, model)
     if not effective_model:
         return {"error": {"message": "Model name not specified, model name cannot be empty", "type": "invalid_request_error"}}, 400
@@ -2038,14 +2096,13 @@ def proxy_responses_legacy():
     is_auto = model == "auto"
     stream = data.get("stream", False)
 
-    account = _select_account(account_name)
-    if not account:
+    provider = _proxy_provider(account_name)
+    if not provider:
         return {"error": {"message": "No available accounts in pool", "type": "server_error"}, "ok": False}, 503
-
-    api_url = normalize_api_url(account["api_url"])
-    api_key = (account["api_key"] or "").strip()
-    # Responses 也遵循 OpenAI/Sub2API 模型语义：显式模型名原样保留，auto/缺省才回退后台模型。
-    effective_model = account["model"] if (is_auto or not model) else model
+    account = provider.get("account") or {"id":provider["id"],"name":provider["name"],"api_url":provider["api_url"],"api_key":provider["api_key"],"model":provider.get("model","")}
+    api_url = normalize_api_url(provider["api_url"])
+    api_key = (provider["api_key"] or "").strip()
+    effective_model = _resolve_effective_model(account, model)
 
     messages = _responses_input_to_messages(data.get("instructions"), data.get("input"))
     if not messages:
@@ -3062,6 +3119,49 @@ def _pool_get_full_token_key(pool_type: str, base_url: str, token: str, key_id, 
             except Exception as e:
                 last_err = f"异常：{e}"
     return None, last_err or "未能获取完整密钥"
+
+
+def _proxy_provider_setting():
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT value FROM proxy_settings WHERE key='proxy_provider'").fetchone()
+        return row["value"] if row and row["value"] in ("accounts", "grok") else "accounts"
+    finally:
+        conn.close()
+
+
+@app.route("/api/proxy-settings", methods=["GET"])
+def api_proxy_settings_get():
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    conn = _get_db()
+    try:
+        row = conn.execute("SELECT value FROM proxy_settings WHERE key='proxy_provider'").fetchone()
+        provider = row["value"] if row and row["value"] in ("accounts", "grok") else "accounts"
+        count = conn.execute("SELECT COUNT(*) AS n FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != ''").fetchone()["n"]
+        return {"ok": True, "provider": provider, "grok_available": count}
+    finally:
+        conn.close()
+
+
+@app.route("/api/proxy-settings", methods=["PUT"])
+def api_proxy_settings_put():
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    provider = str((request.get_json(force=True) or {}).get("provider") or "accounts").strip().lower()
+    if provider not in ("accounts", "grok"):
+        return {"ok": False, "message": "provider 只能是 accounts 或 grok"}, 400
+    conn = _get_db()
+    try:
+        if provider == "grok":
+            row = conn.execute("SELECT id FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != '' LIMIT 1").fetchone()
+            if not row:
+                return {"ok": False, "message": "没有可用的 Grok OAuth 账号，请先授权"}, 400
+        conn.execute("INSERT INTO proxy_settings(key,value,updated_at) VALUES('proxy_provider',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at", (provider, datetime.now().isoformat()))
+        conn.commit()
+        return {"ok": True, "provider": provider}
+    finally:
+        conn.close()
 
 
 XAI_AUTHORIZE_URL = os.environ.get("XAI_OAUTH_AUTHORIZE_URL", "https://auth.x.ai/oauth2/authorize")

@@ -249,8 +249,9 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 - 页面提供 OAuth 授权、token 刷新、连接测试和删除
 - 仍兼容导入 Sub2API/grokcli 导出的 JSON，重复导入会更新账号
 - 页面只显示脱敏邮箱、Base URL、过期时间、凭据是否存在和连接测试结果，不显示完整 token
-- 当前不会把 Grok OAuth 账号自动接入 OpenAI/Anthropic 转发，先用于安全账号管理和测试
-- 这个功能是 OAuth/账号凭据管理，不是 Sub2API 的 redeem code/余额兑换接口
+- 在后台「转发 API」卡片的「转发方式」选择 **Grok OAuth** 后，现有 `/v1` 客户端配置无需修改；Chat Completions、Responses、Anthropic Messages 和 `/v1/models` 会统一使用可用的 Grok OAuth 账号
+- Grok OAuth token 临近过期时，服务端会按 Sub2API/xAI OAuth 刷新流程自动更新；刷新失败时请回到 `/api` 重新授权
+- 切回「普通 API 账号」即可恢复原来的 accounts 转发逻辑
 
 > 安全提示：OAuth access token、refresh token、Cookie 和 API Key 都是敏感凭据。不要把真实 token 提交到代码仓库、聊天记录或截图中；如果凭据已经公开，应立即撤销并重新授权。
 

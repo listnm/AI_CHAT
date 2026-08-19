@@ -989,6 +989,14 @@
                     <button class="copy-btn" onclick="copyText('proxyKey')">📋 复制</button>
                 </div>
                 <div class="api-row">
+                    <span class="api-label">转发方式</span>
+                    <select class="select" id="proxyProviderSelect" onchange="onProxyProviderChange(this)" style="flex:1;min-width:0;">
+                        <option value="accounts" {% if proxy_provider != 'grok' %}selected{% endif %}>普通 API 账号（默认/最快）</option>
+                        <option value="grok" {% if proxy_provider == 'grok' %}selected{% endif %} {% if not grok_available %}disabled{% endif %}>Grok OAuth（{{ grok_available }} 个可用）</option>
+                    </select>
+                    <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">客户端无需改配置</span>
+                </div>
+                <div class="api-row">
                     <span class="api-label">转发账号</span>
                     <select class="select" id="proxyAccountSelect" data-default="{{ default_account_id }}" onchange="onProxyAccountChange(this)" style="flex:1;min-width:0;">
                         <option value="">自动选择（默认/最快）</option>
@@ -1348,6 +1356,15 @@
         }
 
         // 转发账号下拉：选账号 → 设为默认；选自动 → 取消默认
+        async function onProxyProviderChange(sel) {
+            try {
+                const resp = await fetch('/api/proxy-settings', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({provider: sel.value})});
+                const result = await resp.json();
+                if (!result.ok) { showAdminMsg(result.message || '切换失败', 'fail'); return; }
+                showAdminMsg(result.provider === 'grok' ? '已切换到 Grok OAuth 转发' : '已切换到普通 API 账号转发', 'success');
+            } catch (e) { showAdminMsg('切换失败：' + e.message, 'fail'); }
+        }
+
         async function onProxyAccountChange(sel) {
             const id = sel.value;
             const defId = sel.dataset.default;
