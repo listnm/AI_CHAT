@@ -3415,6 +3415,31 @@ def api_grok_import():
     return {"ok": True, "imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
 
 
+def _grok_model_access_token(row):
+    """获取模型查询用 access token，临近过期时按 Sub2API 流程刷新。"""
+    token = _decrypt(row["access_token_encrypted"])
+    expires = str(row["expires_at"] or "")
+    if expires and row["refresh_token_encrypted"]:
+        try:
+            exp = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            now = datetime.now(exp.tzinfo) if exp.tzinfo else datetime.now()
+            if (exp - now).total_seconds() < 300:
+                result, error = _grok_refresh_token(row)
+                if error:
+                    return None, error
+                access, refresh, new_exp = result
+                conn = _get_db()
+                try:
+                    conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), new_exp, datetime.now().isoformat(), row["id"]))
+                    conn.commit()
+                finally:
+                    conn.close()
+                token = access
+        except ValueError:
+            pass
+    return token, ""
+
+
 @app.route("/api/grok/accounts/<account_id>/models", methods=["GET", "PUT"])
 def api_grok_models(account_id):
     if not _require_admin():
@@ -3427,7 +3452,9 @@ def api_grok_models(account_id):
         if not selected:
             return {"ok": False, "message": "模型不能为空"}, 400
         try:
-            token = _decrypt(row["access_token_encrypted"])
+            token, token_error = _grok_model_access_token(row)
+            if not token:
+                return {"ok": False, "message": token_error or "OAuth token 已过期，请重新授权"}, 502
             base = row["base_url"].rstrip("/")
             url = base if base.endswith("/models") else base + "/models"
             resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
@@ -3444,12 +3471,14 @@ def api_grok_models(account_id):
             conn.close()
         return {"ok": True, "model": selected}
     try:
-        token = _decrypt(row["access_token_encrypted"])
+        token, token_error = _grok_model_access_token(row)
+        if not token:
+            return {"ok": False, "message": token_error or "OAuth token 已过期，请重新授权"}, 502
         base = row["base_url"].rstrip("/")
         url = base if base.endswith("/models") else base + "/models"
         resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
         if resp.status_code < 200 or resp.status_code >= 300:
-            return {"ok": False, "message": "上游返回 HTTP %s" % resp.status_code}, 502
+            return {"ok": False, "message": "上游模型接口返回 HTTP %s" % resp.status_code}, 502
         body = resp.json()
         models = []
         for item in (body.get("data", []) if isinstance(body, dict) else []):
