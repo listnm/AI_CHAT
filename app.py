@@ -16,11 +16,13 @@ import threading
 import requests
 from requests.adapters import HTTPAdapter
 from urllib.parse import quote
-from datetime import datetime, timedelta
-from flask import Flask, render_template, request, Response, stream_with_context, redirect
+from datetime import datetime, timedelta, timezone
+from flask import Flask, render_template, request, Response, stream_with_context, redirect, session
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
+
+_IS_PRODUCTION = bool(os.environ.get("RENDER") or os.environ.get("DATABASE_URL"))
 
 # 上游连接池：每个工作线程复用 TCP/TLS 连接，避免每次 API 调用重新握手。
 # 不配置自动重试，避免 POST 请求被重复提交；失败直接返回给客户端。
@@ -44,9 +46,18 @@ try:
     app.jinja_env.auto_reload = True
 except Exception:
     pass
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "ai-chat-secret-key-change-in-production")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "")
+if _IS_PRODUCTION and not app.secret_key:
+    raise RuntimeError("生产环境必须设置 FLASK_SECRET_KEY")
+if not app.secret_key:
+    app.secret_key = "local-development-secret-change-me"
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=_IS_PRODUCTION,
+)
 
-# Render 环境配置（HTTPS 代理修复 + 安全 cookie）
+# 反向代理环境下识别真实 HTTPS/Host；仅信任部署平台转发的单层代理。
 if os.environ.get("RENDER"):
     # 让 Flask 正确识别 HTTPS 代理
     app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
@@ -79,7 +90,9 @@ class _DBConnection:
                 self._extras = psycopg2.extras
                 self._using_pg = True
             except Exception as e:
-                print(f"[WARN] PostgreSQL 连接失败 ({e})，回退到 SQLite")
+                if _IS_PRODUCTION:
+                    raise RuntimeError("PostgreSQL 连接失败，生产环境不会回退到 SQLite") from e
+                print(f"[WARN] PostgreSQL 连接失败 ({e})，本地开发回退到 SQLite")
                 self._fallback_to_sqlite()
         else:
             self._fallback_to_sqlite()
@@ -189,6 +202,24 @@ _GROK_OAUTH_SESSIONS_DDL = """
 """
 
 
+_GROK_DEVICE_SESSIONS_DDL = """
+    CREATE TABLE IF NOT EXISTS grok_device_sessions (
+        id TEXT PRIMARY KEY,
+        session_key TEXT NOT NULL,
+        device_code_encrypted TEXT NOT NULL,
+        user_code TEXT NOT NULL,
+        verification_uri TEXT NOT NULL,
+        verification_uri_complete TEXT,
+        interval_seconds INTEGER NOT NULL DEFAULT 5,
+        next_poll_at TEXT,
+        poll_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0
+    );
+"""
+
+
 _GROK_ACCOUNTS_DDL = """
     CREATE TABLE IF NOT EXISTS grok_accounts (
         id TEXT PRIMARY KEY,
@@ -237,6 +268,7 @@ _POOL_NEW_COLUMNS_DDL = [
     "ALTER TABLE grok_accounts ADD COLUMN last_test_at TEXT",
     "ALTER TABLE grok_accounts ADD COLUMN last_used_at TEXT",
     "ALTER TABLE grok_accounts ADD COLUMN model TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE grok_device_sessions ADD COLUMN poll_count INTEGER NOT NULL DEFAULT 0",
 ]
 
 
@@ -328,8 +360,6 @@ def _init_db():
     try:
         try:
             conn.executescript(_accounts_dll)
-            conn.executescript(_GROK_ACCOUNTS_DDL)
-            conn.executescript(_GROK_OAUTH_SESSIONS_DDL)
             conn.executescript(_PROXY_SETTINGS_DDL)
         except Exception:
             pass
@@ -353,14 +383,16 @@ try:
     from cryptography.fernet import Fernet as _Fernet
 
     def _get_encryption_key() -> bytes:
-        """获取加密密钥：优先从环境变量，否则从文件读取或生成"""
-        env_key = os.environ.get("ENCRYPTION_KEY")
+        """读取固定密钥；生产环境禁止自动生成或使用临时文件。"""
+        env_key = os.environ.get("ENCRYPTION_KEY", "").strip()
         if env_key:
             return env_key.encode()
+        if _IS_PRODUCTION:
+            raise RuntimeError("生产环境必须设置固定 ENCRYPTION_KEY")
         key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".encryption_key")
         if os.path.exists(key_file):
             with open(key_file, "rb") as f:
-                return f.read()
+                return f.read().strip()
         key = _Fernet.generate_key()
         with open(key_file, "wb") as f:
             f.write(key)
@@ -369,21 +401,13 @@ try:
     _cipher = _Fernet(_get_encryption_key())
 
     def _encrypt(text: str) -> str:
-        return _cipher.encrypt(text.encode()).decode()
+        return _cipher.encrypt(str(text).encode()).decode()
 
     def _decrypt(text: str) -> str:
-        return _cipher.decrypt(text.encode()).decode()
+        return _cipher.decrypt(str(text).encode()).decode()
 
 except Exception as _e:
-    # 加密初始化失败（如 ENCRYPTION_KEY 格式不对），降级为 base64
-    print(f"[WARN] 加密初始化失败 ({_e})，降级为 base64 编码")
-    import base64 as _base64
-
-    def _encrypt(text: str) -> str:
-        return _base64.b64encode(text.encode()).decode()
-
-    def _decrypt(text: str) -> str:
-        return _base64.b64decode(text.encode()).decode()
+    raise RuntimeError("凭据加密初始化失败；不会使用不安全的 Base64 降级") from _e
 
 
 # ================================================================
@@ -546,9 +570,20 @@ def playground():
 #  管理后台
 # ================================================================
 
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-# 转发 API 的 Key，用于 OpenAI 兼容端点认证
-PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "sk-proxy-" + hashlib.md5(ADMIN_PASSWORD.encode()).hexdigest()[:16])
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+PROXY_API_KEY = os.environ.get("PROXY_API_KEY", "")
+if _IS_PRODUCTION:
+    missing = [name for name, value in (("ADMIN_PASSWORD", ADMIN_PASSWORD), ("PROXY_API_KEY", PROXY_API_KEY)) if not value]
+    if missing:
+        raise RuntimeError("生产环境必须设置：" + ", ".join(missing))
+    if ADMIN_PASSWORD == "admin123":
+        raise RuntimeError("生产环境禁止使用默认 ADMIN_PASSWORD")
+    if PROXY_API_KEY.startswith("sk-proxy-") and len(PROXY_API_KEY) < 40:
+        raise RuntimeError("生产环境必须使用独立随机 PROXY_API_KEY")
+if not ADMIN_PASSWORD:
+    ADMIN_PASSWORD = "admin123"
+if not PROXY_API_KEY:
+    PROXY_API_KEY = "sk-proxy-local-development"
 
 
 @app.route("/admin", methods=["GET", "POST"])
@@ -593,12 +628,6 @@ def admin():
 
     default_account_id = next((a["id"] for a in safe_accounts if a.get("is_default")), "")
     proxy_provider = _proxy_provider_setting()
-    settings_conn = _get_db()
-    try:
-        grok_available = settings_conn.execute("SELECT COUNT(*) AS n FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != ''").fetchone()["n"]
-    finally:
-        settings_conn.close()
-
     base_url = request.host_url.rstrip("/")
     proxy_url = base_url + "/v1/chat/completions"
 
@@ -613,7 +642,6 @@ def admin():
         proxy_api_key=PROXY_API_KEY,
         fastest_latency=fastest_latency,
         proxy_provider=proxy_provider,
-        grok_available=grok_available,
     ), 200, {"Cache-Control": "no-cache, no-store, must-revalidate"}
 
 
@@ -1516,31 +1544,36 @@ def _grok_provider():
     if not row:
         return None
     try:
-        expires = str(row["expires_at"] or "")
-        if expires:
-            exp = datetime.fromisoformat(expires.replace("Z", "+00:00"))
-            now = datetime.now(exp.tzinfo) if exp.tzinfo else datetime.now()
-            if (exp - now).total_seconds() < 300 and row["refresh_token_encrypted"]:
-                result, error = _grok_refresh_token(row)
-                if error:
-                    return None
-                access, refresh, new_exp = result
+        expires = _parse_utc(row["expires_at"])
+        if expires and row["refresh_token_encrypted"] and (expires - _utc_now()).total_seconds() < 300:
+            result, error = _grok_refresh_token(row)
+            if error:
                 conn = _get_db()
                 try:
-                    conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), new_exp, datetime.now().isoformat(), row["id"]))
-                    conn.commit()
+                    conn.execute("UPDATE grok_accounts SET status='error',last_error=?,updated_at=? WHERE id=?", (error, _utc_now().isoformat(), row["id"])); conn.commit()
                 finally:
                     conn.close()
-                row = dict(row)
-                row["access_token_encrypted"] = _encrypt(access)
+                return None
+            access, refresh, new_exp = result
+            conn = _get_db()
+            try:
+                conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,last_used_at=?,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), new_exp, _utc_now().isoformat(), _utc_now().isoformat(), row["id"]))
+                conn.commit()
+            finally:
+                conn.close()
+            row = dict(row)
+            row["access_token_encrypted"] = _encrypt(access)
+        conn = _get_db()
+        try:
+            conn.execute("UPDATE grok_accounts SET last_used_at=? WHERE id=?", (_utc_now().isoformat(), row["id"])); conn.commit()
+        finally:
+            conn.close()
     except Exception:
         pass
     return {"kind":"grok", "id":row["id"], "name":row["name"], "model":(row["model"] if "model" in row.keys() else ""), "api_url":row["base_url"], "api_key":_decrypt(row["access_token_encrypted"]), "row":row}
 
 
 def _proxy_provider(account_name=""):
-    if _proxy_provider_setting() == "grok" and not account_name:
-        return _grok_provider()
     acc = _select_account(account_name)
     if not acc:
         return None
@@ -3203,393 +3236,6 @@ def _grok_cli_headers(api_url, headers):
         headers["x-grok-client-identifier"] = "grok-shell"
         headers["User-Agent"] = "xai-grok-workspace/" + version
     return headers
-
-
-def _proxy_provider_setting():
-    conn = _get_db()
-    try:
-        row = conn.execute("SELECT value FROM proxy_settings WHERE key='proxy_provider'").fetchone()
-        return row["value"] if row and row["value"] in ("accounts", "grok") else "accounts"
-    finally:
-        conn.close()
-
-
-@app.route("/api/proxy-settings", methods=["GET"])
-def api_proxy_settings_get():
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    conn = _get_db()
-    try:
-        row = conn.execute("SELECT value FROM proxy_settings WHERE key='proxy_provider'").fetchone()
-        provider = row["value"] if row and row["value"] in ("accounts", "grok") else "accounts"
-        count = conn.execute("SELECT COUNT(*) AS n FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != ''").fetchone()["n"]
-        return {"ok": True, "provider": provider, "grok_available": count}
-    finally:
-        conn.close()
-
-
-@app.route("/api/proxy-settings", methods=["PUT"])
-def api_proxy_settings_put():
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    provider = str((request.get_json(force=True) or {}).get("provider") or "accounts").strip().lower()
-    if provider not in ("accounts", "grok"):
-        return {"ok": False, "message": "provider 只能是 accounts 或 grok"}, 400
-    conn = _get_db()
-    try:
-        if provider == "grok":
-            row = conn.execute("SELECT id FROM grok_accounts WHERE status='active' AND access_token_encrypted IS NOT NULL AND access_token_encrypted != '' LIMIT 1").fetchone()
-            if not row:
-                return {"ok": False, "message": "没有可用的 Grok OAuth 账号，请先授权"}, 400
-        conn.execute("INSERT INTO proxy_settings(key,value,updated_at) VALUES('proxy_provider',?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at", (provider, datetime.now().isoformat()))
-        conn.commit()
-        return {"ok": True, "provider": provider}
-    finally:
-        conn.close()
-
-
-XAI_AUTHORIZE_URL = os.environ.get("XAI_OAUTH_AUTHORIZE_URL", "https://auth.x.ai/oauth2/authorize")
-XAI_TOKEN_URL = os.environ.get("XAI_OAUTH_TOKEN_URL", "https://auth.x.ai/oauth2/token")
-XAI_CLIENT_ID = os.environ.get("XAI_OAUTH_CLIENT_ID", "b1a00492-073a-47ea-816f-4c329264a828")
-XAI_SCOPE = os.environ.get("XAI_OAUTH_SCOPE", "openid profile email offline_access grok-cli:access api:access")
-XAI_REDIRECT_URI = os.environ.get("XAI_OAUTH_REDIRECT_URI", "http://127.0.0.1:56121/callback")
-
-
-def _xai_redirect_uri():
-    return XAI_REDIRECT_URI
-
-
-def _pkce_pair():
-    verifier = secrets.token_urlsafe(32)
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-    return verifier, challenge
-
-
-@app.route("/api/grok/oauth/start", methods=["GET"])
-def api_grok_oauth_start():
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    verifier, challenge = _pkce_pair()
-    state = secrets.token_hex(32)
-    nonce = secrets.token_hex(16)
-    redirect_uri = _xai_redirect_uri()
-    now = datetime.now()
-    conn = _get_db()
-    try:
-        conn.execute("INSERT INTO grok_oauth_sessions (id,state,nonce,code_verifier,redirect_uri,created_at,expires_at) VALUES (?,?,?,?,?,?,?)", (str(uuid.uuid4()), state, nonce, verifier, redirect_uri, now.isoformat(), (now + timedelta(minutes=30)).isoformat()))
-        conn.commit()
-    finally:
-        conn.close()
-    from urllib.parse import urlencode
-    query = urlencode({"response_type": "code", "client_id": XAI_CLIENT_ID, "redirect_uri": redirect_uri, "scope": XAI_SCOPE, "state": state, "nonce": nonce, "code_challenge": challenge, "code_challenge_method": "S256", "plan": "grok"})
-    return {"ok": True, "authorization_url": XAI_AUTHORIZE_URL + "?" + query}
-
-
-@app.route("/api/grok/oauth/callback", methods=["GET"])
-@app.route("/callback", methods=["GET"])
-def api_grok_oauth_callback():
-    error = (request.args.get("error") or "").strip()
-    if error:
-        return "授权失败：" + error, 400
-    state = (request.args.get("state") or "").strip()
-    code = (request.args.get("code") or "").strip()
-    if not state or not code:
-        return "授权失败：缺少 state 或 code", 400
-    conn = _get_db()
-    row = conn.execute("SELECT * FROM grok_oauth_sessions WHERE state=? AND consumed=0", (state,)).fetchone()
-    if not row or row["expires_at"] < datetime.now().isoformat():
-        conn.close(); return "授权失败：OAuth 会话无效或已过期", 400
-    try:
-        resp = _get_upstream_session().post(XAI_TOKEN_URL, data={"grant_type":"authorization_code","client_id":XAI_CLIENT_ID,"code":code,"redirect_uri":row["redirect_uri"],"code_verifier":row["code_verifier"]}, headers={"User-Agent":"sub2api-grok-oauth/1.0"}, timeout=(8,20))
-        if resp.status_code < 200 or resp.status_code >= 300:
-            conn.close(); return "授权失败：token 交换被拒绝", 502
-        token = resp.json()
-        access = str(token.get("access_token") or "").strip()
-        refresh = str(token.get("refresh_token") or "").strip()
-        if not access:
-            conn.close(); return "授权失败：响应中没有 access_token", 502
-        claims = {}
-        try:
-            parts = access.split(".")
-            if len(parts) >= 2:
-                claims = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)).decode())
-        except Exception:
-            pass
-        subject = str(claims.get("sub") or uuid.uuid4())
-        email = str(claims.get("email") or "")
-        expires = str(token.get("expires_at") or "")
-        now = datetime.now().isoformat()
-        stable = "oauth:" + subject
-        existing = conn.execute("SELECT id FROM grok_accounts WHERE stable_key=?", (stable,)).fetchone()
-        values = ("Grok OAuth " + (email or subject[:12]), email, "grok", "https://cli-chat-proxy.grok.com/v1", _encrypt(access), _encrypt(refresh) if refresh else None, _encrypt(XAI_CLIENT_ID), str(claims.get("team_id") or ""), subject, expires, "", "OAuth 授权导入", now)
-        if existing:
-            conn.execute("UPDATE grok_accounts SET name=?,email=?,platform=?,base_url=?,access_token_encrypted=?,refresh_token_encrypted=?,client_id_encrypted=?,team_id=?,subject_id=?,expires_at=?,token_version=?,notes=?,status='active',last_error=NULL,updated_at=? WHERE stable_key=?", values + (stable,))
-        else:
-            conn.execute("INSERT INTO grok_accounts (id,stable_key,name,email,platform,base_url,access_token_encrypted,refresh_token_encrypted,client_id_encrypted,team_id,subject_id,expires_at,token_version,notes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active',?,?)", (str(uuid.uuid4()), stable) + values + (now,))
-        conn.execute("UPDATE grok_oauth_sessions SET consumed=1 WHERE state=?", (state,)); conn.commit()
-        return redirect("/api?oauth=success")
-    except Exception:
-        conn.rollback(); return "授权失败：服务端处理异常", 502
-    finally:
-        conn.close()
-
-
-def _grok_refresh_token(row):
-    if not row["refresh_token_encrypted"]:
-        return False, "没有 refresh_token"
-    refresh = _decrypt(row["refresh_token_encrypted"])
-    client_id = _decrypt(row["client_id_encrypted"]) if row["client_id_encrypted"] else XAI_CLIENT_ID
-    resp = _get_upstream_session().post(XAI_TOKEN_URL, data={"grant_type":"refresh_token","client_id":client_id,"refresh_token":refresh}, headers={"User-Agent":"sub2api-grok-oauth/1.0"}, timeout=(8,20))
-    if resp.status_code < 200 or resp.status_code >= 300:
-        return False, "OAuth refresh 被拒绝（HTTP %s）" % resp.status_code
-    token = resp.json(); access = str(token.get("access_token") or "").strip()
-    if not access: return False, "OAuth refresh 响应缺少 access_token"
-    new_refresh = str(token.get("refresh_token") or refresh).strip()
-    expires = str(token.get("expires_at") or "")
-    return (access, new_refresh, expires), ""
-
-
-def _grok_mask_email(email):
-    email = str(email or "")
-    if "@" not in email:
-        return ""
-    local, domain = email.split("@", 1)
-    if len(local) <= 2:
-        local_mask = local[:1] + "***"
-    else:
-        local_mask = local[:1] + "***" + local[-1:]
-    return local_mask + "@" + domain
-
-
-def _grok_safe(row):
-    expires = row["expires_at"] if isinstance(row, dict) else row["expires_at"]
-    return {
-        "id": row["id"], "name": row["name"],
-        "model": row["model"] if "model" in row.keys() else "", "email": _grok_mask_email(row["email"]),
-        "platform": row["platform"], "base_url": row["base_url"],
-        "has_access_token": bool(row["access_token_encrypted"]),
-        "has_refresh_token": bool(row["refresh_token_encrypted"]),
-        "expires_at": expires, "status": row["status"],
-        "last_error": row["last_error"], "last_latency_ms": row["last_latency_ms"],
-        "last_test_at": row["last_test_at"], "last_used_at": row["last_used_at"],
-        "notes": row["notes"], "created_at": row["created_at"], "updated_at": row["updated_at"],
-    }
-
-
-def _grok_list_rows():
-    conn = _get_db()
-    try:
-        return conn.execute("SELECT * FROM grok_accounts ORDER BY updated_at DESC").fetchall()
-    finally:
-        conn.close()
-
-
-@app.route("/api", methods=["GET"])
-@app.route("/api/", methods=["GET"])
-def api_page():
-    from flask import session as flask_session
-    if not flask_session.get("admin_logged_in"):
-        return render_template("admin.html", logged_in=False, error="请先登录管理员账号以访问 API 管理")
-    return render_template("api.html")
-
-
-@app.route("/api/grok/accounts", methods=["GET"])
-def api_grok_accounts():
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    return {"ok": True, "accounts": [_grok_safe(r) for r in _grok_list_rows()]}
-
-
-@app.route("/api/grok/import", methods=["POST"])
-def api_grok_import():
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    try:
-        if request.files.get("file"):
-            raw = request.files["file"].read(5 * 1024 * 1024 + 1)
-            if len(raw) > 5 * 1024 * 1024:
-                return {"ok": False, "message": "JSON 文件不能超过 5MB"}, 400
-            data = json.loads(raw.decode("utf-8"))
-        else:
-            data = request.get_json(force=True) or {}
-        items = data.get("accounts") if isinstance(data, dict) else None
-        if not isinstance(items, list):
-            return {"ok": False, "message": "JSON 顶层必须包含 accounts 数组"}, 400
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return {"ok": False, "message": "不是有效的 UTF-8 JSON"}, 400
-    except Exception:
-        return {"ok": False, "message": "无法读取 JSON"}, 400
-
-    imported = updated = skipped = 0
-    errors = []
-    now = datetime.now().isoformat()
-    conn = _get_db()
-    try:
-        for index, item in enumerate(items):
-            if not isinstance(item, dict):
-                skipped += 1; errors.append({"index": index, "message": "账号条目不是对象"}); continue
-            if str(item.get("platform", "")).lower() != "grok":
-                skipped += 1; errors.append({"index": index, "message": "仅支持 platform=grok"}); continue
-            cred = item.get("credentials") or {}
-            access = str(cred.get("access_token") or "").strip()
-            base_url = str(cred.get("base_url") or "").strip().rstrip("/")
-            if not access or not base_url or not (base_url.startswith("https://") or base_url.startswith("http://")):
-                skipped += 1; errors.append({"index": index, "message": "缺少有效 credentials.access_token 或 credentials.base_url"}); continue
-            email = str(cred.get("email") or item.get("extra", {}).get("email") or "").strip()
-            subject = str(cred.get("sub") or item.get("extra", {}).get("local_account_id") or "").strip()
-            stable = subject or (email + "|" + base_url) or (str(item.get("name", "")) + "|" + base_url)
-            if not stable.strip("|"):
-                skipped += 1; errors.append({"index": index, "message": "缺少可去重的账号标识"}); continue
-            name = str(item.get("name") or email or ("grok-" + subject[:12]) or "Grok OAuth").strip()[:200]
-            encrypted = (_encrypt(access), _encrypt(str(cred.get("refresh_token") or "")) if cred.get("refresh_token") else None, _encrypt(str(cred.get("client_id") or "")) if cred.get("client_id") else None)
-            row = conn.execute("SELECT id FROM grok_accounts WHERE stable_key = ?", (stable,)).fetchone()
-            values = (name, email, "grok", base_url, encrypted[0], encrypted[1], encrypted[2], str(cred.get("team_id") or ""), subject, str(cred.get("expires_at") or item.get("expires_at") or ""), str(cred.get("_token_version") or ""), str(item.get("notes") or ""), now)
-            if row:
-                conn.execute("""UPDATE grok_accounts SET name=?,email=?,platform=?,base_url=?,access_token_encrypted=?,refresh_token_encrypted=?,client_id_encrypted=?,team_id=?,subject_id=?,expires_at=?,token_version=?,notes=?,status='active',last_error=NULL,updated_at=? WHERE stable_key=?""", values + (stable,))
-                updated += 1
-            else:
-                conn.execute("""INSERT INTO grok_accounts (id,stable_key,name,email,platform,base_url,access_token_encrypted,refresh_token_encrypted,client_id_encrypted,team_id,subject_id,expires_at,token_version,notes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active',?,?)""", (str(uuid.uuid4()), stable) + values + (now,))
-                imported += 1
-        conn.commit()
-    finally:
-        conn.close()
-    return {"ok": True, "imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
-
-
-def _grok_model_access_token(row):
-    """获取模型查询用 access token，临近过期时按 Sub2API 流程刷新。"""
-    token = _decrypt(row["access_token_encrypted"])
-    expires = str(row["expires_at"] or "")
-    if expires and row["refresh_token_encrypted"]:
-        try:
-            exp = datetime.fromisoformat(expires.replace("Z", "+00:00"))
-            now = datetime.now(exp.tzinfo) if exp.tzinfo else datetime.now()
-            if (exp - now).total_seconds() < 300:
-                result, error = _grok_refresh_token(row)
-                if error:
-                    return None, error
-                access, refresh, new_exp = result
-                conn = _get_db()
-                try:
-                    conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), new_exp, datetime.now().isoformat(), row["id"]))
-                    conn.commit()
-                finally:
-                    conn.close()
-                token = access
-        except ValueError:
-            pass
-    return token, ""
-
-
-@app.route("/api/grok/accounts/<account_id>/models", methods=["GET", "PUT"])
-def api_grok_models(account_id):
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    conn = _get_db()
-    row = conn.execute("SELECT * FROM grok_accounts WHERE id=?", (account_id,)).fetchone()
-    conn.close()
-    if not row:
-        return {"ok": False, "message": "账号不存在"}, 404
-    if request.method == "PUT":
-        selected = str((request.get_json(force=True) or {}).get("model") or "").strip()
-        if not selected:
-            return {"ok": False, "message": "模型不能为空"}, 400
-        try:
-            token, token_error = _grok_model_access_token(row)
-            if not token:
-                return {"ok": False, "message": token_error or "OAuth token 已过期，请重新授权"}, 502
-            base = row["base_url"].rstrip("/")
-            url = base if base.endswith("/models") else base + "/models"
-            resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
-            body = resp.json() if 200 <= resp.status_code < 300 else {}
-            available = [str(x.get("id")) for x in (body.get("data", []) if isinstance(body, dict) else []) if isinstance(x, dict) and x.get("id")]
-            if selected not in available:
-                return {"ok": False, "message": "模型不在上游可用列表中", "models": available}, 400
-        except Exception:
-            return {"ok": False, "message": "无法校验上游模型"}, 502
-        conn = _get_db()
-        try:
-            conn.execute("UPDATE grok_accounts SET model=?,updated_at=? WHERE id=?", (selected, datetime.now().isoformat(), account_id)); conn.commit()
-        finally:
-            conn.close()
-        return {"ok": True, "model": selected}
-    try:
-        token, token_error = _grok_model_access_token(row)
-        if not token:
-            return {"ok": False, "message": token_error or "OAuth token 已过期，请重新授权"}, 502
-        base = row["base_url"].rstrip("/")
-        url = base if base.endswith("/models") else base + "/models"
-        resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
-        if resp.status_code < 200 or resp.status_code >= 300:
-            return {"ok": False, "message": "上游模型接口返回 HTTP %s" % resp.status_code}, 502
-        body = resp.json()
-        models = []
-        for item in (body.get("data", []) if isinstance(body, dict) else []):
-            if isinstance(item, dict) and item.get("id"):
-                models.append(str(item["id"]))
-        return {"ok": True, "models": models}
-    except Exception:
-        return {"ok": False, "message": "获取模型失败"}, 502
-
-
-@app.route("/api/grok/accounts/<account_id>/test", methods=["POST"])
-def api_grok_test(account_id):
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    conn = _get_db()
-    row = conn.execute("SELECT * FROM grok_accounts WHERE id = ?", (account_id,)).fetchone()
-    if not row:
-        conn.close(); return {"ok": False, "message": "账号不存在"}, 404
-    started = time.time()
-    try:
-        token = _decrypt(row["access_token_encrypted"])
-        url = row["base_url"].rstrip("/") + "/models" if not row["base_url"].endswith("/models") else row["base_url"]
-        resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
-        latency = int((time.time() - started) * 1000)
-        ok = 200 <= resp.status_code < 300
-        msg = "连接成功" if ok else "上游返回 HTTP %s" % resp.status_code
-        conn.execute("UPDATE grok_accounts SET status=?,last_error=?,last_latency_ms=?,last_test_at=?,updated_at=? WHERE id=?", ("active" if ok else "error", None if ok else msg, latency, datetime.now().isoformat(), account_id)); conn.commit()
-        return {"ok": ok, "message": msg, "latency_ms": latency}, (200 if ok else 502)
-    except Exception:
-        conn.execute("UPDATE grok_accounts SET status='error',last_error=?,last_test_at=?,updated_at=? WHERE id=?", ("连接测试失败", datetime.now().isoformat(), datetime.now().isoformat(), account_id)); conn.commit()
-        return {"ok": False, "message": "连接测试失败"}, 502
-    finally:
-        conn.close()
-
-
-@app.route("/api/grok/accounts/<account_id>/refresh", methods=["POST"])
-def api_grok_refresh(account_id):
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    conn = _get_db()
-    row = conn.execute("SELECT * FROM grok_accounts WHERE id = ?", (account_id,)).fetchone()
-    if not row:
-        conn.close(); return {"ok": False, "message": "账号不存在"}, 404
-    try:
-        result, error = _grok_refresh_token(row)
-        if error:
-            return {"ok": False, "message": error}, 502
-        access, refresh, expires = result
-        conn.execute("UPDATE grok_accounts SET access_token_encrypted=?,refresh_token_encrypted=?,expires_at=?,status='active',last_error=NULL,updated_at=? WHERE id=?", (_encrypt(access), _encrypt(refresh), expires, datetime.now().isoformat(), account_id)); conn.commit()
-        return {"ok": True, "message": "OAuth token 已刷新"}
-    except Exception:
-        return {"ok": False, "message": "OAuth 刷新失败"}, 502
-    finally:
-        conn.close()
-
-
-@app.route("/api/grok/accounts/<account_id>", methods=["DELETE"])
-def api_grok_delete(account_id):
-    if not _require_admin():
-        return {"ok": False, "message": "需要管理员权限"}, 401
-    conn = _get_db()
-    try:
-        cur = conn.execute("DELETE FROM grok_accounts WHERE id = ?", (account_id,)); conn.commit()
-        if not cur.rowcount:
-            return {"ok": False, "message": "账号不存在"}, 404
-        return {"ok": True}
-    finally:
-        conn.close()
 
 
 # ================================================================
