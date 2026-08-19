@@ -1,19 +1,19 @@
 # AI 中转站管理池
 
-基于 Flask 的 AI 中转站管理应用，支持多 API 账号管理、自动测速、最快账号自动切换，提供 OpenAI 兼容的 API 转发接口，并内置 new-api 风格的「游乐场」在线测试对话。
+基于 Flask 的 AI 转发服务管理应用，支持多账号管理、自动测速、最快账号自动切换，提供兼容 OpenAI 的转发接口，并内置 new-api 风格的「游乐场」在线测试对话。
 
 ## 功能特性
 
-- **多账号管理**：添加多个 API 中转站，统一管理
+- **多账号管理**：添加多个上游账号，统一管理
 - **自动测速**：轻量模式不消耗 Token，严格模式真实对话测速
-- **API 转发**：提供 OpenAI 兼容接口，可接入任意 AI 工具
+- **兼容转发**：提供兼容 OpenAI 的接口，可接入任意 AI 工具
 - **三种调用模式**：自动选择 / 手动指定 / model=auto
 - **游乐场测试对话**：参考 [new-api](https://www.newapi.ai/zh) 游乐场实现，选择账号 + 模型在线流式对话，支持参数面板、消息操作、本地历史
-- **安全加密**：API Key 加密存储
+- **安全加密**：访问密钥加密存储
 - **浅色 / 深色双主题**：一键切换浅色（紫色调）与深色（青绿科技风）模式，整页适配，偏好自动记忆
 - **Sub2API / NewAPI 账号池管理**：记录账号密码、一键查询余额、读取密钥/渠道分组详情，支持批量刷新
 - **响应式设计**：电脑端表格 + 手机端卡片，自适应布局
-- **转发账号一键切换**：后台「转发 API」卡片下拉选择转发账号（即默认账号），无需在 API 请求里传 `account` 参数
+- **默认账号一键切换**：后台选择默认账号；未指定默认账号时自动使用延迟最低的账号
 
 ## 快速部署
 
@@ -25,11 +25,11 @@
 
    | 变量名 | 说明 | 默认值 |
    |--------|------|--------|
-   | `ADMIN_PASSWORD` | 后台管理密码 | `admin123` |
-   | `PROXY_API_KEY` | API 转发密钥 | 自动生成 |
-   | `DATABASE_URL` | PostgreSQL 连接（Render 自动注入） | 本地 SQLite |
-   | `ENCRYPTION_KEY` | API Key 加密密钥 | 自动生成 |
-   | `FLASK_SECRET_KEY` | Session 密钥 | 默认值 |
+   | `ADMIN_PASSWORD` | 后台管理密码；生产环境必须设置强随机值 | 无（生产必填） |
+   | `PROXY_API_KEY` | API 转发密钥，必须与管理员密码独立 | 无（生产必填） |
+   | `DATABASE_URL` | PostgreSQL 连接；Render 生产连接失败不会回退 SQLite | 无（生产必填） |
+   | `ENCRYPTION_KEY` | Fernet 凭据加密密钥，必须固定保存 | 无（生产必填） |
+   | `FLASK_SECRET_KEY` | Session 签名密钥 | 无（生产必填） |
 
 4. 部署完成后访问 `https://你的域名/admin` 进入后台
 
@@ -53,7 +53,7 @@ gunicorn app:app --timeout 600
 
 访问 `/admin`，输入管理密码登录（默认 `admin123`，请及时修改）。
 
-#### 添加 API 账号
+#### 添加账号
 
 1. 在「添加账号」区域填写：
    - **名称**：自定义标识，如「OpenAI中转」
@@ -92,7 +92,7 @@ gunicorn app:app --timeout 600
 
 访问 `/playground`（首页会自动跳转）即可使用游乐场在线测试对话，界面与交互参考 [new-api](https://www.newapi.ai/zh) 的游乐场（Playground）：
 
-- **转发账号**：前台只显示并直接使用后台「转发 API」卡片中选择的转发账号（默认账号），**不暴露后台其他账号**；输入框左侧展示转发账号名、模型名称与延迟，模型改动后在后台重新选择转发账号，点刷新按钮即可生效
+- **转发账号**：前台只显示并直接使用后台选择的默认账号；未设置默认账号时自动选择延迟最低的账号，**不暴露后台其他账号**；输入框左侧展示账号名、模型名称与延迟，账号配置变更后点刷新按钮即可生效
 - **参数面板**：点击 ⚙️ 按钮展开参数面板，可分别启用 / 禁用 temperature、top_p、frequency_penalty、presence_penalty、max_tokens、seed，只有启用的参数才会随请求发送，角标显示已启用参数数量
 - **流式对话**：SSE 流式输出，支持 Markdown 渲染、代码块、表格；支持思维链（reasoning_content / `<think>` 标签）折叠展示
 - **消息操作**：悬停消息可复制、重新生成、编辑（用户消息编辑后自动截断后续消息并重新发送）、删除；错误消息可一键重试
@@ -116,11 +116,11 @@ gunicorn app:app --timeout 600
 | 🔍 搜索过滤 | 按名称、URL、用户名、备注搜索账号 |
 | 📊 统计概览 | 顶部 4 张卡片展示：账号总数 / 总余额 / Sub2API 数 / NewAPI 数 |
 
-> 💡 **安全提示**：账号密码与 Access Token 均通过 Fernet（或降级 base64）加密后存入数据库，加密密钥通过环境变量 `ENCRYPTION_KEY` 或本地 `.encryption_key` 文件管理。
+> 💡 **安全提示**：账号密码与 Access Token 均使用 Fernet 加密后存入数据库。生产环境必须设置固定的 `ENCRYPTION_KEY`；加密初始化失败会阻止服务启动，不会降级为 Base64。
 
-### 4. API 转发接口
+### 4. 兼容转发接口
 
-本应用提供 OpenAI 兼容的 API 转发端点，可将你的中转站 API 统一对外提供。
+本应用提供兼容 OpenAI 的转发端点，可将已配置的上游账号统一对外提供。后台不再提供单独的“转发方式”切换，服务始终使用普通账号转发。
 
 #### 端点
 
@@ -145,7 +145,7 @@ Authorization: Bearer 你的PROXY_API_KEY
 
 **方式一：自动选择（推荐）**
 
-不传 `account` 时，系统使用后台「转发账号」下拉中选择的默认账号（无默认则选最快的可用账号）。客户端传入的 `model` 会按 OpenAI/Sub2API 语义保留并转发，适合后台配置了模型映射或多个上游模型的场景；如果 `model` 缺省或设为 `auto`，才使用该账号后台配置的模型。
+不传 `account` 时，系统使用后台选择的默认账号；未设置默认账号时自动选择延迟最低的可用账号。客户端传入的 `model` 会按 OpenAI/Sub2API 语义保留并转发，适合后台配置了模型映射或多个上游模型的场景；如果 `model` 缺省或设为 `auto`，才使用该账号后台配置的模型。
 
 ```bash
 curl https://你的域名/v1/chat/completions \
@@ -213,7 +213,7 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 2. **API Key**：你的 `PROXY_API_KEY`
 3. **模型**：填写 `auto`，或具体模型名如 `gpt-4o`
 
-> 兼容 OpenAI 的客户端通常会自动请求 `GET /v1/models`。本应用只返回当前后台「转发 API」卡片所选账号的模型，不会暴露其他账号。
+> 兼容 OpenAI 的客户端通常会自动请求 `GET /v1/models`。本应用只返回当前后台选择账号的模型，不会暴露其他账号。
 >
 > **地址填写注意**：客户端的 Base URL 请填写到 `/v1`，不要填写完整的 `/v1/chat/completions`。如果客户端要求填写完整接口地址，则使用 `https://你的域名/v1/chat/completions`；Responses API 客户端使用 `https://你的域名/v1/responses`。
 >
@@ -238,30 +238,16 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 }
 ```
 
-### 5. Grok OAuth 账号管理（管理员）
+### 5. 账号与转发说明
 
-访问 `/api`（需要管理员登录）可按 Sub2API/xAI 的 PKCE OAuth 流程授权 Grok：
+`/admin` 页面用于管理普通账号、测速并选择默认账号。应用保留兼容 OpenAI 的 `/v1/models`、`/v1/chat/completions`、Responses 和 Anthropic Messages 转发接口；废弃的 Grok SSO 账号管理页面与接口已移除。
 
-- 默认授权地址：`https://auth.x.ai/oauth2/authorize`
-- 默认 token/refresh 地址：`https://auth.x.ai/oauth2/token`
-- 授权使用 `state`、`nonce`、PKCE `S256`，回调地址为 `/api/grok/oauth/callback`
-- 授权成功后服务端加密保存 access_token、refresh_token、client_id
-- 页面提供 OAuth 授权、token 刷新、连接测试和删除
-- 仍兼容导入 Sub2API/grokcli 导出的 JSON，重复导入会更新账号
-- 页面只显示脱敏邮箱、Base URL、过期时间、凭据是否存在和连接测试结果，不显示完整 token
-- 在后台「转发 API」卡片的「转发方式」选择 **Grok OAuth** 后，现有 `/v1` 客户端配置无需修改；Chat Completions、Responses、Anthropic Messages 和 `/v1/models` 会统一使用可用的 Grok OAuth 账号
-- Grok OAuth token 临近过期时，服务端会按 Sub2API/xAI OAuth 刷新流程自动更新；刷新失败时请回到 `/api` 重新授权
-- Grok provider 请求会按 Sub2API 要求自动添加 `X-XAI-Token-Auth: xai-grok-cli`、`x-grok-client-version: 0.2.114`、`x-grok-client-identifier: grok-shell` 和对应 User-Agent，避免 ZCode/WorkBuddy 被 Grok 判断为过期或未知 CLI
-- 可通过环境变量 `XAI_GROK_CLI_VERSION` 覆盖客户端版本（默认 `0.2.114`）
-- `/api` 页面会读取每个 Grok OAuth 账号的上游模型列表，并提供下拉选择；选择结果会单独持久化在 Grok 账号配置中
-- 后台 Grok provider 转发时，`model=auto` 或缺省模型会使用这里选择的模型；客户端显式传入模型时仍按 OpenAI/Sub2API 模型语义处理
-
-> 安全提示：OAuth access token、refresh token、Cookie 和 API Key 都是敏感凭据。不要把真实 token 提交到代码仓库、聊天记录或截图中；如果凭据已经公开，应立即撤销并重新授权。
+历史数据库中的 `grok_accounts`、`grok_oauth_sessions`、`grok_device_sessions` 表不会自动删除。如需清理，请先备份数据库后单独执行迁移。
 
 - **后端**：Python / Flask / Gunicorn（超时 600s）
 - **数据库**：SQLite（本地）/ PostgreSQL（生产）
 - **前端**：原生 HTML / CSS / JavaScript（游乐场页面复刻 new-api Playground 交互），浅色/深色双主题可切换
-- **加密**：cryptography (Fernet) / base64 降级
+- **加密**：cryptography (Fernet)
 - **部署**：Render / 支持任意 Python 平台
 
 ## 项目结构
@@ -282,11 +268,11 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 
 | 变量 | 必填 | 说明 |
 |------|------|------|
-| `ADMIN_PASSWORD` | 否 | 后台管理密码，默认 `admin123` |
-| `PROXY_API_KEY` | 否 | API 转发密钥，默认根据管理密码自动生成 |
-| `DATABASE_URL` | 否 | PostgreSQL 连接串，不设则用本地 SQLite |
-| `ENCRYPTION_KEY` | 否 | API Key 加密密钥，不设则自动生成 |
-| `FLASK_SECRET_KEY` | 否 | Session 密钥 |
+| `ADMIN_PASSWORD` | 是（生产） | 后台管理密码，必须使用强随机值 |
+| `PROXY_API_KEY` | 是（生产） | 独立的转发访问密钥，不由管理密码派生 |
+| `DATABASE_URL` | 是（生产） | PostgreSQL 连接串；本地不设置时使用 SQLite |
+| `ENCRYPTION_KEY` | 是（生产） | 固定的 Fernet 凭据加密密钥 |
+| `FLASK_SECRET_KEY` | 是（生产） | Session 签名密钥 |
 
 ## License
 
