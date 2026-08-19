@@ -164,6 +164,33 @@ _accounts_dll = """
     );
 """
 
+_GROK_ACCOUNTS_DDL = """
+    CREATE TABLE IF NOT EXISTS grok_accounts (
+        id TEXT PRIMARY KEY,
+        stable_key TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        email TEXT,
+        platform TEXT NOT NULL DEFAULT 'grok',
+        base_url TEXT NOT NULL,
+        access_token_encrypted TEXT NOT NULL,
+        refresh_token_encrypted TEXT,
+        client_id_encrypted TEXT,
+        team_id TEXT,
+        subject_id TEXT,
+        expires_at TEXT,
+        token_version TEXT,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        last_error TEXT,
+        last_latency_ms INTEGER,
+        last_test_at TEXT,
+        last_used_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+"""
+
+
 _POOL_NEW_COLUMNS_DDL = [
     "ALTER TABLE pool_accounts ADD COLUMN selected_group TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_id TEXT",
@@ -232,6 +259,7 @@ def _init_db():
     try:
         try:
             conn.executescript(_accounts_dll)
+            conn.executescript(_GROK_ACCOUNTS_DDL)
         except Exception:
             pass
         _ensure_pool_table(conn)
@@ -3017,6 +3045,163 @@ def _pool_get_full_token_key(pool_type: str, base_url: str, token: str, key_id, 
             except Exception as e:
                 last_err = f"异常：{e}"
     return None, last_err or "未能获取完整密钥"
+
+
+# ================================================================
+#  Grok OAuth JSON 账号导入与管理（管理员专用）
+# ================================================================
+
+
+def _grok_mask_email(email):
+    email = str(email or "")
+    if "@" not in email:
+        return ""
+    local, domain = email.split("@", 1)
+    if len(local) <= 2:
+        local_mask = local[:1] + "***"
+    else:
+        local_mask = local[:1] + "***" + local[-1:]
+    return local_mask + "@" + domain
+
+
+def _grok_safe(row):
+    expires = row["expires_at"] if isinstance(row, dict) else row["expires_at"]
+    return {
+        "id": row["id"], "name": row["name"], "email": _grok_mask_email(row["email"]),
+        "platform": row["platform"], "base_url": row["base_url"],
+        "has_access_token": bool(row["access_token_encrypted"]),
+        "has_refresh_token": bool(row["refresh_token_encrypted"]),
+        "expires_at": expires, "status": row["status"],
+        "last_error": row["last_error"], "last_latency_ms": row["last_latency_ms"],
+        "last_test_at": row["last_test_at"], "last_used_at": row["last_used_at"],
+        "notes": row["notes"], "created_at": row["created_at"], "updated_at": row["updated_at"],
+    }
+
+
+def _grok_list_rows():
+    conn = _get_db()
+    try:
+        return conn.execute("SELECT * FROM grok_accounts ORDER BY updated_at DESC").fetchall()
+    finally:
+        conn.close()
+
+
+@app.route("/api", methods=["GET"])
+@app.route("/api/", methods=["GET"])
+def api_page():
+    from flask import session as flask_session
+    if not flask_session.get("admin_logged_in"):
+        return render_template("admin.html", logged_in=False, error="请先登录管理员账号以访问 API 管理")
+    return render_template("api.html")
+
+
+@app.route("/api/grok/accounts", methods=["GET"])
+def api_grok_accounts():
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    return {"ok": True, "accounts": [_grok_safe(r) for r in _grok_list_rows()]}
+
+
+@app.route("/api/grok/import", methods=["POST"])
+def api_grok_import():
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    try:
+        if request.files.get("file"):
+            raw = request.files["file"].read(5 * 1024 * 1024 + 1)
+            if len(raw) > 5 * 1024 * 1024:
+                return {"ok": False, "message": "JSON 文件不能超过 5MB"}, 400
+            data = json.loads(raw.decode("utf-8"))
+        else:
+            data = request.get_json(force=True) or {}
+        items = data.get("accounts") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            return {"ok": False, "message": "JSON 顶层必须包含 accounts 数组"}, 400
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return {"ok": False, "message": "不是有效的 UTF-8 JSON"}, 400
+    except Exception:
+        return {"ok": False, "message": "无法读取 JSON"}, 400
+
+    imported = updated = skipped = 0
+    errors = []
+    now = datetime.now().isoformat()
+    conn = _get_db()
+    try:
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                skipped += 1; errors.append({"index": index, "message": "账号条目不是对象"}); continue
+            if str(item.get("platform", "")).lower() != "grok":
+                skipped += 1; errors.append({"index": index, "message": "仅支持 platform=grok"}); continue
+            cred = item.get("credentials") or {}
+            access = str(cred.get("access_token") or "").strip()
+            base_url = str(cred.get("base_url") or "").strip().rstrip("/")
+            if not access or not base_url or not (base_url.startswith("https://") or base_url.startswith("http://")):
+                skipped += 1; errors.append({"index": index, "message": "缺少有效 credentials.access_token 或 credentials.base_url"}); continue
+            email = str(cred.get("email") or item.get("extra", {}).get("email") or "").strip()
+            subject = str(cred.get("sub") or item.get("extra", {}).get("local_account_id") or "").strip()
+            stable = subject or (email + "|" + base_url) or (str(item.get("name", "")) + "|" + base_url)
+            if not stable.strip("|"):
+                skipped += 1; errors.append({"index": index, "message": "缺少可去重的账号标识"}); continue
+            name = str(item.get("name") or email or ("grok-" + subject[:12]) or "Grok OAuth").strip()[:200]
+            encrypted = (_encrypt(access), _encrypt(str(cred.get("refresh_token") or "")) if cred.get("refresh_token") else None, _encrypt(str(cred.get("client_id") or "")) if cred.get("client_id") else None)
+            row = conn.execute("SELECT id FROM grok_accounts WHERE stable_key = ?", (stable,)).fetchone()
+            values = (name, email, "grok", base_url, encrypted[0], encrypted[1], encrypted[2], str(cred.get("team_id") or ""), subject, str(cred.get("expires_at") or item.get("expires_at") or ""), str(cred.get("_token_version") or ""), str(item.get("notes") or ""), now)
+            if row:
+                conn.execute("""UPDATE grok_accounts SET name=?,email=?,platform=?,base_url=?,access_token_encrypted=?,refresh_token_encrypted=?,client_id_encrypted=?,team_id=?,subject_id=?,expires_at=?,token_version=?,notes=?,status='active',last_error=NULL,updated_at=? WHERE stable_key=?""", values + (stable,))
+                updated += 1
+            else:
+                conn.execute("""INSERT INTO grok_accounts (id,stable_key,name,email,platform,base_url,access_token_encrypted,refresh_token_encrypted,client_id_encrypted,team_id,subject_id,expires_at,token_version,notes,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'active',?,?)""", (str(uuid.uuid4()), stable) + values + (now,))
+                imported += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
+
+
+@app.route("/api/grok/accounts/<account_id>/test", methods=["POST"])
+def api_grok_test(account_id):
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM grok_accounts WHERE id = ?", (account_id,)).fetchone()
+    if not row:
+        conn.close(); return {"ok": False, "message": "账号不存在"}, 404
+    started = time.time()
+    try:
+        token = _decrypt(row["access_token_encrypted"])
+        url = row["base_url"].rstrip("/") + "/models" if not row["base_url"].endswith("/models") else row["base_url"]
+        resp = _get_upstream_session().get(url, headers={"Authorization": "Bearer " + token, "Accept": "application/json"}, timeout=(8, 15))
+        latency = int((time.time() - started) * 1000)
+        ok = 200 <= resp.status_code < 300
+        msg = "连接成功" if ok else "上游返回 HTTP %s" % resp.status_code
+        conn.execute("UPDATE grok_accounts SET status=?,last_error=?,last_latency_ms=?,last_test_at=?,updated_at=? WHERE id=?", ("active" if ok else "error", None if ok else msg, latency, datetime.now().isoformat(), account_id)); conn.commit()
+        return {"ok": ok, "message": msg, "latency_ms": latency}, (200 if ok else 502)
+    except Exception:
+        conn.execute("UPDATE grok_accounts SET status='error',last_error=?,last_test_at=?,updated_at=? WHERE id=?", ("连接测试失败", datetime.now().isoformat(), datetime.now().isoformat(), account_id)); conn.commit()
+        return {"ok": False, "message": "连接测试失败"}, 502
+    finally:
+        conn.close()
+
+
+@app.route("/api/grok/accounts/<account_id>/refresh", methods=["POST"])
+def api_grok_refresh(account_id):
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    return {"ok": False, "message": "Grok OAuth 刷新端点尚未配置，请重新导入最新 JSON"}, 501
+
+
+@app.route("/api/grok/accounts/<account_id>", methods=["DELETE"])
+def api_grok_delete(account_id):
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    conn = _get_db()
+    try:
+        cur = conn.execute("DELETE FROM grok_accounts WHERE id = ?", (account_id,)); conn.commit()
+        if not cur.rowcount:
+            return {"ok": False, "message": "账号不存在"}, 404
+        return {"ok": True}
+    finally:
+        conn.close()
 
 
 # ================================================================

@@ -238,7 +238,18 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 }
 ```
 
-## 技术栈
+### 5. Grok OAuth 账号导入（管理员）
+
+访问 `/api`（需要管理员登录）可导入 Sub2API/grokcli 导出的 Grok OAuth JSON：
+
+- 支持顶层 `accounts` 数组、`platform: "grok"`、`credentials.base_url` 与 OAuth token 字段
+- `access_token`、`refresh_token`、`client_id` 使用现有加密密钥加密保存
+- 页面只显示脱敏邮箱、Base URL、过期时间、凭据是否存在和连接测试结果，不显示完整 token
+- 支持重复导入更新、批量导入、连接测试、删除账号
+- 当前不自动把 Grok OAuth 账号接入 OpenAI/Anthropic 转发，也不会猜测 OAuth 刷新端点
+- 这个功能是账号凭据导入，不是 Sub2API 的 redeem code/余额兑换接口
+
+> 安全提示：OAuth access token、refresh token、Cookie 和 API Key 都是敏感凭据。不要把真实 token 提交到代码仓库、聊天记录或截图中；如果凭据已经公开，应立即撤销并重新授权。
 
 - **后端**：Python / Flask / Gunicorn（超时 600s）
 - **数据库**：SQLite（本地）/ PostgreSQL（生产）

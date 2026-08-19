@@ -648,6 +648,7 @@ body{
     </div>
     <div class="header-actions">
         <button class="header-btn" id="themeToggle" title="切换深浅模式" onclick="toggleTheme()">🌙</button>
+        <button class="header-btn" onclick="goApi()">🔑 API 账号</button>
         <button class="header-btn" onclick="goPlayground()">🎮 游乐场</button>
         <button class="header-btn" onclick="backToAdmin()">🛠️ 后台管理</button>
     </div>
@@ -2769,6 +2770,10 @@ document.addEventListener('DOMContentLoaded', applyThemeIcon);
 
 function backToAdmin(){
     location.href = '/admin';
+}
+
+function goApi(){
+    location.href = '/api';
 }
 
 function goPlayground(){
