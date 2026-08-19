@@ -199,19 +199,9 @@ _GROK_ACCOUNTS_DDL = """
         base_url TEXT NOT NULL,
         access_token_encrypted TEXT NOT NULL,
         refresh_token_encrypted TEXT,
-        client_id_encrypted TEXT,
-        team_id TEXT,
-        subject_id TEXT,
-        expires_at TEXT,
-        token_version TEXT,
-        notes TEXT,
-        status TEXT NOT NULL DEFAULT 'active',
-        last_error TEXT,
-        last_latency_ms INTEGER,
-        last_test_at TEXT,
-        last_used_at TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        model TEXT NOT NULL DEFAULT ''
     );
 """
 
@@ -222,7 +212,8 @@ _POOL_NEW_COLUMNS_DDL = [
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_name TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_key_encrypted TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN access_token_input_encrypted TEXT",
-    "ALTER TABLE pool_accounts ADD COLUMN user_id TEXT",
+        "ALTER TABLE pool_accounts ADD COLUMN user_id TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN model TEXT NOT NULL DEFAULT ''",
 ]
 
 
@@ -245,7 +236,7 @@ def _ensure_pool_table(conn):
             conn.commit()
         except Exception:
             pass
-    # 兼容旧 pool_accounts：补充新增字段（无论表是否新建都走一遍，已存在则 except 跳过）
+    # 兼容旧 pool_accounts/grok_accounts：补充新增字段（已存在则跳过）
     for col_sql in _POOL_NEW_COLUMNS_DDL:
         try:
             conn.execute(col_sql)
@@ -1474,7 +1465,7 @@ def _grok_provider():
                 row["access_token_encrypted"] = _encrypt(access)
     except Exception:
         pass
-    return {"kind":"grok", "id":row["id"], "name":row["name"], "model":"", "api_url":row["base_url"], "api_key":_decrypt(row["access_token_encrypted"]), "row":row}
+    return {"kind":"grok", "id":row["id"], "name":row["name"], "model":(row["model"] if "model" in row.keys() else ""), "api_url":row["base_url"], "api_key":_decrypt(row["access_token_encrypted"]), "row":row}
 
 
 def _proxy_provider(account_name=""):
@@ -3303,7 +3294,7 @@ def _grok_mask_email(email):
 def _grok_safe(row):
     expires = row["expires_at"] if isinstance(row, dict) else row["expires_at"]
     return {
-        "id": row["id"], "name": row["name"], "email": _grok_mask_email(row["email"]),
+        "model": row["model"] if "model" in row.keys() else "", "email": _grok_mask_email(row["email"]),
         "platform": row["platform"], "base_url": row["base_url"],
         "has_access_token": bool(row["access_token_encrypted"]),
         "has_refresh_token": bool(row["refresh_token_encrypted"]),
@@ -3394,15 +3385,34 @@ def api_grok_import():
     return {"ok": True, "imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
 
 
-@app.route("/api/grok/accounts/<account_id>/models", methods=["GET"])
+@app.route("/api/grok/accounts/<account_id>/models", methods=["GET", "PUT"])
 def api_grok_models(account_id):
     if not _require_admin():
         return {"ok": False, "message": "需要管理员权限"}, 401
     conn = _get_db()
     row = conn.execute("SELECT * FROM grok_accounts WHERE id=?", (account_id,)).fetchone()
     conn.close()
-    if not row:
-        return {"ok": False, "message": "账号不存在"}, 404
+    if request.method == "PUT":
+        selected = str((request.get_json(force=True) or {}).get("model") or "").strip()
+        if not selected:
+            return {"ok": False, "message": "模型不能为空"}, 400
+        try:
+            token = _decrypt(row["access_token_encrypted"])
+            base = row["base_url"].rstrip("/")
+            url = base if base.endswith("/models") else base + "/models"
+            resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
+            body = resp.json() if 200 <= resp.status_code < 300 else {}
+            available = [str(x.get("id")) for x in (body.get("data", []) if isinstance(body, dict) else []) if isinstance(x, dict) and x.get("id")]
+            if selected not in available:
+                return {"ok": False, "message": "模型不在上游可用列表中", "models": available}, 400
+        except Exception:
+            return {"ok": False, "message": "无法校验上游模型"}, 502
+        conn = _get_db()
+        try:
+            conn.execute("UPDATE grok_accounts SET model=?,updated_at=? WHERE id=?", (selected, datetime.now().isoformat(), account_id)); conn.commit()
+        finally:
+            conn.close()
+        return {"ok": True, "model": selected}
     try:
         token = _decrypt(row["access_token_encrypted"])
         base = row["base_url"].rstrip("/")

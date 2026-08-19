@@ -253,6 +253,8 @@ wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/
 - Grok OAuth token 临近过期时，服务端会按 Sub2API/xAI OAuth 刷新流程自动更新；刷新失败时请回到 `/api` 重新授权
 - Grok provider 请求会按 Sub2API 要求自动添加 `X-XAI-Token-Auth: xai-grok-cli`、`x-grok-client-version: 0.2.114`、`x-grok-client-identifier: grok-shell` 和对应 User-Agent，避免 ZCode/WorkBuddy 被 Grok 判断为过期或未知 CLI
 - 可通过环境变量 `XAI_GROK_CLI_VERSION` 覆盖客户端版本（默认 `0.2.114`）
+- `/api` 页面会读取每个 Grok OAuth 账号的上游模型列表，并提供下拉选择；选择结果会单独持久化在 Grok 账号配置中
+- 后台 Grok provider 转发时，`model=auto` 或缺省模型会使用这里选择的模型；客户端显式传入模型时仍按 OpenAI/Sub2API 模型语义处理
 
 > 安全提示：OAuth access token、refresh token、Cookie 和 API Key 都是敏感凭据。不要把真实 token 提交到代码仓库、聊天记录或截图中；如果凭据已经公开，应立即撤销并重新授权。
 
