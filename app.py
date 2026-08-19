@@ -3394,6 +3394,32 @@ def api_grok_import():
     return {"ok": True, "imported": imported, "updated": updated, "skipped": skipped, "errors": errors[:20]}
 
 
+@app.route("/api/grok/accounts/<account_id>/models", methods=["GET"])
+def api_grok_models(account_id):
+    if not _require_admin():
+        return {"ok": False, "message": "需要管理员权限"}, 401
+    conn = _get_db()
+    row = conn.execute("SELECT * FROM grok_accounts WHERE id=?", (account_id,)).fetchone()
+    conn.close()
+    if not row:
+        return {"ok": False, "message": "账号不存在"}, 404
+    try:
+        token = _decrypt(row["access_token_encrypted"])
+        base = row["base_url"].rstrip("/")
+        url = base if base.endswith("/models") else base + "/models"
+        resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
+        if resp.status_code < 200 or resp.status_code >= 300:
+            return {"ok": False, "message": "上游返回 HTTP %s" % resp.status_code}, 502
+        body = resp.json()
+        models = []
+        for item in (body.get("data", []) if isinstance(body, dict) else []):
+            if isinstance(item, dict) and item.get("id"):
+                models.append(str(item["id"]))
+        return {"ok": True, "models": models}
+    except Exception:
+        return {"ok": False, "message": "获取模型失败"}, 502
+
+
 @app.route("/api/grok/accounts/<account_id>/test", methods=["POST"])
 def api_grok_test(account_id):
     if not _require_admin():
