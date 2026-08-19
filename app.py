@@ -433,7 +433,7 @@ def _resolve_effective_model(account: dict, requested_model: str = "") -> str:
     try:
         resp = _get_upstream_session().get(
             _upstream_models_url(api_url),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            headers=_grok_cli_headers(api_url, {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}),
             timeout=(8, 15),
         )
         resp.raise_for_status()
@@ -827,6 +827,7 @@ def api_check():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    headers = _grok_cli_headers(api_url, headers)
 
     # ===== 轻量模式：优先调 /models，失败或非预期格式则回退到同步对话 =====
     # 说明：某些中转站（如 sub2api）不实现 /v1/models，会把它 fallback 成流式
@@ -977,6 +978,7 @@ def api_models():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    headers = _grok_cli_headers(api_url, headers)
 
     try:
         resp = requests.get(models_url, headers=headers, timeout=10)
@@ -1046,6 +1048,7 @@ def chat():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    headers = _grok_cli_headers(api_url, headers)
     # 游乐场参数面板：只透传前端显式给出的参数（new-api 语义：未启用的参数不发送）
     payload = {
         "model": model,
@@ -1364,6 +1367,7 @@ def anthropic_messages():
         payload["tool_choice"] = choice
     api_url = normalize_api_url(provider["api_url"])
     headers = {"Authorization": "Bearer " + (provider["api_key"] or "").strip(), "Content-Type": "application/json"}
+    headers = _grok_cli_headers(api_url, headers)
     try:
         upstream = _get_upstream_session().post(api_url, headers=headers, json=payload, stream=payload["stream"], timeout=(8, 600))
         upstream.raise_for_status()
@@ -1531,6 +1535,7 @@ def proxy_chat_completions():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    headers = _grok_cli_headers(api_url, headers)
     # 透传客户端请求的参数（top_p/tools/response_format/frequency_penalty 等）。
     # 同时兼容 max_completion_tokens：统一转换为上游常见的 max_tokens 字段。
     _reserved = {"account", "model", "messages", "stream", "max_tokens", "max_completion_tokens"}
@@ -2025,9 +2030,10 @@ def proxy_responses():
     payload["model"] = effective_model
 
     headers = {
-        "Authorization": "Bearer " + (account["api_key"] or "").strip(),
+        "Authorization": "Bearer " + (provider["api_key"] or "").strip(),
         "Content-Type": request.headers.get("Content-Type", "application/json"),
     }
+    headers = _grok_cli_headers(provider["api_url"], headers)
     stream = bool(payload.get("stream", False))
     try:
         upstream = _get_upstream_session().post(
@@ -2150,6 +2156,7 @@ def proxy_responses_legacy():
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    headers = _grok_cli_headers(api_url, headers)
 
     try:
         upstream = _get_upstream_session().post(
@@ -3121,6 +3128,22 @@ def _pool_get_full_token_key(pool_type: str, base_url: str, token: str, key_id, 
     return None, last_err or "未能获取完整密钥"
 
 
+def _grok_cli_headers(api_url, headers):
+    """按 Sub2API 的 Grok Build/CLI 兼容要求添加客户端身份头。"""
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(api_url).hostname or "").lower()
+    except Exception:
+        host = ""
+    if host == "cli-chat-proxy.grok.com":
+        version = os.environ.get("XAI_GROK_CLI_VERSION", "0.2.114").strip() or "0.2.114"
+        headers["X-XAI-Token-Auth"] = "xai-grok-cli"
+        headers["x-grok-client-version"] = version
+        headers["x-grok-client-identifier"] = "grok-shell"
+        headers["User-Agent"] = "xai-grok-workspace/" + version
+    return headers
+
+
 def _proxy_provider_setting():
     conn = _get_db()
     try:
@@ -3383,7 +3406,7 @@ def api_grok_test(account_id):
     try:
         token = _decrypt(row["access_token_encrypted"])
         url = row["base_url"].rstrip("/") + "/models" if not row["base_url"].endswith("/models") else row["base_url"]
-        resp = _get_upstream_session().get(url, headers={"Authorization": "Bearer " + token, "Accept": "application/json"}, timeout=(8, 15))
+        resp = _get_upstream_session().get(url, headers=_grok_cli_headers(row["base_url"], {"Authorization": "Bearer " + token, "Accept": "application/json"}), timeout=(8, 15))
         latency = int((time.time() - started) * 1000)
         ok = 200 <= resp.status_code < 300
         msg = "连接成功" if ok else "上游返回 HTTP %s" % resp.status_code
