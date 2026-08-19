@@ -199,6 +199,17 @@ _GROK_ACCOUNTS_DDL = """
         base_url TEXT NOT NULL,
         access_token_encrypted TEXT NOT NULL,
         refresh_token_encrypted TEXT,
+        client_id_encrypted TEXT,
+        team_id TEXT,
+        subject_id TEXT,
+        expires_at TEXT,
+        token_version TEXT,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        last_error TEXT,
+        last_latency_ms INTEGER,
+        last_test_at TEXT,
+        last_used_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         model TEXT NOT NULL DEFAULT ''
@@ -213,6 +224,18 @@ _POOL_NEW_COLUMNS_DDL = [
     "ALTER TABLE pool_accounts ADD COLUMN selected_token_key_encrypted TEXT",
     "ALTER TABLE pool_accounts ADD COLUMN access_token_input_encrypted TEXT",
         "ALTER TABLE pool_accounts ADD COLUMN user_id TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN refresh_token_encrypted TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN client_id_encrypted TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN team_id TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN subject_id TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN expires_at TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN token_version TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN notes TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+    "ALTER TABLE grok_accounts ADD COLUMN last_error TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN last_latency_ms INTEGER",
+    "ALTER TABLE grok_accounts ADD COLUMN last_test_at TEXT",
+    "ALTER TABLE grok_accounts ADD COLUMN last_used_at TEXT",
     "ALTER TABLE grok_accounts ADD COLUMN model TEXT NOT NULL DEFAULT ''",
 ]
 
@@ -617,7 +640,6 @@ def api_accounts_add():
     if not model:
         return {"ok": False, "message": "请输入模型名称"}
 
-    accounts = _load_accounts()
     new_account = {
         "id": str(uuid.uuid4()),
         "name": name,
@@ -627,8 +649,16 @@ def api_accounts_add():
         "latency_ms": None,
         "last_speed_test": None,
     }
-    accounts.append(new_account)
-    _save_accounts(accounts)
+    # 直接插入单条记录，避免读取/重写整个账号表时因旧账号解密失败而阻塞新增。
+    conn = _get_db()
+    try:
+        conn.execute(
+            "INSERT INTO accounts (id, name, api_url, api_key_encrypted, model, latency_ms, last_speed_test, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+            (new_account["id"], name, api_url, _encrypt(api_key), model, None, None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     return {"ok": True, "message": f"账号「{name}」添加成功", "account": new_account}
 
