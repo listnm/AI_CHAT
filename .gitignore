@@ -1,23 +1,19 @@
-# 运行时数据（SQLite 数据库 + 加密密钥）
-data.db
+# Local runtime data
+*.db
+*.db-*
 .encryption_key
-
-# 旧 JSON 存储文件（已迁移到 SQLite）
-accounts.json
-accounts.json.bak
-conversations.json
-conversations.json.bak
-
-# 上传文件
-uploads/
-
-# Python
+.venv/
+venv/
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 
-# IDE / Agent 临时文件
-.trae-html-share-packages/
-*-preview.png
-*.swp
+# Local build artifacts
+build/
+dist/
+*.spec
+
+# Editor and OS files
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
