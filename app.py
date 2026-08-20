@@ -39,6 +39,7 @@ from providers import (
     claude_to_openai, openai_to_claude, relay_stream_claude,
     gemini_to_openai, openai_to_gemini, relay_stream_gemini,
 )
+from oauth_providers import PROVIDERS, generate_state, build_auth_url, exchange_code, refresh_token, get_user_info, parse_user_info, get_provider_config_for_flow
 
 # ================================================================
 #  基础配置（可用环境变量覆盖，start.bat 里可改）
@@ -274,6 +275,42 @@ def init_db():
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} DEFAULT {default}")
                 except Exception:
                     pass  # 列已存在则跳过（SQLite 和 PostgreSQL 异常不同）
+
+        # OAuth 账号表
+        if _USE_PG:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS oauth_accounts (
+                    id TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    email TEXT NOT NULL DEFAULT '',
+                    display_name TEXT NOT NULL DEFAULT '',
+                    access_token_encrypted TEXT NOT NULL,
+                    refresh_token_encrypted TEXT DEFAULT '',
+                    token_type TEXT NOT NULL DEFAULT 'Bearer',
+                    expires_at TEXT,
+                    scope TEXT DEFAULT '',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+            """)
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS oauth_accounts (
+                    id TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL,
+                    email TEXT DEFAULT '',
+                    display_name TEXT DEFAULT '',
+                    access_token_encrypted TEXT NOT NULL,
+                    refresh_token_encrypted TEXT DEFAULT '',
+                    token_type TEXT DEFAULT 'Bearer',
+                    expires_at TEXT,
+                    scope TEXT DEFAULT '',
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn, commit=False)
@@ -1387,6 +1424,265 @@ def healthz():
         return {"ok": True, "status": "healthy"}
     except Exception:
         return {"ok": False, "status": "unhealthy"}, 503
+
+
+# ================================================================
+#  OAuth 订阅账号管理
+# ================================================================
+
+_oauth_states = {}  # {state: provider_key}，CSRF 防护
+
+OAUTH_COLUMNS = (
+    "id, provider, email, display_name, access_token_encrypted, "
+    "refresh_token_encrypted, token_type, expires_at, scope, is_active, created_at, updated_at"
+)
+
+
+def _oauth_row_to_dict(row) -> dict:
+    return {
+        "id": row["id"],
+        "provider": row["provider"],
+        "email": row["email"],
+        "display_name": row["display_name"],
+        "access_token": _decrypt(row["access_token_encrypted"]),
+        "refresh_token": row["refresh_token_encrypted"] and _decrypt(row["refresh_token_encrypted"]),
+        "token_type": row["token_type"],
+        "expires_at": row["expires_at"],
+        "scope": row["scope"],
+        "is_active": bool(row["is_active"]),
+        "created_at": row["created_at"],
+    }
+
+
+def _load_oauth_accounts() -> list:
+    conn = get_db()
+    try:
+        rows = conn.execute(f"SELECT {OAUTH_COLUMNS} FROM oauth_accounts ORDER BY created_at DESC").fetchall()
+        return [_oauth_row_to_dict(r) for r in rows]
+    finally:
+        _close_db(conn)
+
+
+def _find_oauth_account(account_id: str) -> dict | None:
+    conn = get_db()
+    try:
+        row = conn.execute(
+            _sql(f"SELECT {OAUTH_COLUMNS} FROM oauth_accounts WHERE id = ?"),
+            (account_id,),
+        ).fetchone()
+        return _oauth_row_to_dict(row) if row else None
+    finally:
+        _close_db(conn)
+
+
+@app.route("/oa")
+def oa_page():
+    """OAuth 账号管理页面"""
+    if not _is_admin():
+        return redirect("/admin")
+    accounts = _load_oauth_accounts()
+    provider_configs = {}
+    for key, cfg in PROVIDERS.items():
+        cid = os.environ.get(cfg["client_id_env"], "")
+        provider_configs[key] = {
+            "name": cfg["name"],
+            "icon": cfg["icon"],
+            "color": cfg["color"],
+            "has_config": bool(cid),
+            "client_id_preview": cid[:8] + "****" if len(cid) > 8 else cid,
+        }
+    return render_template("oa.html", accounts=accounts, providers=provider_configs)
+
+
+@app.route("/oa/login/<provider>")
+def oa_login(provider):
+    """跳转到 OAuth 授权页面"""
+    if not _is_admin():
+        return redirect("/admin")
+    if provider not in PROVIDERS:
+        return "未知提供商", 404
+
+    client_id, client_secret, redirect_uri = get_provider_config_for_flow(provider, request.host_url)
+    if not client_id:
+        return "未配置 Client ID，请在环境变量中设置", 400
+
+    state = generate_state()
+    _oauth_states[state] = provider
+    auth_url = build_auth_url(provider, client_id, redirect_uri, state)
+    return redirect(auth_url)
+
+
+@app.route("/oa/callback/<provider>")
+def oa_callback(provider):
+    """OAuth 回调，处理授权码"""
+    if provider not in PROVIDERS:
+        return "未知提供商", 404
+
+    code = request.args.get("code")
+    state = request.args.get("state")
+    error = request.args.get("error")
+
+    if error:
+        return redirect(f"/oa?error={error}")
+    if not code or state not in _oauth_states:
+        return redirect("/oa?error=invalid_state")
+
+    del _oauth_states[state]  # 消费 state，防止重放
+    expected_provider = _oauth_states.pop(state, provider)
+
+    client_id, client_secret, redirect_uri = get_provider_config_for_flow(provider, request.host_url)
+    if not client_id or not client_secret:
+        return redirect("/oa?error=missing_config")
+
+    # 换取令牌
+    token_data = exchange_code(provider, client_id, client_secret, code, redirect_uri)
+    if "error" in token_data:
+        return redirect(f"/oa?error=token_exchange_failed")
+
+    access_token = token_data.get("access_token", "")
+    refresh_token_val = token_data.get("refresh_token", "")
+    token_type = token_data.get("token_type", "Bearer")
+    expires_in = token_data.get("expires_in", 0)
+    scope = token_data.get("scope", "")
+
+    if not access_token:
+        return redirect("/oa?error=no_access_token")
+
+    # 计算过期时间
+    from datetime import datetime, timezone, timedelta
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
+
+    # 获取用户信息
+    raw_info = get_user_info(provider, access_token)
+    user_info = parse_user_info(provider, raw_info)
+
+    # 存入数据库
+    conn = get_db()
+    try:
+        account_id = str(uuid.uuid4())
+        now = _db_now()
+        conn.execute(
+            _sql("""INSERT INTO oauth_accounts
+                (id, provider, email, display_name, access_token_encrypted, refresh_token_encrypted,
+                 token_type, expires_at, scope, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+            (account_id, provider, user_info["email"], user_info["display_name"],
+             _encrypt(access_token),
+             _encrypt(refresh_token_val) if refresh_token_val else "",
+             token_type, expires_at, scope, True, now, now),
+        )
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
+
+    return redirect("/oa?success=connected")
+
+
+@app.route("/api/oa/accounts", methods=["GET"])
+def oa_accounts_list():
+    """获取所有 OAuth 账号列表"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    accounts = _load_oauth_accounts()
+    safe = []
+    for a in accounts:
+        safe.append({
+            "id": a["id"],
+            "provider": a["provider"],
+            "email": a["email"],
+            "display_name": a["display_name"],
+            "token_type": a["token_type"],
+            "expires_at": a["expires_at"],
+            "is_active": a["is_active"],
+            "created_at": a["created_at"],
+            "has_refresh_token": bool(a["refresh_token"]),
+        })
+    return {"ok": True, "accounts": safe}
+
+
+@app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
+def oa_account_delete(account_id):
+    """删除 OAuth 账号"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    conn = get_db()
+    try:
+        conn.execute(_sql("DELETE FROM oauth_accounts WHERE id = ?"), (account_id,))
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
+    return {"ok": True, "message": "已删除"}
+
+
+@app.route("/api/oa/accounts/<account_id>/toggle", methods=["POST"])
+def oa_account_toggle(account_id):
+    """启用/禁用 OAuth 账号"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    acc = _find_oauth_account(account_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+    new_status = not acc["is_active"]
+    conn = get_db()
+    try:
+        conn.execute(
+            _sql("UPDATE oauth_accounts SET is_active = ?, updated_at = ? WHERE id = ?"),
+            (new_status, _db_now(), account_id),
+        )
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
+    return {"ok": True, "is_active": new_status, "message": f"已{'启用' if new_status else '禁用'}"}
+
+
+@app.route("/api/oa/accounts/<account_id>/refresh", methods=["POST"])
+def oa_account_refresh(account_id):
+    """手动刷新 OAuth 令牌"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    acc = _find_oauth_account(account_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+    if not acc["refresh_token"]:
+        return {"ok": False, "message": "该账号没有 refresh_token"}
+
+    provider = acc["provider"]
+    cfg = PROVIDERS.get(provider, {})
+    client_id = os.environ.get(cfg.get("client_id_env", ""), "")
+    client_secret = os.environ.get(cfg.get("client_secret_env", ""), "")
+
+    if not client_id or not client_secret:
+        return {"ok": False, "message": "未配置 Client ID/Secret"}
+
+    token_data = refresh_token(provider, client_id, client_secret, acc["refresh_token"])
+    if "error" in token_data:
+        return {"ok": False, "message": token_data["error"]}
+
+    new_access = token_data.get("access_token", "")
+    new_refresh = token_data.get("refresh_token", acc["refresh_token"])
+    expires_in = token_data.get("expires_in", 0)
+
+    from datetime import datetime, timezone, timedelta
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else acc["expires_at"]
+
+    conn = get_db()
+    try:
+        conn.execute(
+            _sql("UPDATE oauth_accounts SET access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=? WHERE id=?"),
+            (_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "", expires_at, _db_now(), account_id),
+        )
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
+    return {"ok": True, "message": "令牌已刷新"}
 
 
 # ================================================================
