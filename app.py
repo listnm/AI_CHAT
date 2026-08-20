@@ -239,6 +239,15 @@ def init_db():
                 "CREATE UNIQUE INDEX IF NOT EXISTS stations_one_default_idx "
                 "ON stations (is_default) WHERE is_default = TRUE"
             )
+            # 兼容旧表：为已存在的表添加新列
+            for col, typedef in [
+                ("group_name", "TEXT NOT NULL DEFAULT ''"),
+                ("is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE stations ADD COLUMN {col} {typedef}")
+                except Exception:
+                    pass
         else:
             conn.execute(
                 """
