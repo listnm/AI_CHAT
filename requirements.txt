@@ -2,4 +2,5 @@ flask>=2.2
 requests
 cryptography
 gunicorn
+psycopg[binary,pool]
 pywebview>=5.0; platform_system == "Windows"

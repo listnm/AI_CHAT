@@ -132,11 +132,21 @@ build_exe.bat
 | POST | `/v1/chat/completions` | OpenAI 兼容转发（Bearer 转发密钥） |
 | GET | `/v1/models` | 池内模型列表合并（Bearer 转发密钥） |
 
-## Render 部署（公网 Web Service）
+## Render 部署（Web Service + PostgreSQL）
 
-本项目可以部署到 Render，但 Render 不能直接读取你电脑上的本地目录。请先把本目录（不含 `data.db`、`.encryption_key` 和 `.venv`）推送到 GitHub 或 GitLab，再在 Render 连接仓库。
+本项目的 Render 生产环境使用 PostgreSQL 保存中转站配置，不再依赖本地 SQLite 或 Persistent Disk。Render 不能直接读取你电脑上的目录，请先把本目录（不含 `data.db`、`.encryption_key` 和 `.venv`）推送到 GitHub 或 GitLab。
 
-项目已提供 `render.yaml`，可在 Render 选择 **New → Blueprint** 自动创建服务。若手动创建 Web Service，使用以下配置：
+### 创建 Render PostgreSQL
+
+1. 在 Render 控制台点击 **New → PostgreSQL**。
+2. 创建数据库，选择与你 Web Service 相同的 Region。
+3. 创建完成后，在数据库的 **Info/Connections** 中复制 **Internal Database URL**。
+
+### 创建 Web Service
+
+1. 点击 **New → Web Service**，连接代码仓库。
+2. 如果项目位于仓库根目录，Root Directory 留空。
+3. 配置：
 
 | 配置项 | 值 |
 |--------|-----|
@@ -144,38 +154,54 @@ build_exe.bat
 | Build Command | `pip install -r requirements.txt` |
 | Start Command | `gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 0 app:app` |
 | Health Check Path | `/healthz` |
-| Persistent Disk | 挂载到 `/var/data`，至少 1 GB |
+
+4. 在 Web Service 的 Environment 中添加 PostgreSQL 的 Internal Database URL：
+
+```text
+DATABASE_URL=postgresql://...
+```
+
+也可以使用项目中的 `render.yaml` 通过 Blueprint 自动创建 Web Service 和 PostgreSQL。
 
 ### 必填环境变量
 
-在 Render 的 Environment 中创建以下 Secret，所有密钥都应使用随机值并长期保持不变：
-
 | 变量 | 说明 |
 |------|------|
+| `DATABASE_URL` | Render PostgreSQL 的 Internal Database URL |
 | `ADMIN_PASSWORD` | 管理页面密码，不能使用 `admin123` |
-| `PROXY_API_KEY` | `/v1/*` 转发接口的 Bearer 密钥，不要由管理员密码派生 |
+| `PROXY_API_KEY` | `/v1/*` 转发接口 Bearer 密钥，不要由管理员密码派生 |
 | `FLASK_SECRET_KEY` | Flask Session 签名密钥；更换后已有登录会话失效 |
 | `ENCRYPTION_KEY` | Fernet 密钥；更换后已保存的上游 API Key 无法解密 |
-| `RENDER` | 设置为 `true`（Blueprint 已配置） |
-| `HOST` | 设置为 `0.0.0.0`（Blueprint 已配置） |
-| `DATA_DIR` | 设置为 `/var/data`（Blueprint 已配置） |
+| `RENDER` | 设置为 `true` |
+| `HOST` | 设置为 `0.0.0.0` |
 
-可以使用 Python 生成 Fernet 密钥：
+`PROXY_API_KEY` 和 `FLASK_SECRET_KEY` 可以使用 Render 的 Generate Value；`ENCRYPTION_KEY` 必须是 Fernet 格式，使用以下命令生成后手动保存：
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Render Persistent Disk 与 SQLite 方案要求保持 **单实例、单 worker**；当前启动命令使用线程 worker 来支持流式响应。如果以后需要多实例、自动扩容或更高并发，应迁移到 PostgreSQL，而不是让多个实例共享 SQLite 文件。
+PostgreSQL 负责业务数据持久化，因此 Web Service 不需要 Persistent Disk。当前启动命令仍使用单 worker 线程模式作为稳妥默认；后续可以在压测后增加 worker 或实例数量。
+
+### 迁移现有本地配置
+
+如果不需要保留本地站点配置，可以直接使用 PostgreSQL 空库，应用首次启动会自动创建表。如果需要保留，请先停止本地服务，在本地项目目录执行：
+
+```bat
+set DATABASE_URL=Render_PostgreSQL_Internal_Database_URL
+set ENCRYPTION_KEY=本地数据库对应的Fernet密钥
+python migrate_sqlite_to_postgres.py --sqlite data.db
+```
+
+如果本地使用的是自动生成的 `.encryption_key`，请先读取该文件内容作为 `ENCRYPTION_KEY`。迁移完成后，把同一个 `ENCRYPTION_KEY` 设置到 Render Web Service；脚本会保留站点 ID、API Key 密文、模型、默认状态、备注和测速数据。
 
 ### 部署后检查
 
 1. 打开 `https://你的服务名.onrender.com/healthz`，应返回 `{"ok":true,"status":"healthy"}`。
 2. 访问根路径，用 `ADMIN_PASSWORD` 登录管理页。
-3. 添加一个中转站并执行测速，确认 `/var/data/data.db` 持久化。
+3. 确认已有站点配置或新增一个站点。
 4. 使用 `PROXY_API_KEY` 验证 `GET /v1/models` 和 `POST /v1/chat/completions`。
-5. 确认服务重启后中转站配置仍在；不要把本地 `data.db` 或 `.encryption_key` 提交到仓库。
-
+5. 重启 Web Service 后再次检查站点配置，确认 PostgreSQL 持久化生效。
 
 ```
 .

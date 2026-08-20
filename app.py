@@ -21,8 +21,19 @@ import hashlib
 import sqlite3
 import threading
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import quote
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+    from psycopg.types.json import Json
+    from psycopg_pool import ConnectionPool
+except ImportError:
+    psycopg = None
+    dict_row = None
+    Json = None
+    ConnectionPool = None
 
 from flask import (Flask, render_template, request, Response,
                    stream_with_context, session, redirect)
@@ -124,10 +135,54 @@ except Exception as _e:
 
 
 # ================================================================
-#  数据库（SQLite，单表）
+#  数据库（Render 使用 PostgreSQL，本地默认 SQLite）
 # ================================================================
 
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+_USE_PG = bool(DATABASE_URL)
+_PG_POOL = None
+
+_STATION_COLUMNS = (
+    "id, name, base_url, api_key_encrypted, models, selected_model, "
+    "latency_ms, last_test_at, is_default, remark, created_at, updated_at"
+)
+_UPDATEABLE_FIELDS = {
+    "name", "base_url", "models", "selected_model", "latency_ms",
+    "last_test_at", "is_default", "remark", "api_key_encrypted",
+}
+
+
+def _utc_now():
+    return datetime.now(timezone.utc)
+
+
+def _db_now():
+    now = _utc_now()
+    return now if _USE_PG else now.isoformat(timespec="seconds")
+
+
+def _db_datetime(value):
+    if not _USE_PG or value is None or isinstance(value, datetime):
+        return value
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def get_db():
+    global _PG_POOL
+    if _USE_PG:
+        if psycopg is None or ConnectionPool is None:
+            raise RuntimeError("DATABASE_URL 已设置，但未安装 psycopg[binary,pool]")
+        if _PG_POOL is None:
+            _PG_POOL = ConnectionPool(
+                conninfo=DATABASE_URL,
+                min_size=1,
+                max_size=8,
+                kwargs={"row_factory": dict_row},
+                open=True,
+            )
+        return _PG_POOL.connection()
+
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.execute("PRAGMA busy_timeout = 30000")
     conn.execute("PRAGMA journal_mode = WAL")
@@ -135,36 +190,90 @@ def get_db():
     return conn
 
 
+def _close_db(conn, commit=False):
+    if _USE_PG:
+        try:
+            if commit:
+                conn.commit()
+            else:
+                conn.rollback()
+        finally:
+            conn.close()
+    else:
+        if commit:
+            conn.commit()
+        conn.close()
+
+
+def _sql(query: str) -> str:
+    return query.replace("?", "%s") if _USE_PG else query
+
+
+def _models_value(models):
+    if _USE_PG:
+        return Json(models or [])
+    return json.dumps(models or [])
+
+
+def _models_from_row(value):
+    if isinstance(value, str):
+        return json.loads(value or "[]")
+    return value or []
+
+
 def init_db():
     conn = get_db()
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS stations (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                base_url TEXT NOT NULL,
-                api_key_encrypted TEXT NOT NULL,
-                models TEXT DEFAULT '[]',
-                selected_model TEXT DEFAULT '',
-                latency_ms INTEGER,
-                last_test_at TEXT,
-                is_default INTEGER NOT NULL DEFAULT 0,
-                remark TEXT DEFAULT '',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+        if _USE_PG:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS stations (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    api_key_encrypted TEXT NOT NULL,
+                    models JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    selected_model TEXT NOT NULL DEFAULT '',
+                    latency_ms INTEGER,
+                    last_test_at TIMESTAMPTZ,
+                    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+                    remark TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
             )
-            """
-        )
-        conn.commit()
-        # 兼容旧库：补 selected_model 列
-        try:
-            conn.execute("ALTER TABLE stations ADD COLUMN selected_model TEXT DEFAULT ''")
-            conn.commit()
-        except Exception:
-            pass  # 列已存在
-    finally:
-        conn.close()
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS stations_one_default_idx "
+                "ON stations (is_default) WHERE is_default = TRUE"
+            )
+        else:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS stations (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    base_url TEXT NOT NULL,
+                    api_key_encrypted TEXT NOT NULL,
+                    models TEXT DEFAULT '[]',
+                    selected_model TEXT DEFAULT '',
+                    latency_ms INTEGER,
+                    last_test_at TEXT,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    remark TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            try:
+                conn.execute("ALTER TABLE stations ADD COLUMN selected_model TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn, commit=False)
+        raise
 
 
 # Gunicorn 导入 app 时也必须完成幂等初始化。
@@ -177,7 +286,7 @@ def _row_to_station(row) -> dict:
         "name": row["name"],
         "base_url": row["base_url"],
         "api_key": _decrypt(row["api_key_encrypted"]),
-        "models": json.loads(row["models"] or "[]"),
+        "models": _models_from_row(row["models"]),
         "selected_model": row["selected_model"] or "",
         "latency_ms": row["latency_ms"],
         "last_test_at": row["last_test_at"],
@@ -190,73 +299,84 @@ def load_stations() -> list:
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT * FROM stations ORDER BY is_default DESC, latency_ms ASC"
+            _sql(f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC")
+            if not _USE_PG else
+            f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC NULLS LAST"
         ).fetchall()
         return [_row_to_station(r) for r in rows]
     finally:
-        conn.close()
+        _close_db(conn)
 
 
 def find_station(station_id: str) -> dict | None:
     conn = get_db()
     try:
-        row = conn.execute("SELECT * FROM stations WHERE id = ?", (station_id,)).fetchone()
+        row = conn.execute(
+            _sql(f"SELECT {_STATION_COLUMNS} FROM stations WHERE id = ?"),
+            (station_id,),
+        ).fetchone()
         return _row_to_station(row) if row else None
     finally:
-        conn.close()
+        _close_db(conn)
 
 
 def save_station(st: dict):
     conn = get_db()
     try:
         conn.execute(
-            """
-            INSERT INTO stations
-                (id, name, base_url, api_key_encrypted, models, selected_model, latency_ms,
-                 last_test_at, is_default, remark, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+            _sql(
+                f"""INSERT INTO stations
+                ({_STATION_COLUMNS})
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+            ),
             (
-                st["id"],
-                st["name"],
-                st["base_url"],
-                _encrypt(st["api_key"]),
-                json.dumps(st.get("models", [])),
-                st.get("selected_model", ""),
-                st.get("latency_ms"),
-                st.get("last_test_at"),
-                1 if st.get("is_default") else 0,
-                st.get("remark", ""),
-                st.get("created_at") or datetime.now().isoformat(timespec="seconds"),
-                datetime.now().isoformat(timespec="seconds"),
+                st["id"], st["name"], st["base_url"], _encrypt(st["api_key"]),
+                _models_value(st.get("models", [])), st.get("selected_model", ""),
+                st.get("latency_ms"), _db_datetime(st.get("last_test_at")),
+                bool(st.get("is_default")), st.get("remark", ""),
+                _db_datetime(st.get("created_at")) or _db_now(), _db_now(),
             ),
         )
-        conn.commit()
-    finally:
-        conn.close()
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
 
 
 def update_station(station_id: str, fields: dict):
-    """按字段更新单个中转站（fields 里的键对应列名）"""
+    """按白名单字段更新单个中转站。"""
+    if not fields:
+        return
+    invalid = set(fields) - _UPDATEABLE_FIELDS
+    if invalid:
+        raise ValueError(f"不允许更新字段: {', '.join(sorted(invalid))}")
     conn = get_db()
     try:
-        sets = ", ".join(f"{k} = ?" for k in fields)
+        names = list(fields)
+        sets = ", ".join(f"{k} = ?" for k in names)
+        values = [
+            _models_value(fields[k]) if k == "models" else fields[k]
+            for k in names
+        ]
+        values.extend([_db_now(), station_id])
         conn.execute(
-            f"UPDATE stations SET {sets}, updated_at = ? WHERE id = ?",
-            (*fields.values(), datetime.now().isoformat(timespec="seconds"), station_id),
+            _sql(f"UPDATE stations SET {sets}, updated_at = ? WHERE id = ?"),
+            values,
         )
-        conn.commit()
-    finally:
-        conn.close()
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
 
 
 def delete_station(station_id: str):
     conn = get_db()
     try:
-        conn.execute("DELETE FROM stations WHERE id = ?", (station_id,))
-        conn.commit()
-    finally:
-        conn.close()
+        conn.execute(_sql("DELETE FROM stations WHERE id = ?"), (station_id,))
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
 
 
 # ================================================================
@@ -504,13 +624,7 @@ def api_stations_update(station_id):
     if fields:
         update_station(station_id, fields)
     if data.get("api_key", "").strip():
-        conn = get_db()
-        try:
-            conn.execute("UPDATE stations SET api_key_encrypted = ? WHERE id = ?",
-                         (_encrypt(st["api_key"]), station_id))
-            conn.commit()
-        finally:
-            conn.close()
+        update_station(station_id, {"api_key_encrypted": _encrypt(st["api_key"])})
     # 核心信息变更后清除旧的延迟记录
     if any(k in fields for k in ("name", "base_url")) or data.get("api_key", "").strip():
         update_station(station_id, {"latency_ms": None, "last_test_at": None})
@@ -535,11 +649,12 @@ def api_stations_set_default(station_id):
         return {"ok": False, "message": "中转站不存在"}
     conn = get_db()
     try:
-        conn.execute("UPDATE stations SET is_default = 0")
-        conn.execute("UPDATE stations SET is_default = 1 WHERE id = ?", (station_id,))
-        conn.commit()
-    finally:
-        conn.close()
+        conn.execute(_sql("UPDATE stations SET is_default = FALSE" if _USE_PG else "UPDATE stations SET is_default = 0"))
+        conn.execute(_sql("UPDATE stations SET is_default = TRUE WHERE id = ?"), (station_id,))
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
     return {"ok": True, "message": "已设为默认中转站"}
 
 
@@ -580,12 +695,13 @@ def api_stations_test(station_id):
     conn = get_db()
     try:
         conn.execute(
-            "UPDATE stations SET latency_ms = ?, last_test_at = ?, models = ? WHERE id = ?",
-            (st["latency_ms"], st["last_test_at"], json.dumps(st["models"]), station_id),
+            _sql("UPDATE stations SET latency_ms = ?, last_test_at = ?, models = ? WHERE id = ?"),
+            (st["latency_ms"], st["last_test_at"], _models_value(st["models"]), station_id),
         )
-        conn.commit()
-    finally:
-        conn.close()
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
     return {"ok": ok, "message": message, "latency_ms": latency, "models": st["models"]}
 
 
@@ -614,12 +730,13 @@ def api_test_all():
     try:
         for st in stations:
             conn.execute(
-                "UPDATE stations SET latency_ms = ?, last_test_at = ?, models = ? WHERE id = ?",
-                (st["latency_ms"], st["last_test_at"], json.dumps(st["models"]), st["id"]),
+                _sql("UPDATE stations SET latency_ms = ?, last_test_at = ?, models = ? WHERE id = ?"),
+                (st["latency_ms"], st["last_test_at"], _models_value(st["models"]), st["id"]),
             )
-        conn.commit()
-    finally:
-        conn.close()
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
 
     results.sort(key=lambda r: (0 if r["ok"] else 1, r["latency_ms"] if r["latency_ms"] is not None else 99999))
     return {"ok": True, "results": results}
@@ -914,7 +1031,7 @@ def healthz():
     try:
         conn = get_db()
         conn.execute("SELECT 1").fetchone()
-        conn.close()
+        _close_db(conn)
         return {"ok": True, "status": "healthy"}
     except Exception:
         return {"ok": False, "status": "unhealthy"}, 503
