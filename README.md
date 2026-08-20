@@ -1,57 +1,53 @@
-# 中转站管理池 · 本地客户端
+# 中转站管理池
 
-一个纯本地的 AI 中转站管理工具，桌面客户端形态（pywebview 原生窗口），浅绿色科技风卡片式界面。
+AI 中转站管理与转发工具，支持多中转站管理、一键测速、自动 failover、游乐场对话测试。
 
-功能：**中转站管理 + Key 加密存储 + 一键测速 + 模型选择 + OpenAI 兼容转发 + 游乐场对话**。
+## 功能
 
-- 后端为单文件 Flask（`app.py`），前端为卡片式单页界面（`templates/index.html`）
-- 数据存本地 SQLite（`data.db`），API Key 用 Fernet 加密（密钥在 `.encryption_key`）
-- 默认只监听 `127.0.0.1`，其他设备无法访问
-- 双击 `start.bat` 即弹出客户端窗口；也可用网页模式（见下）
+- **中转站管理**：添加 / 编辑 / 删除中转站，加密存储 API Key
+- **一键测速**：轻量模式调 `/models` 不消耗 token，不支持时自动回退同步对话
+- **OpenAI 兼容转发**：`/v1/chat/completions`，自动选择默认 / 最快中转站，失败自动切换
+- **游乐场**：独立对话测试页，流式输出 + Markdown 渲染
+- **数据持久化**：Render 使用 PostgreSQL，本地使用 SQLite
 
-## 快速开始
+## 页面结构
 
-1. 双击 `start.bat`（首次运行会自动创建 `.venv`、安装依赖并弹出客户端窗口）
-2. 在客户端登录页输入管理密码（默认 `admin123`）
-3. 点「＋ 添加中转站」，填写名称、Base URL（如 `https://api.example.com/v1`）、API Key
-4. 点卡片上的「⚡ 测速」或「🚀 全部测速」——测速会自动拉取模型列表
-5. 在卡片「模型」下拉框里选择该站的默认模型（转发和游乐场 `model=auto` 时使用）
+| 路由 | 页面 | 说明 |
+|------|------|------|
+| `/` | → 重定向到 `/admin` | |
+| `/admin` | 管理后台 | 中转站管理、测速、转发密钥显示 |
+| `/playground` | 游乐场 | 对话测试，选择中转站和模型聊天 |
+| `/login` | 登录页 | 管理密码登录 |
+| `/healthz` | 健康检查 | 返回 `{"ok":true,"status":"healthy"}` |
 
-**网页模式**（浏览器访问）：命令行运行 `start.bat web`，或直接：
+## 快速开始（本地）
 
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 启动
+python app.py
+
+# 浏览器打开 http://127.0.0.1:8765
 ```
-.venv\Scripts\python.exe app.py
-```
 
-然后浏览器打开 `http://127.0.0.1:8765`。
-
-## 游乐场
-
-客户端顶部「🎮 游乐场」标签，仿 new-api 游乐场的对话测试页：
-
-- 左侧参数面板：选择中转站 → 自动带出该站模型下拉；可填系统提示词、调温度（0~2）、限最大 Token
-- 右侧对话区：流式输出（打字机效果 + 闪烁光标）、Markdown 渲染（标题/代码块/列表/引用/链接/行内样式）
-- Enter 发送、Shift+Enter 换行；「🗑 清空对话」重置上下文
-- 对话直接走所选中转站（管理会话认证，不消耗转发密钥），模型留空则用该站的默认模型
+默认管理密码：`admin123`
 
 ## 转发接口（OpenAI 兼容）
-
-在任意 OpenAI 兼容客户端（ChatBox / NextChat / Cursor / API 工具）中：
 
 | 配置项 | 值 |
 |--------|-----|
 | API 地址 | `http://127.0.0.1:8765/v1` |
-| API Key | 客户端顶部的「转发密钥」（默认 `sk-local-0192023a7bbd7325`） |
+| API Key | 环境变量 `PROXY_API_KEY`（本地自动生成） |
 | 模型 | `auto`（自动用默认中转站的默认模型），或具体模型名 |
 
-约定：
+### 请求约定
 
 - 不传 `account`：默认中转站优先，失败自动切换下一个可用中转站（failover）
 - 传 `"account": "中转站名称"`：只走该中转站
-- `model` 为 `auto` 或留空：使用该中转站在卡片上选择的「默认模型」（未选则用第一个模型；建议先测速，测速会自动拉取模型列表）
+- `model` 为 `auto` 或留空：使用该中转站的默认模型
 - 响应头带 `X-Provider-Name` / `X-Provider-Model`，标明实际使用的中转站
-
-curl 示例：
 
 ```bash
 curl http://127.0.0.1:8765/v1/chat/completions \
@@ -60,154 +56,101 @@ curl http://127.0.0.1:8765/v1/chat/completions \
   -d '{"model": "auto", "messages": [{"role": "user", "content": "你好"}]}'
 ```
 
-流式（`"stream": true`）同样支持，SSE 原样转发。
+## API 列表
 
-## 测速说明
-
-测速为**轻量模式**：优先调 `GET /v1/models` 验证连通性，**不消耗 token**，并顺带刷新模型列表；某些中转站不实现 `/models`，会自动回退到 `stream=false + max_tokens=1` 的同步对话，同样基本不消耗 token。
-
-## 配置（在 start.bat 顶部修改，或用环境变量）
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `8765` | 监听端口 |
-| `HOST` | `127.0.0.1` | 监听地址；改成 `0.0.0.0` 可让局域网其他设备访问（需防火墙放行） |
-| `ADMIN_PASSWORD` | `admin123` | 管理页密码 |
-| `PROXY_API_KEY` | 自动生成 | 转发接口的 Bearer 密钥 |
-| `ENCRYPTION_KEY` | 自动生成 | Key 加密密钥（对应 `.encryption_key` 文件） |
-
-> ⚠️ **编码提醒**：`start.bat` 是 **GBK 编码**（内含中文提示，Windows 批处理在中文系统下按 GBK 解析）。
-> 如果要用编辑器修改它，请保持 GBK/ANSI 编码保存（记事本选「ANSI」，VS Code 右下角把编码改为 GBK），
-> 不要存成 UTF-8，否则再次运行时中文会变乱码。也可全部改用英文提示、另存为纯 ASCII。
-
-> 💡 **桌面窗口依赖**：客户端窗口基于 pywebview + Edge WebView2（Win10/11 自带），首次启动依赖
-> 缺失时会自动安装；如窗口无法打开，可改用网页模式，或手动执行 `.venv\Scripts\pip install pywebview`。
-
-## EXE 分发版
-
-已生成可直接分发的 Windows 单文件客户端：
-
-```text
-dist\中转站管理池.exe
-```
-
-把这个 EXE 复制给别人即可使用，不需要安装 Python 或项目源码。首次运行会弹出桌面客户端窗口，并在当前 Windows 用户目录创建：
-
-```text
-%LOCALAPPDATA%\中转站管理池\data.db
-%LOCALAPPDATA%\中转站管理池\.encryption_key
-```
-
-这两个文件保存每台电脑自己的中转站配置和加密密钥，不会写入 EXE 所在目录。请不要把自己的 `data.db`、`.encryption_key` 或 `.venv` 一起发给别人，否则会泄露你保存的中转站配置和 API Key。
-
-### 构建 EXE
-
-在开发机双击：
-
-```text
-build_exe.bat
-```
-
-构建前需要当前项目的 `.venv` 和依赖。构建产物会覆盖 `dist\中转站管理池.exe`。
-
-### 运行要求
-
-- Windows 10/11，建议 x64
-- 安装 Microsoft Edge WebView2 Runtime（大多数 Windows 10/11 已自带）
-- 首次启动可能需要几秒钟解压和初始化
-- 默认管理密码仍为 `admin123`，分发前建议通过环境变量或源码配置改掉默认凭据
-
-
+| 方法 | 路径 | 说明 |
 |------|------|------|
 | GET/POST | `/login` | 管理页登录 |
+| GET | `/admin` | 管理后台页面 |
+| GET | `/playground` | 游乐场页面 |
 | GET | `/api/stations` | 中转站列表（Key 脱敏） |
 | POST | `/api/stations` | 添加中转站 |
-| PUT | `/api/stations/<id>` | 保存修改（Key 留空则不修改） |
+| PUT | `/api/stations/<id>` | 保存修改 |
 | DELETE | `/api/stations/<id>` | 删除 |
-| POST | `/api/stations/<id>/reveal` | 查看完整 Key（本地管理用） |
+| POST | `/api/stations/<id>/reveal` | 查看完整 Key |
 | POST | `/api/stations/<id>/default` | 设为默认 |
 | DELETE | `/api/stations/<id>/default` | 取消默认 |
 | POST | `/api/stations/<id>/test` | 单站测速 |
 | POST | `/api/test-all` | 全部并行测速 |
-| POST | `/v1/chat/completions` | OpenAI 兼容转发（Bearer 转发密钥） |
-| GET | `/v1/models` | 池内模型列表合并（Bearer 转发密钥） |
+| POST | `/api/chat` | 游乐场对话（SSE 流式） |
+| POST | `/v1/chat/completions` | OpenAI 兼容转发 |
+| GET | `/v1/models` | 池内模型列表合并 |
+| GET | `/healthz` | 健康检查 |
 
 ## Render 部署（Web Service + PostgreSQL）
 
-本项目的 Render 生产环境使用 PostgreSQL 保存中转站配置，不再依赖本地 SQLite 或 Persistent Disk。Render 不能直接读取你电脑上的目录，请先把本目录（不含 `data.db`、`.encryption_key` 和 `.venv`）推送到 GitHub 或 GitLab。
+### 1. 创建 Render PostgreSQL
 
-### 创建 Render PostgreSQL
+1. Render 控制台点击 **New → PostgreSQL**
+2. 创建数据库，选择与 Web Service 相同的 Region
+3. 在数据库 **Info/Connections** 中复制 **Internal Database URL**
 
-1. 在 Render 控制台点击 **New → PostgreSQL**。
-2. 创建数据库，选择与你 Web Service 相同的 Region。
-3. 创建完成后，在数据库的 **Info/Connections** 中复制 **Internal Database URL**。
-
-### 创建 Web Service
-
-1. 点击 **New → Web Service**，连接代码仓库。
-2. 如果项目位于仓库根目录，Root Directory 留空。
-3. 配置：
+### 2. 创建 Web Service
 
 | 配置项 | 值 |
 |--------|-----|
 | Runtime | Python |
 | Build Command | `pip install -r requirements.txt` |
-| Start Command | `gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 0 app:app` |
+| Start Command | `gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 600` |
 | Health Check Path | `/healthz` |
 
-4. 在 Web Service 的 Environment 中添加 PostgreSQL 的 Internal Database URL：
-
-```text
-DATABASE_URL=postgresql://...
-```
-
-也可以使用项目中的 `render.yaml` 通过 Blueprint 自动创建 Web Service 和 PostgreSQL。
-
-### 必填环境变量
+### 3. 必填环境变量
 
 | 变量 | 说明 |
 |------|------|
 | `DATABASE_URL` | Render PostgreSQL 的 Internal Database URL |
 | `ADMIN_PASSWORD` | 管理页面密码，不能使用 `admin123` |
-| `PROXY_API_KEY` | `/v1/*` 转发接口 Bearer 密钥，不要由管理员密码派生 |
-| `FLASK_SECRET_KEY` | Flask Session 签名密钥；更换后已有登录会话失效 |
-| `ENCRYPTION_KEY` | Fernet 密钥；更换后已保存的上游 API Key 无法解密 |
+| `PROXY_API_KEY` | `/v1/*` 转发接口 Bearer 密钥 |
+| `FLASK_SECRET_KEY` | Flask Session 签名密钥 |
+| `ENCRYPTION_KEY` | Fernet 密钥，用于加密存储上游 API Key |
 | `RENDER` | 设置为 `true` |
 | `HOST` | 设置为 `0.0.0.0` |
 
-`PROXY_API_KEY` 和 `FLASK_SECRET_KEY` 可以使用 Render 的 Generate Value；`ENCRYPTION_KEY` 必须是 Fernet 格式，使用以下命令生成后手动保存：
+生成密钥：
 
 ```bash
+# PROXY_API_KEY 和 FLASK_SECRET_KEY：用 Render 的 Generate Value
+
+# ENCRYPTION_KEY（必须是 Fernet 格式）：
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-PostgreSQL 负责业务数据持久化，因此 Web Service 不需要 Persistent Disk。当前启动命令仍使用单 worker 线程模式作为稳妥默认；后续可以在压测后增加 worker 或实例数量。
+### 4. 部署后检查
 
-### 迁移现有本地配置
+1. 打开 `https://你的服务名.onrender.com/healthz` → 应返回 `{"ok":true,"status":"healthy"}`
+2. 访问根路径 → 自动跳转到管理后台，用 `ADMIN_PASSWORD` 登录
+3. 确认已有站点配置或新增一个站点
+4. 使用 `PROXY_API_KEY` 验证 `/v1/models` 和 `/v1/chat/completions`
+5. 重启后再次检查，确认 PostgreSQL 持久化生效
 
-如果不需要保留本地站点配置，可以直接使用 PostgreSQL 空库，应用首次启动会自动创建表。如果需要保留，请先停止本地服务，在本地项目目录执行：
+### 5. 转发地址
 
-```bat
-set DATABASE_URL=Render_PostgreSQL_Internal_Database_URL
-set ENCRYPTION_KEY=本地数据库对应的Fernet密钥
-python migrate_sqlite_to_postgres.py --sqlite data.db
-```
+部署到 Render 后，转发地址会自动适配为 `https://你的服务名.onrender.com/v1/chat/completions`，无需手动修改。在管理后台顶部和游乐场顶部均可看到并复制。
 
-如果本地使用的是自动生成的 `.encryption_key`，请先读取该文件内容作为 `ENCRYPTION_KEY`。迁移完成后，把同一个 `ENCRYPTION_KEY` 设置到 Render Web Service；脚本会保留站点 ID、API Key 密文、模型、默认状态、备注和测速数据。
+## 配置（环境变量）
 
-### 部署后检查
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `8765` | 监听端口 |
+| `HOST` | `127.0.0.1` | 监听地址；Render 设为 `0.0.0.0` |
+| `ADMIN_PASSWORD` | `admin123` | 管理页密码 |
+| `PROXY_API_KEY` | 自动生成 | 转发接口的 Bearer 密钥 |
+| `FLASK_SECRET_KEY` | 自动生成 | Flask Session 签名 |
+| `ENCRYPTION_KEY` | 自动生成 | Key 加密密钥 |
+| `DATABASE_URL` | 空 | Render 设为 PostgreSQL URL，本地用 SQLite |
 
-1. 打开 `https://你的服务名.onrender.com/healthz`，应返回 `{"ok":true,"status":"healthy"}`。
-2. 访问根路径，用 `ADMIN_PASSWORD` 登录管理页。
-3. 确认已有站点配置或新增一个站点。
-4. 使用 `PROXY_API_KEY` 验证 `GET /v1/models` 和 `POST /v1/chat/completions`。
-5. 重启 Web Service 后再次检查站点配置，确认 PostgreSQL 持久化生效。
+## 项目结构
 
 ```
 .
-├── app.py              # Flask 单文件后端（含桌面模式 --desktop）
-├── templates/index.html# 卡片式单页界面
-├── requirements.txt    # 依赖（flask / requests / cryptography / pywebview）
-├── start.bat           # Windows 一键启动（默认客户端，web 参数走网页）
+├── app.py                  # Flask 后端（路由 + 转发 + 管理 API）
+├── static/
+│   └── style.css           # 共享样式
+├── templates/
+│   ├── login.html          # 登录页
+│   ├── admin.html          # 管理后台页
+│   └── playground.html     # 游乐场页
+├── requirements.txt        # 依赖
+├── Procfile                # Render 启动命令
 └── README.md
 ```
