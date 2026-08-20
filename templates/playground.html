@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>游乐场 - 中转站管理池</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"><span class="icon icon-bolt">✦</span></div>
+        <div>
+          <h1>中转站管理池</h1>
+          <div class="sub">游乐场 · 对话测试</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="pill"><span>转发地址</span><code>{{ proxy_url }}</code>
+          <button class="copy" onclick="copyText('{{ proxy_url }}')">⧉</button></span>
+        <span class="pill"><span>转发密钥</span><code>{{ proxy_key }}</code>
+          <button class="copy" onclick="copyText('{{ proxy_key }}')">⧉</button></span>
+        <form method="post" action="/logout" style="margin:0"><button class="btn sm">退出</button></form>
+      </div>
+    </div>
+    <div class="nav">
+      <a class="nav-tab" href="/admin">▦ 中转站管理</a>
+      <a class="nav-tab active" href="/playground">◈ 游乐场</a>
+    </div>
+  </header>
+
+  <section>
+    <div class="play">
+      <div class="play-side">
+        <div class="card">
+          <h3><span class="section-icon">⚙</span> 模型与参数</h3>
+          <label>中转站
+            <select id="pg-station"></select>
+          </label>
+          <label>模型
+            <select id="pg-model"></select>
+          </label>
+          <label>系统提示词
+            <textarea id="pg-system" placeholder="可选，例如：你是一个乐于助人的助手"></textarea>
+          </label>
+          <label>温度
+            <div class="temp-row">
+              <input type="range" id="pg-temp" min="0" max="2" step="0.1" value="0.7">
+              <span class="val" id="pg-temp-val">0.7</span>
+            </div>
+          </label>
+          <label>最大 Token（留空由上游决定）
+            <input type="number" id="pg-maxtokens" placeholder="如 2048" min="1">
+          </label>
+          <button class="btn danger sm" style="width:100%;justify-content:center" onclick="pgClear()"><span class="btn-icon">⌫</span> 清空对话</button>
+        </div>
+      </div>
+      <div class="play-main card">
+        <div class="chat" id="chat">
+          <div class="chat-empty"><span class="empty-icon">✦</span><br>欢迎来到游乐场<br><span>选择中转站与模型，输入消息开始测试对话</span></div>
+        </div>
+        <div class="input-row">
+          <textarea id="pg-input" placeholder="输入消息，Enter 发送，Shift+Enter 换行"></textarea>
+          <button class="btn primary" id="pg-send" onclick="pgSend()">发送</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    对话直接走所选中转站（管理会话认证，不消耗转发密钥）
+    <span class="dot">·</span>模型留空则用该站的默认模型
+  </footer>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let stations = [];
+
+/* ---------- 工具 ---------- */
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function toast(msg, ok) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (ok ? ' ok' : ' err');
+  setTimeout(() => { t.className = ''; }, 2800);
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: {'Content-Type': 'application/json'}, ...opts });
+  return res.json().catch(() => ({}));
+}
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(
+    () => toast('已复制：' + text, true),
+    () => toast('复制失败，请手动选择复制')
+  );
+}
+
+/* ---------- 加载中转站列表 ---------- */
+async function loadStations() {
+  const data = await api('/api/stations');
+  if (data.ok) { stations = data.stations; refreshPlay(); }
+}
+
+/* ---------- 游乐场 ---------- */
+let pgHistory = [];
+let pgBusy = false;
+let pgStreamEl = null;
+
+function refreshPlay() {
+  const stSel = $('pg-station');
+  if (!stSel) return;
+  const prev = stSel.value;
+  stSel.innerHTML = '<option value="">选择中转站…</option>' +
+    stations.map(s => `<option value="${s.id}" ${s.id === prev ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  if (!prev) { const def = stations.find(s => s.is_default) || stations[0]; if (def) stSel.value = def.id; }
+  refreshPgModel();
+}
+function refreshPgModel() {
+  const st = stations.find(s => s.id === $('pg-station').value);
+  const mdl = $('pg-model');
+  const prev = mdl ? mdl.value : '';
+  if (!st || !st.models || !st.models.length) {
+    mdl.innerHTML = '<option value="">自动</option>';
+    if (st && st.selected_model) mdl.value = st.selected_model;
+    return;
+  }
+  mdl.innerHTML = '<option value="">自动</option>' +
+    st.models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+  if (prev && st.models.includes(prev)) mdl.value = prev;
+  else mdl.value = st.selected_model || '';
+}
+$('pg-station').addEventListener('change', refreshPgModel);
+$('pg-temp').addEventListener('input', () => { $('pg-temp-val').textContent = $('pg-temp').value; });
+
+function pgClear() {
+  pgHistory = [];
+  $('chat').innerHTML = '<div class="chat-empty"><span class="empty-icon">✦</span><br>欢迎来到游乐场<br><span>选择中转站与模型，输入消息开始测试对话</span></div>';
+}
+function scrollChat() { const c = $('chat'); c.scrollTop = c.scrollHeight; }
+function appendMsg(role, content) {
+  const chat = $('chat');
+  const empty = chat.querySelector('.chat-empty'); if (empty) empty.remove();
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  if (role === 'user') {
+    div.innerHTML = '<div class="avatar">我</div><div class="bubble">' + esc(content) + '</div>';
+  } else {
+    div.innerHTML = '<div class="avatar">AI</div><div class="bubble md"></div>';
+    if (content) div.querySelector('.bubble').innerHTML = md(content);
+  }
+  chat.appendChild(div);
+  scrollChat();
+  return role === 'assistant' ? div.querySelector('.bubble') : null;
+}
+function renderStream(text, done) {
+  if (!pgStreamEl) return;
+  pgStreamEl.innerHTML = md(text) + (done ? '' : '<span class="cursor"></span>');
+  scrollChat();
+}
+function setSendBusy(busy) {
+  const btn = $('pg-send');
+  btn.disabled = busy;
+  btn.innerHTML = busy ? '<span class="spin"></span> 生成中' : '发送';
+}
+function buildMessages() {
+  const msgs = [];
+  const system = $('pg-system').value.trim();
+  if (system) msgs.push({role: 'system', content: system});
+  msgs.push(...pgHistory);
+  return msgs;
+}
+async function pgSend() {
+  if (pgBusy) return;
+  const stId = $('pg-station').value;
+  if (!stId) { toast('请先选择中转站'); return; }
+  const text = $('pg-input').value.trim();
+  if (!text) return;
+  const model = $('pg-model').value;
+  const temp = parseFloat($('pg-temp').value) || 0.7;
+  const maxt = parseInt($('pg-maxtokens').value, 10) || 0;
+
+  pgHistory.push({role: 'user', content: text});
+  $('pg-input').value = '';
+  appendMsg('user', text);
+  pgStreamEl = appendMsg('assistant', '');
+  pgBusy = true; setSendBusy(true);
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        station_id: stId, model, temperature: temp, max_tokens: maxt || undefined,
+        messages: buildMessages(),
+      }),
+    });
+    if (!res.ok || !res.body) { throw new Error('HTTP ' + res.status); }
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', full = '', errMsg = null, done = false;
+    while (!done) {
+      const {done: d, value} = await reader.read();
+      if (d) break;
+      buf += dec.decode(value, {stream: true});
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, idx).trim(); buf = buf.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') { done = true; break; }
+        let evt;
+        try { evt = JSON.parse(payload); } catch (e) { continue; }
+        if (evt.error) { errMsg = evt.error.message || '未知错误'; done = true; break; }
+        const delta = evt.choices && evt.choices[0] && evt.choices[0].delta && evt.choices[0].delta.content;
+        if (delta) { full += delta; renderStream(full, false); }
+      }
+    }
+    if (errMsg) {
+      pgStreamEl.innerHTML = '<div class="chat-err">⚠️ ' + esc(errMsg) + '</div>';
+    } else {
+      pgHistory.push({role: 'assistant', content: full});
+      renderStream(full, true);
+    }
+  } catch (e) {
+    pgStreamEl.innerHTML = '<div class="chat-err">请求失败，请检查中转站与网络</div>';
+  }
+  pgBusy = false; setSendBusy(false); pgStreamEl = null;
+  scrollChat();
+}
+
+/* ---------- Markdown 渲染（本地轻量实现） ---------- */
+function inline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+}
+function md(src) {
+  const lines = String(src).split('\n');
+  let out = '', listBuf = [];
+  const flushList = () => { if (listBuf.length) { out += '<ul>' + listBuf.join('') + '</ul>'; listBuf = []; } };
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^```/.test(line)) {
+      flushList();
+      const code = [];
+      i++;
+      while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
+      i++;
+      out += '<pre><code>' + esc(code.join('\n')) + '</code></pre>';
+      continue;
+    }
+    if (/^\s*[-*] /.test(line)) { listBuf.push('<li>' + inline(line.replace(/^\s*[-*] /, '')) + '</li>'); i++; continue; }
+    flushList();
+    const h = line.match(/^(#{1,4})\s+(.*)$/);
+    if (h) { out += '<h' + (h[1].length + 1) + '>' + inline(h[2]) + '</h' + (h[1].length + 1) + '>'; i++; continue; }
+    if (/^>\s?/.test(line)) { out += '<blockquote>' + inline(line.replace(/^>\s?/, '')) + '</blockquote>'; i++; continue; }
+    if (!line.trim()) { out += '<div class="md-gap"></div>'; i++; continue; }
+    out += '<p>' + inline(line) + '</p>';
+    i++;
+  }
+  flushList();
+  return out;
+}
+
+/* ---------- 输入与快捷键 ---------- */
+$('pg-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); pgSend(); }
+});
+
+loadStations();
+</script>
+</body>
+</html>
