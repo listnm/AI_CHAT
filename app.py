@@ -517,30 +517,24 @@ def playground():
     return redirect("/")
 
 
-@app.route("/admin")
+@app.route("/admin", methods=["GET", "POST"])
 def admin():
+    if request.method == "POST":
+        if request.form.get("password", "") == ADMIN_PASSWORD:
+            session["admin_logged_in"] = True
+        return redirect("/admin")
     if not _is_admin():
-        return redirect("/login")
+        db_info = "PostgreSQL（Render）" if _USE_PG else "本地 SQLite (data.db)"
+        return render_template("admin.html", logged_in=False, error="",
+                               proxy_key="", proxy_url="", db_info=db_info)
     db_info = "PostgreSQL（Render）" if _USE_PG else "本地 SQLite (data.db)"
     return render_template(
         "admin.html",
+        logged_in=True,
         proxy_key=PROXY_API_KEY,
         proxy_url=_proxy_url(),
         db_info=db_info,
     )
-
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    error = ""
-    if request.method == "POST":
-        if request.form.get("password", "") == ADMIN_PASSWORD:
-            session["admin_logged_in"] = True
-            return redirect("/admin")
-        error = "密码错误"
-    if _is_admin():
-        return redirect("/admin")
-    return render_template("login.html", error=error)
 
 
 @app.route("/logout", methods=["POST"])
