@@ -181,7 +181,8 @@ def get_db():
                 kwargs={"row_factory": dict_row},
                 open=True,
             )
-        return _PG_POOL.connection()
+        # connection() 返回上下文管理器，调用 __enter__ 获取真正的连接对象
+        return _PG_POOL.connection().__enter__()
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.execute("PRAGMA busy_timeout = 30000")
@@ -192,12 +193,12 @@ def get_db():
 
 def _close_db(conn, commit=False):
     if _USE_PG:
-        # psycopg3 连接池的 connection() 返回上下文管理器，
-        # 只需 commit/rollback，连接会自动归还池
         if commit:
             conn.commit()
         else:
             conn.rollback()
+        # psycopg3 连接归还连接池（不调 close）
+        conn.release()
     else:
         if commit:
             conn.commit()
