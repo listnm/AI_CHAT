@@ -307,12 +307,37 @@ body {
 #toast.ok { border-color: rgba(59,130,246,.5); }
 #toast.err { border-color: rgba(239,68,68,.5); }
 
-@media (max-width: 640px) {
-  .pg-input-footer { flex-wrap: wrap; }
-  .pg-model-btn { max-width: 160px; }
+/* ---- 手机端适配 ---- */
+@media (max-width: 768px) {
+  .pg-header { padding: 10px 14px; }
+  .pg-brand h1 { font-size: 14px; }
+  .pg-chat-inner { padding: 16px 12px; gap: 16px; }
+  .pg-msg-content { max-width: 90%; }
+  .pg-input-wrap { padding: 0 10px 12px; }
+  .pg-input-footer { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
+  .pg-tools { width: 100%; justify-content: flex-start; }
+  .pg-model-btn { max-width: 140px; font-size: 11px; padding: 4px 8px; }
+  .pg-send-btn { padding: 6px 14px; font-size: 12px; }
   .pg-prompts { grid-template-columns: 1fr; }
-  .pg-model-panel { width: 100%; left: 0; right: 0; }
-  .pg-params-popover { width: 100%; left: 0; }
+  .pg-empty-card { padding: 24px 16px; }
+  .pg-empty-card h2 { font-size: 16px; }
+}
+@media (max-width: 480px) {
+  .pg-header { padding: 8px 10px; }
+  .pg-brand .logo { width: 26px; height: 26px; font-size: 13px; border-radius: 6px; }
+  .pg-brand h1 { font-size: 13px; }
+  .pg-chat-inner { padding: 12px 8px; }
+  .pg-input-wrap { padding: 0 6px 8px; }
+  .pg-input-box { border-radius: 10px; }
+  .pg-textarea { padding: 10px 12px 6px; font-size: 13px; min-height: 40px; }
+  .pg-input-footer { padding: 6px 8px; }
+  .pg-tool-btn { padding: 4px 8px; font-size: 11px; }
+  .pg-model-btn { max-width: 110px; font-size: 11px; }
+  .pg-send-btn { padding: 5px 12px; font-size: 12px; }
+  .pg-msg-avatar { width: 26px; height: 26px; font-size: 11px; border-radius: 6px; }
+  .pg-msg-bubble { padding: 8px 10px; font-size: 13px; }
+  .pg-model-panel { width: calc(100vw - 12px); left: -4px; right: 0; max-height: 60vh; }
+  .pg-params-popover { width: calc(100vw - 12px); left: -4px; }
 }
 </style>
 </head>
@@ -324,9 +349,6 @@ body {
     <div class="pg-brand">
       <div class="logo">✦</div>
       <h1>Playground</h1>
-    </div>
-    <div class="pg-header-actions">
-      <a href="/admin">⚙ 管理后台</a>
     </div>
   </div>
 
