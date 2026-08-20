@@ -496,16 +496,37 @@ def _is_admin() -> bool:
     return bool(session.get("admin_logged_in"))
 
 
+def _proxy_url():
+    """根据当前请求自动构建转发地址（Render / 本地均正确）"""
+    return request.host_url.rstrip("/") + "/v1/chat/completions"
+
+
 @app.route("/")
 def index():
+    return redirect("/admin")
+
+
+@app.route("/admin")
+def admin():
+    if not _is_admin():
+        return redirect("/login")
+    db_info = "PostgreSQL（Render）" if _USE_PG else "本地 SQLite (data.db)"
+    return render_template(
+        "admin.html",
+        proxy_key=PROXY_API_KEY,
+        proxy_url=_proxy_url(),
+        db_info=db_info,
+    )
+
+
+@app.route("/playground")
+def playground():
     if not _is_admin():
         return redirect("/login")
     return render_template(
-        "index.html",
-        logged_in=True,
+        "playground.html",
         proxy_key=PROXY_API_KEY,
-        proxy_url=f"http://{HOST}:{PORT}/v1/chat/completions",
-        port=PORT,
+        proxy_url=_proxy_url(),
     )
 
 
@@ -515,12 +536,11 @@ def login():
     if request.method == "POST":
         if request.form.get("password", "") == ADMIN_PASSWORD:
             session["admin_logged_in"] = True
-            return redirect("/")
+            return redirect("/admin")
         error = "密码错误"
     if _is_admin():
-        return redirect("/")
-    return render_template("index.html", logged_in=False, error=error,
-                           proxy_key="", proxy_url="", port=PORT)
+        return redirect("/admin")
+    return render_template("login.html", error=error)
 
 
 @app.route("/logout", methods=["POST"])
