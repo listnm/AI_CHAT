@@ -1,5 +1,5 @@
-flask
+flask>=2.2
 requests
-gunicorn
 cryptography
-psycopg2-binary
+gunicorn
+pywebview>=5.0; platform_system == "Windows"

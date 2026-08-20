@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: ai-relay-pool
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 0 app:app
+    healthCheckPath: /healthz
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /var/data
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: PROXY_API_KEY
+        sync: false
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+    disk:
+      name: relay-pool-data
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,279 +1,187 @@
-# AI 中转站管理池
+# 中转站管理池 · 本地客户端
 
-基于 Flask 的 AI 转发服务管理应用，支持多账号管理、自动测速、最快账号自动切换，提供兼容 OpenAI 的转发接口，并内置 new-api 风格的「游乐场」在线测试对话。
+一个纯本地的 AI 中转站管理工具，桌面客户端形态（pywebview 原生窗口），浅绿色科技风卡片式界面。
 
-## 功能特性
+功能：**中转站管理 + Key 加密存储 + 一键测速 + 模型选择 + OpenAI 兼容转发 + 游乐场对话**。
 
-- **多账号管理**：添加多个上游账号，统一管理
-- **自动测速**：轻量模式不消耗 Token，严格模式真实对话测速
-- **兼容转发**：提供兼容 OpenAI 的接口，可接入任意 AI 工具
-- **三种调用模式**：自动选择 / 手动指定 / model=auto
-- **游乐场测试对话**：参考 [new-api](https://www.newapi.ai/zh) 游乐场实现，选择账号 + 模型在线流式对话，支持参数面板、消息操作、本地历史
-- **安全加密**：访问密钥加密存储
-- **浅色 / 深色双主题**：一键切换浅色（紫色调）与深色（青绿科技风）模式，整页适配，偏好自动记忆
-- **Sub2API / NewAPI 账号池管理**：记录账号密码、一键查询余额、读取密钥/渠道分组详情，支持批量刷新
-- **响应式设计**：电脑端表格 + 手机端卡片，自适应布局
-- **默认账号一键切换**：后台选择默认账号；未指定默认账号时自动使用延迟最低的账号
+- 后端为单文件 Flask（`app.py`），前端为卡片式单页界面（`templates/index.html`）
+- 数据存本地 SQLite（`data.db`），API Key 用 Fernet 加密（密钥在 `.encryption_key`）
+- 默认只监听 `127.0.0.1`，其他设备无法访问
+- 双击 `start.bat` 即弹出客户端窗口；也可用网页模式（见下）
 
-## 快速部署
+## 快速开始
 
-### 方式一：Render 部署（推荐）
+1. 双击 `start.bat`（首次运行会自动创建 `.venv`、安装依赖并弹出客户端窗口）
+2. 在客户端登录页输入管理密码（默认 `admin123`）
+3. 点「＋ 添加中转站」，填写名称、Base URL（如 `https://api.example.com/v1`）、API Key
+4. 点卡片上的「⚡ 测速」或「🚀 全部测速」——测速会自动拉取模型列表
+5. 在卡片「模型」下拉框里选择该站的默认模型（转发和游乐场 `model=auto` 时使用）
 
-1. Fork 本仓库到你的 GitHub
-2. 在 [Render](https://render.com) 创建 Web Service，连接 GitHub 仓库
-3. 环境变量配置：
+**网页模式**（浏览器访问）：命令行运行 `start.bat web`，或直接：
 
-   | 变量名 | 说明 | 默认值 |
-   |--------|------|--------|
-   | `ADMIN_PASSWORD` | 后台管理密码；生产环境必须设置强随机值 | 无（生产必填） |
-   | `PROXY_API_KEY` | API 转发密钥，必须与管理员密码独立 | 无（生产必填） |
-   | `DATABASE_URL` | PostgreSQL 连接；Render 生产连接失败不会回退 SQLite | 无（生产必填） |
-   | `ENCRYPTION_KEY` | Fernet 凭据加密密钥，必须固定保存 | 无（生产必填） |
-   | `FLASK_SECRET_KEY` | Session 签名密钥 | 无（生产必填） |
+```
+.venv\Scripts\python.exe app.py
+```
 
-4. 部署完成后访问 `https://你的域名/admin` 进入后台
+然后浏览器打开 `http://127.0.0.1:8765`。
 
-### 方式二：本地运行
+## 游乐场
+
+客户端顶部「🎮 游乐场」标签，仿 new-api 游乐场的对话测试页：
+
+- 左侧参数面板：选择中转站 → 自动带出该站模型下拉；可填系统提示词、调温度（0~2）、限最大 Token
+- 右侧对话区：流式输出（打字机效果 + 闪烁光标）、Markdown 渲染（标题/代码块/列表/引用/链接/行内样式）
+- Enter 发送、Shift+Enter 换行；「🗑 清空对话」重置上下文
+- 对话直接走所选中转站（管理会话认证，不消耗转发密钥），模型留空则用该站的默认模型
+
+## 转发接口（OpenAI 兼容）
+
+在任意 OpenAI 兼容客户端（ChatBox / NextChat / Cursor / API 工具）中：
+
+| 配置项 | 值 |
+|--------|-----|
+| API 地址 | `http://127.0.0.1:8765/v1` |
+| API Key | 客户端顶部的「转发密钥」（默认 `sk-local-0192023a7bbd7325`） |
+| 模型 | `auto`（自动用默认中转站的默认模型），或具体模型名 |
+
+约定：
+
+- 不传 `account`：默认中转站优先，失败自动切换下一个可用中转站（failover）
+- 传 `"account": "中转站名称"`：只走该中转站
+- `model` 为 `auto` 或留空：使用该中转站在卡片上选择的「默认模型」（未选则用第一个模型；建议先测速，测速会自动拉取模型列表）
+- 响应头带 `X-Provider-Name` / `X-Provider-Model`，标明实际使用的中转站
+
+curl 示例：
 
 ```bash
-# 安装依赖
-pip install -r requirements.txt
-
-# 启动
-python app.py
-# 或
-gunicorn app:app --timeout 600
-```
-
-访问 `http://localhost:5000`
-
-## 使用说明
-
-### 1. 后台管理
-
-访问 `/admin`，输入管理密码登录（默认 `admin123`，请及时修改）。
-
-#### 添加账号
-
-1. 在「添加账号」区域填写：
-   - **名称**：自定义标识，如「OpenAI中转」
-   - **API 地址**：中转站的 API 地址，如 `https://api.example.com/v1/chat/completions`
-   - **API Key**：中转站的密钥
-   - **模型**：点击「刷新」按钮自动获取可用模型列表，或手动输入
-2. 点击「添加账号」
-
-#### 账号管理操作
-
-每个已添加的账号支持以下操作：
-
-| 操作 | 说明 |
-|------|------|
-| ⚡ 测速 | 测试该账号的响应延迟 |
-| 💾 保存 | 修改账号信息后保存 |
-| ⭐ 设为默认 / 取消默认 | 设置或取消默认中转站（无默认账号时，自动选择延迟最低的账号） |
-| 🗑️ 删除 | 删除该账号 |
-| 📋 复制地址 | 复制 API 地址到剪贴板 |
-| 📋 复制 Key | 复制 API Key 到剪贴板 |
-| 🔄 刷新 | 重新获取该账号的可用模型列表 |
-| 🚀 全部测速 | 批量测试所有账号延迟 |
-
-测速完成后，延迟最低的账号会自动高亮标记。
-
-#### 测速模式
-
-| 模式 | 说明 |
-|------|------|
-| **轻量模式**（默认） | 优先调 `/models` 接口验证，不消耗 Token；对不支持的中转站自动回退到同步对话，同样不消耗 Token |
-| **严格测速** | 真实发送对话请求，消耗少量 Token，可验证完整链路 |
-
-在「全部测速」按钮旁的开关切换模式。
-
-### 2. 游乐场测试对话（new-api 风格）
-
-访问 `/playground`（首页会自动跳转）即可使用游乐场在线测试对话，界面与交互参考 [new-api](https://www.newapi.ai/zh) 的游乐场（Playground）：
-
-- **转发账号**：前台只显示并直接使用后台选择的默认账号；未设置默认账号时自动选择延迟最低的账号，**不暴露后台其他账号**；输入框左侧展示账号名、模型名称与延迟，账号配置变更后点刷新按钮即可生效
-- **参数面板**：点击 ⚙️ 按钮展开参数面板，可分别启用 / 禁用 temperature、top_p、frequency_penalty、presence_penalty、max_tokens、seed，只有启用的参数才会随请求发送，角标显示已启用参数数量
-- **流式对话**：SSE 流式输出，支持 Markdown 渲染、代码块、表格；支持思维链（reasoning_content / `<think>` 标签）折叠展示
-- **消息操作**：悬停消息可复制、重新生成、编辑（用户消息编辑后自动截断后续消息并重新发送）、删除；错误消息可一键重试
-- **本地历史**：会话、配置、参数开关保存在浏览器 localStorage（最多 100 条消息），刷新页面自动恢复；🗑 按钮一键清空（带二次确认）
-- **主题切换**：右上角 🌙/☀️ 按钮切换浅色 / 深色模式，偏好自动记忆
-
-### 3. 账号池管理（Sub2API / NewAPI）
-
-访问 `/acc`（需先登录管理员后台），用于管理你的 Sub2API / NewAPI 平台账号池。
-
-**主要功能：**
-
-| 操作 | 说明 |
-|------|------|
-| ➕ 添加账号 | 选择 Sub2API 或 NewAPI 类型，填写 Base URL、用户名、密码（加密存储） |
-| 🔐 登录 | 用账号密码登录远程平台，获取并保存 Access Token |
-| 💰 查询余额 | 调用远程接口获取账户剩余额度，自动识别 token 失效并重登 |
-| 🗂️ 读取分组 | 查询密钥令牌分组 / 上游渠道分组，按分组字段自动归类 |
-| 👁 详情弹窗 | 展开每个分组的所有令牌/渠道，含 Key 预览、配额进度条 |
-| 🔄 批量刷新 | 并行刷新全部账号的余额与分组数据 |
-| 🔍 搜索过滤 | 按名称、URL、用户名、备注搜索账号 |
-| 📊 统计概览 | 顶部 4 张卡片展示：账号总数 / 总余额 / Sub2API 数 / NewAPI 数 |
-
-> 💡 **安全提示**：账号密码与 Access Token 均使用 Fernet 加密后存入数据库。生产环境必须设置固定的 `ENCRYPTION_KEY`；加密初始化失败会阻止服务启动，不会降级为 Base64。
-
-### 4. 兼容转发接口
-
-本应用提供兼容 OpenAI 的转发端点，可将已配置的上游账号统一对外提供。后台不再提供单独的“转发方式”切换，服务始终使用普通账号转发。
-
-#### 端点
-
-```
-GET  https://你的域名/v1/models             # OpenAI 兼容模型列表
-GET  https://你的域名/models                 # 兼容别名
-POST https://你的域名/v1/chat/completions   # OpenAI 兼容 Chat Completions
-POST https://你的域名/chat/completions       # 兼容别名
-POST https://你的域名/v1/responses          # OpenAI Responses API（Codex CLI 等）
-POST https://你的域名/responses              # 兼容别名
-```
-
-#### 认证
-
-```
-Authorization: Bearer 你的PROXY_API_KEY
-```
-
-> `PROXY_API_KEY` 可在后台管理页面查看，通过环境变量 `PROXY_API_KEY` 设置。
-
-#### 三种使用方式
-
-**方式一：自动选择（推荐）**
-
-不传 `account` 时，系统使用后台选择的默认账号；未设置默认账号时自动选择延迟最低的可用账号。客户端传入的 `model` 会按 OpenAI/Sub2API 语义保留并转发，适合后台配置了模型映射或多个上游模型的场景；如果 `model` 缺省或设为 `auto`，才使用该账号后台配置的模型。
-
-```bash
-curl https://你的域名/v1/chat/completions \
-  -H "Authorization: Bearer sk-proxy-xxxx" \
+curl http://127.0.0.1:8765/v1/chat/completions \
+  -H "Authorization: Bearer 转发密钥" \
   -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4o",
-    "messages": [{"role": "user", "content": "你好"}],
-    "stream": false
-  }'
+  -d '{"model": "auto", "messages": [{"role": "user", "content": "你好"}]}'
 ```
 
-**方式二：手动指定账号**
+流式（`"stream": true`）同样支持，SSE 原样转发。
 
-通过 `account` 字段指定使用哪个中转站（名称对应后台添加的名称）。
+## 测速说明
+
+测速为**轻量模式**：优先调 `GET /v1/models` 验证连通性，**不消耗 token**，并顺带刷新模型列表；某些中转站不实现 `/models`，会自动回退到 `stream=false + max_tokens=1` 的同步对话，同样基本不消耗 token。
+
+## 配置（在 start.bat 顶部修改，或用环境变量）
+
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `PORT` | `8765` | 监听端口 |
+| `HOST` | `127.0.0.1` | 监听地址；改成 `0.0.0.0` 可让局域网其他设备访问（需防火墙放行） |
+| `ADMIN_PASSWORD` | `admin123` | 管理页密码 |
+| `PROXY_API_KEY` | 自动生成 | 转发接口的 Bearer 密钥 |
+| `ENCRYPTION_KEY` | 自动生成 | Key 加密密钥（对应 `.encryption_key` 文件） |
+
+> ⚠️ **编码提醒**：`start.bat` 是 **GBK 编码**（内含中文提示，Windows 批处理在中文系统下按 GBK 解析）。
+> 如果要用编辑器修改它，请保持 GBK/ANSI 编码保存（记事本选「ANSI」，VS Code 右下角把编码改为 GBK），
+> 不要存成 UTF-8，否则再次运行时中文会变乱码。也可全部改用英文提示、另存为纯 ASCII。
+
+> 💡 **桌面窗口依赖**：客户端窗口基于 pywebview + Edge WebView2（Win10/11 自带），首次启动依赖
+> 缺失时会自动安装；如窗口无法打开，可改用网页模式，或手动执行 `.venv\Scripts\pip install pywebview`。
+
+## EXE 分发版
+
+已生成可直接分发的 Windows 单文件客户端：
+
+```text
+dist\中转站管理池.exe
+```
+
+把这个 EXE 复制给别人即可使用，不需要安装 Python 或项目源码。首次运行会弹出桌面客户端窗口，并在当前 Windows 用户目录创建：
+
+```text
+%LOCALAPPDATA%\中转站管理池\data.db
+%LOCALAPPDATA%\中转站管理池\.encryption_key
+```
+
+这两个文件保存每台电脑自己的中转站配置和加密密钥，不会写入 EXE 所在目录。请不要把自己的 `data.db`、`.encryption_key` 或 `.venv` 一起发给别人，否则会泄露你保存的中转站配置和 API Key。
+
+### 构建 EXE
+
+在开发机双击：
+
+```text
+build_exe.bat
+```
+
+构建前需要当前项目的 `.venv` 和依赖。构建产物会覆盖 `dist\中转站管理池.exe`。
+
+### 运行要求
+
+- Windows 10/11，建议 x64
+- 安装 Microsoft Edge WebView2 Runtime（大多数 Windows 10/11 已自带）
+- 首次启动可能需要几秒钟解压和初始化
+- 默认管理密码仍为 `admin123`，分发前建议通过环境变量或源码配置改掉默认凭据
+
+
+|------|------|------|
+| GET/POST | `/login` | 管理页登录 |
+| GET | `/api/stations` | 中转站列表（Key 脱敏） |
+| POST | `/api/stations` | 添加中转站 |
+| PUT | `/api/stations/<id>` | 保存修改（Key 留空则不修改） |
+| DELETE | `/api/stations/<id>` | 删除 |
+| POST | `/api/stations/<id>/reveal` | 查看完整 Key（本地管理用） |
+| POST | `/api/stations/<id>/default` | 设为默认 |
+| DELETE | `/api/stations/<id>/default` | 取消默认 |
+| POST | `/api/stations/<id>/test` | 单站测速 |
+| POST | `/api/test-all` | 全部并行测速 |
+| POST | `/v1/chat/completions` | OpenAI 兼容转发（Bearer 转发密钥） |
+| GET | `/v1/models` | 池内模型列表合并（Bearer 转发密钥） |
+
+## Render 部署（公网 Web Service）
+
+本项目可以部署到 Render，但 Render 不能直接读取你电脑上的本地目录。请先把本目录（不含 `data.db`、`.encryption_key` 和 `.venv`）推送到 GitHub 或 GitLab，再在 Render 连接仓库。
+
+项目已提供 `render.yaml`，可在 Render 选择 **New → Blueprint** 自动创建服务。若手动创建 Web Service，使用以下配置：
+
+| 配置项 | 值 |
+|--------|-----|
+| Runtime | Python |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 0 app:app` |
+| Health Check Path | `/healthz` |
+| Persistent Disk | 挂载到 `/var/data`，至少 1 GB |
+
+### 必填环境变量
+
+在 Render 的 Environment 中创建以下 Secret，所有密钥都应使用随机值并长期保持不变：
+
+| 变量 | 说明 |
+|------|------|
+| `ADMIN_PASSWORD` | 管理页面密码，不能使用 `admin123` |
+| `PROXY_API_KEY` | `/v1/*` 转发接口的 Bearer 密钥，不要由管理员密码派生 |
+| `FLASK_SECRET_KEY` | Flask Session 签名密钥；更换后已有登录会话失效 |
+| `ENCRYPTION_KEY` | Fernet 密钥；更换后已保存的上游 API Key 无法解密 |
+| `RENDER` | 设置为 `true`（Blueprint 已配置） |
+| `HOST` | 设置为 `0.0.0.0`（Blueprint 已配置） |
+| `DATA_DIR` | 设置为 `/var/data`（Blueprint 已配置） |
+
+可以使用 Python 生成 Fernet 密钥：
 
 ```bash
-curl https://你的域名/v1/chat/completions \
-  -H "Authorization: Bearer sk-proxy-xxxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gpt-4o",
-    "account": "OpenAI中转",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-**方式三：model=auto（兼容 AI 工具）**
+Render Persistent Disk 与 SQLite 方案要求保持 **单实例、单 worker**；当前启动命令使用线程 worker 来支持流式响应。如果以后需要多实例、自动扩容或更高并发，应迁移到 PostgreSQL，而不是让多个实例共享 SQLite 文件。
 
-将 `model` 设为 `auto`，系统自动选择最优账号并使用该账号后台配置的模型。适合客户端必须传 model、但希望由后台决定实际模型的场景。
+### 部署后检查
 
-```bash
-curl https://你的域名/v1/chat/completions \
-  -H "Authorization: Bearer sk-proxy-xxxx" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "auto",
-    "messages": [{"role": "user", "content": "你好"}]
-  }'
-```
+1. 打开 `https://你的服务名.onrender.com/healthz`，应返回 `{"ok":true,"status":"healthy"}`。
+2. 访问根路径，用 `ADMIN_PASSWORD` 登录管理页。
+3. 添加一个中转站并执行测速，确认 `/var/data/data.db` 持久化。
+4. 使用 `PROXY_API_KEY` 验证 `GET /v1/models` 和 `POST /v1/chat/completions`。
+5. 确认服务重启后中转站配置仍在；不要把本地 `data.db` 或 `.encryption_key` 提交到仓库。
 
-#### 方式四：Responses API（Codex CLI 等）
-
-`/v1/responses` 端点按标准 OpenAI Responses API 直通到后台转发账号对应的上游 `/v1/responses`，请求体、非流式响应和流式 SSE 均不转换为 Chat Completions 格式。客户端可直接使用 Responses API 的 `input`、`instructions`、`tools`、`stream` 等字段。
-
-**Codex CLI 配置示例（`~/.codex/config.toml`）：**
-
-```toml
-model_provider = "myproxy"
-
-[model_providers.myproxy]
-name = "myproxy"
-base_url = "https://你的域名/v1"
-env_key = "MYPROXY_API_KEY"
-wire_api = "responses"   # 走 /v1/responses；也可设为 "chat" 走 /v1/chat/completions
-```
-
-在系统环境变量中设置 `MYPROXY_API_KEY` 为你的 `PROXY_API_KEY`，模型填 `auto` 即自动使用账号在后台配置的模型。
-
-#### 在第三方 AI 工具中使用
-
-以常见的 AI 客户端为例：
-
-1. **API Base URL**：`https://你的域名/v1`
-2. **API Key**：你的 `PROXY_API_KEY`
-3. **模型**：填写 `auto`，或具体模型名如 `gpt-4o`
-
-> 兼容 OpenAI 的客户端通常会自动请求 `GET /v1/models`。本应用只返回当前后台选择账号的模型，不会暴露其他账号。
->
-> **地址填写注意**：客户端的 Base URL 请填写到 `/v1`，不要填写完整的 `/v1/chat/completions`。如果客户端要求填写完整接口地址，则使用 `https://你的域名/v1/chat/completions`；Responses API 客户端使用 `https://你的域名/v1/responses`。
->
-> **WorkBuddy / Anthropic 客户端**：使用同一个 Base URL `https://你的域名/v1`，API Key 填 `PROXY_API_KEY`。客户端请求 `/v1/messages` 时，服务端会将 Anthropic Messages 请求转换为后台 OpenAI 兼容上游，并返回 Anthropic 标准响应与 SSE；不要把 Anthropic 请求发到 `/v1/chat/completions`。
-
-支持流式（`stream: true`）和非流式响应，中文编码正常无乱码。
-
-#### 响应格式
-
-非流式响应兼容 OpenAI 格式，额外包含 `_provider` 字段说明实际使用的账号：
-
-```json
-{
-  "id": "chatcmpl-xxx",
-  "choices": [{"index": 0, "message": {"role": "assistant", "content": "你好！"}, "finish_reason": "stop"}],
-  "model": "gpt-4o",
-  "_provider": {
-    "name": "OpenAI中转",
-    "latency_ms": 234,
-    "effective_model": "gpt-4o"
-  }
-}
-```
-
-### 5. 账号与转发说明
-
-`/admin` 页面用于管理普通账号、测速并选择默认账号。应用保留兼容 OpenAI 的 `/v1/models`、`/v1/chat/completions`、Responses 和 Anthropic Messages 转发接口；废弃的 Grok SSO 账号管理页面与接口已移除。
-
-历史数据库中的 `grok_accounts`、`grok_oauth_sessions`、`grok_device_sessions` 表不会自动删除。如需清理，请先备份数据库后单独执行迁移。
-
-- **后端**：Python / Flask / Gunicorn（超时 600s）
-- **数据库**：SQLite（本地）/ PostgreSQL（生产）
-- **前端**：原生 HTML / CSS / JavaScript（游乐场页面复刻 new-api Playground 交互），浅色/深色双主题可切换
-- **加密**：cryptography (Fernet)
-- **部署**：Render / 支持任意 Python 平台
-
-## 项目结构
 
 ```
 .
-├── app.py              # Flask 主应用（路由、API、数据库）
-├── templates/
-│   ├── playground.html # 游乐场测试对话页（new-api 风格，浅色/深色双主题）
-│   ├── admin.html      # 后台管理页面（浅色/深色双主题）
-│   └── account-pool.html # Sub2API / NewAPI 账号池管理页（浅色/深色双主题）
-├── requirements.txt    # Python 依赖
-├── Procfile            # 部署配置（Gunicorn --timeout 600）
-└── README.md           # 本文件
+├── app.py              # Flask 单文件后端（含桌面模式 --desktop）
+├── templates/index.html# 卡片式单页界面
+├── requirements.txt    # 依赖（flask / requests / cryptography / pywebview）
+├── start.bat           # Windows 一键启动（默认客户端，web 参数走网页）
+└── README.md
 ```
-
-## 环境变量
-
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `ADMIN_PASSWORD` | 是（生产） | 后台管理密码，必须使用强随机值 |
-| `PROXY_API_KEY` | 是（生产） | 独立的转发访问密钥，不由管理密码派生 |
-| `DATABASE_URL` | 是（生产） | PostgreSQL 连接串；本地不设置时使用 SQLite |
-| `ENCRYPTION_KEY` | 是（生产） | 固定的 Fernet 凭据加密密钥 |
-| `FLASK_SECRET_KEY` | 是（生产） | Session 签名密钥 |
-
-## License
-
-MIT
