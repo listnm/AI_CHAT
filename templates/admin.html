@@ -8,8 +8,25 @@
 </head>
 <body>
 
-<div class="wrap">
+{% if not logged_in %}
+<!-- ================= 登录 ================= -->
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="logo"><span class="icon icon-bolt">✦</span></div>
+    <h1>中转站管理池</h1>
+    <div class="sub">登录以访问管理后台</div>
+    <form method="post" action="/admin">
+      {% if error %}<div class="err">{{ error }}</div>{% endif %}
+      <input type="password" name="password" placeholder="输入管理密码" autofocus required>
+      <button class="btn primary" type="submit">登 录</button>
+    </form>
+    <div style="margin-top:18px"><a href="/" style="color:var(--muted);font-size:13px;text-decoration:none">← 返回游乐场</a></div>
+  </div>
+</div>
 
+{% else %}
+<!-- ================= 管理后台 ================= -->
+<div class="wrap">
   <header>
     <div class="topbar">
       <div class="brand">
@@ -24,12 +41,9 @@
           <button class="copy" onclick="copyText('{{ proxy_url }}')">⧉</button></span>
         <span class="pill"><span>转发密钥</span><code>{{ proxy_key }}</code>
           <button class="copy" onclick="copyText('{{ proxy_key }}')">⧉</button></span>
+        <a class="btn sm" href="/">游乐场</a>
         <form method="post" action="/logout" style="margin:0"><button class="btn sm">退出</button></form>
       </div>
-    </div>
-    <div class="nav">
-      <a class="nav-tab active" href="/admin">▦ 中转站管理</a>
-      <a class="nav-tab" href="/playground">◈ 游乐场</a>
     </div>
   </header>
 
@@ -55,7 +69,7 @@
 
     <div class="toolbar">
       <button class="btn primary" id="btn-test-all" onclick="testAll()"><span class="btn-icon">↯</span> 全部测速</button>
-      <span class="status">轻量测速不消耗 token · 卡片上可下拉选择默认模型 · 绿色徽标 = 延迟最低</span>
+      <span class="status">轻量测速不消耗 token · 卡片上可下拉选择默认模型</span>
     </div>
 
     <div class="sec-title"><h2>中转站</h2></div>
@@ -126,7 +140,6 @@ let shownKeys = {};
 let editingId = null;
 let confirmCb = null;
 
-/* ---------- 工具 ---------- */
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -147,7 +160,6 @@ function copyText(text) {
   );
 }
 
-/* ---------- 渲染：管理视图 ---------- */
 function latencyInfo(s) {
   if (s.latency_ms == null) return {cls: 'none', txt: '—'};
   if (s.latency_ms < 0) return {cls: 'fail', txt: '失败'};
@@ -180,68 +192,48 @@ function render() {
   const grid = $('grid');
   const addCard = '<div class="card add-card" onclick="openModal(\'add\')"><div class="plus">＋</div><span>添加中转站</span></div>';
   if (!stations.length) {
-    grid.innerHTML = addCard + `
-      <div class="empty"><div class="big">□</div>
-        还没有中转站，点击左侧「添加中转站」开始<br>
-        <span style="font-size:12px">添加后点「↯ 测速」即可自动获取模型列表与延迟</span>
-      </div>`;
+    grid.innerHTML = addCard + `<div class="empty"><div class="big">□</div>还没有中转站，点击「添加中转站」开始<br><span style="font-size:12px">添加后点「↯ 测速」即可自动获取模型列表与延迟</span></div>`;
     return;
   }
   const fast = fastestLatency();
   const cards = stations.map((s, i) => {
     const li = latencyInfo(s);
-    const isFastest = s.latency_ms != null && s.latency_ms >= 0 && s.latency_ms === fast;
     const isTesting = testing[s.id];
-    const badge = isTesting
-      ? '<span class="badge testing">测试中…</span>'
-      : `<span class="badge ${li.cls}">${li.txt}</span>`;
+    const badge = isTesting ? '<span class="badge testing">测试中…</span>' : `<span class="badge ${li.cls}">${li.txt}</span>`;
     const star = s.is_default
       ? '<button class="icon-btn" title="取消默认" onclick="setDefault(\'' + s.id + '\', false)">★</button>'
       : '<button class="icon-btn" title="设为默认" onclick="setDefault(\'' + s.id + '\', true)">☆</button>';
     const keyText = shownKeys[s.id] ? '<span class="val full" id="key-' + s.id + '"></span>' : `<span class="val">${esc(s.api_key_preview) || '未填 Key'}</span>`;
     const keyBtn = shownKeys[s.id]
-      ? '<button class="icon-btn" title="复制完整 Key" onclick="copyShownKey(\'' + s.id + '\')">⧉</button><button class="icon-btn" title="隐藏" onclick="toggleKey(\'' + s.id + '\')">◉</button>'
-      : '<button class="icon-btn" title="查看完整 Key" onclick="toggleKey(\'' + s.id + '\')">⌁</button>';
+      ? '<button class="icon-btn" title="复制" onclick="copyShownKey(\'' + s.id + '\')">⧉</button><button class="icon-btn" title="隐藏" onclick="toggleKey(\'' + s.id + '\')">◉</button>'
+      : '<button class="icon-btn" title="查看" onclick="toggleKey(\'' + s.id + '\')">⌁</button>';
     const tested = s.last_test_at ? '测于 ' + esc(s.last_test_at).replace('T', ' ') : '';
     const cnt = s.models && s.models.length ? s.models.length + ' 个' : '未获取';
-    return `
-    <div class="card" style="animation-delay:${i * 55}ms">
+    return `<div class="card" style="animation-delay:${i*55}ms">
       <div class="card-head">
-        <div class="ava ava-${i % 4}">${esc((s.name || '?').charAt(0))}</div>
+        <div class="ava ava-${i%4}">${esc((s.name||'?').charAt(0))}</div>
         <div class="card-title">
-          <div class="name">${esc(s.name)} ${s.is_default ? '<span class="star">★</span>' : ''}</div>
-          <div class="sub">${esc(s.remark) || '未填写备注'}</div>
-        </div>
-        ${badge}
+          <div class="name">${esc(s.name)} ${s.is_default?'<span class="star">★</span>':''}</div>
+          <div class="sub">${esc(s.remark)||'未填写备注'}</div>
+        </div>${badge}
       </div>
-      <div class="row">
-        <span class="lbl">地址</span>
-        <span class="val" title="${esc(s.base_url)}">${esc(s.base_url)}</span>
-        <button class="icon-btn" title="复制地址" onclick="copyText('${esc(s.base_url)}')">⧉</button>
-      </div>
-      <div class="row">
-        <span class="lbl">密钥</span>
-        ${keyText}${keyBtn}
-      </div>
-      <div class="row">
-        <span class="lbl">模型</span>
-        <select class="model-sel" onchange="setModel('${s.id}', this.value)" title="默认模型：转发与游乐场 model=auto 时使用">${modelOptions(s)}</select>
-        <span class="cnt">${cnt}</span>
-      </div>
+      <div class="row"><span class="lbl">地址</span><span class="val" title="${esc(s.base_url)}">${esc(s.base_url)}</span>
+        <button class="icon-btn" title="复制" onclick="copyText('${esc(s.base_url)}')">⧉</button></div>
+      <div class="row"><span class="lbl">密钥</span>${keyText}${keyBtn}</div>
+      <div class="row"><span class="lbl">模型</span>
+        <select class="model-sel" onchange="setModel('${s.id}',this.value)">${modelOptions(s)}</select>
+        <span class="cnt">${cnt}</span></div>
       <div class="card-foot">
-        ${isTesting
-          ? '<button class="btn soft sm" disabled><span class="spin" style="border-color:rgba(14,167,94,.3);border-top-color:#0ea75e"></span> 测速中</button>'
-          : '<button class="btn soft sm" onclick="testStation(\'' + s.id + '\')">↯ 测速</button>'}
-        <button class="btn sm" onclick="openModal('edit', '${s.id}')">✎ 编辑</button>
-        ${star}
-        <button class="btn danger sm" onclick="askDelete('${s.id}', '${esc(s.name)}')">×</button>
+        ${isTesting?'<button class="btn soft sm" disabled><span class="spin" style="border-color:rgba(14,167,94,.3);border-top-color:#0ea75e"></span> 测速中</button>':'<button class="btn soft sm" onclick="testStation(\''+s.id+'\')">↯ 测速</button>'}
+        <button class="btn sm" onclick="openModal('edit','${s.id}')">✎ 编辑</button>${star}
+        <button class="btn danger sm" onclick="askDelete('${s.id}','${esc(s.name)}')">×</button>
         <span class="tested">${tested}</span>
       </div>
     </div>`;
   }).join('');
   grid.innerHTML = addCard + cards;
   Object.keys(shownKeys).forEach(id => {
-    const el = $('key-' + id);
+    const el = $('key-'+id);
     const s = stations.find(x => x.id === id);
     if (el && s) el.textContent = s._fullKey || '';
   });
@@ -267,8 +259,6 @@ async function setModel(id, val) {
   toast(d.message, d.ok);
   if (d.ok) { const s = stations.find(x => x.id === id); if (s) s.selected_model = val; }
 }
-
-/* ---------- 添加 / 编辑 ---------- */
 function openModal(mode, id) {
   editingId = mode === 'edit' ? id : null;
   $('m-title').textContent = mode === 'edit' ? '编辑中转站' : '添加中转站';
@@ -279,8 +269,7 @@ function openModal(mode, id) {
   if (mode === 'edit') {
     const s = stations.find(x => x.id === id);
     if (s) {
-      $('m-name').value = s.name;
-      $('m-url').value = s.base_url;
+      $('m-name').value = s.name; $('m-url').value = s.base_url;
       $('m-remark').value = s.remark;
       $('m-key').placeholder = s.api_key_preview ? s.api_key_preview + ' · 留空不修改' : 'sk-...';
     }
@@ -292,15 +281,11 @@ function closeModal() { $('modal').hidden = true; }
 async function revealKey() {
   if (!editingId) return;
   const d = await api('/api/stations/' + editingId + '/reveal', {method: 'POST'});
-  if (d.ok) { $('m-key').value = d.api_key; toast('已填入当前 Key（保存后生效）', true); }
+  if (d.ok) { $('m-key').value = d.api_key; toast('已填入当前 Key', true); }
   else toast(d.message || '获取失败');
 }
 async function saveStation() {
-  const payload = {
-    name: $('m-name').value.trim(),
-    base_url: $('m-url').value.trim(),
-    remark: $('m-remark').value.trim(),
-  };
+  const payload = { name: $('m-name').value.trim(), base_url: $('m-url').value.trim(), remark: $('m-remark').value.trim() };
   if (!payload.name) { toast('请填写名称'); return; }
   if (!payload.base_url) { toast('请填写 Base URL'); return; }
   const key = $('m-key').value.trim();
@@ -312,24 +297,19 @@ async function saveStation() {
   toast(d.message, d.ok);
   if (d.ok) { closeModal(); load(); }
 }
-
-/* ---------- 测速 ---------- */
 async function testStation(id) {
   testing[id] = true; render();
   const d = await api('/api/stations/' + id + '/test', {method: 'POST'});
   delete testing[id];
   const s = stations.find(x => x.id === id);
   if (s) { s.latency_ms = d.ok ? d.latency_ms : -1; if (d.models && d.models.length) s.models = d.models; }
-  toast(d.message, d.ok);
-  load();
+  toast(d.message, d.ok); load();
 }
 async function testAll() {
   const btn = $('btn-test-all');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spin"></span> 全部测速中';
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> 全部测速中';
   const d = await api('/api/test-all', {method: 'POST'});
-  btn.disabled = false;
-  btn.textContent = '↯ 全部测速';
+  btn.disabled = false; btn.textContent = '↯ 全部测速';
   if (d.ok) {
     stations.forEach(s => { s.msg = ''; });
     d.results.forEach(r => {
@@ -337,40 +317,33 @@ async function testAll() {
       if (s) { s.latency_ms = r.ok ? r.latency_ms : -1; if (r.models && r.models.length) s.models = r.models; }
     });
     render();
-    const okN = d.results.filter(r => r.ok).length;
-    toast(`测速完成：${okN}/${d.results.length} 个可用`, true);
+    toast(`测速完成：${d.results.filter(r=>r.ok).length}/${d.results.length} 个可用`, true);
   } else toast(d.message);
 }
-
-/* ---------- 默认 / 删除 ---------- */
 async function setDefault(id, on) {
   const d = on
     ? await api('/api/stations/' + id + '/default', {method: 'POST'})
     : await api('/api/stations/' + id + '/default', {method: 'DELETE'});
-  toast(d.message, d.ok);
-  if (d.ok) load();
+  toast(d.message, d.ok); if (d.ok) load();
 }
 function askDelete(id, name) {
   confirmCb = async () => {
     const d = await api('/api/stations/' + id, {method: 'DELETE'});
-    toast(d.message, d.ok);
-    if (d.ok) load();
+    toast(d.message, d.ok); if (d.ok) load();
   };
   $('cf-title').textContent = '删除中转站';
-  $('cf-msg').textContent = `确定删除「${name}」吗？删除后不可恢复。`;
+  $('cf-msg').textContent = `确定删除「${name}」吗？`;
   $('cf-ok').textContent = '删除';
   $('confirm').hidden = false;
 }
 function closeConfirm() { $('confirm').hidden = true; confirmCb = null; }
 $('cf-ok').addEventListener('click', () => { if (confirmCb) confirmCb(); closeConfirm(); });
-
-/* ---------- 快捷键 ---------- */
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeModal(); closeConfirm(); }
   if (e.key === 'Enter' && !$('modal').hidden && e.target.tagName === 'INPUT') saveStation();
 });
-
 load();
 </script>
+{% endif %}
 </body>
 </html>
