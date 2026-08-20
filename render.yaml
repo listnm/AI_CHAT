@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: chat
+    name: ai-relay-pool
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 600 app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 0 app:app
     healthCheckPath: /healthz
     envVars:
       - key: RENDER
@@ -13,12 +13,12 @@ services:
         value: 0.0.0.0
       - key: DATABASE_URL
         fromDatabase:
-          name: chat
+          name: ai-relay-pool-db
           property: connectionString
       - key: ADMIN_PASSWORD
         sync: false
       - key: PROXY_API_KEY
-        sync: false
+        generateValue: true
       - key: FLASK_SECRET_KEY
         generateValue: true
       - key: ENCRYPTION_KEY
