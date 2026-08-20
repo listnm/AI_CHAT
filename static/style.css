@@ -526,11 +526,27 @@ footer { color: #94a3b8; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-  .wrap { padding: 24px 16px 48px; }
-  .stats { grid-template-columns: 1fr; gap: 12px; }
-  .grid { grid-template-columns: 1fr; gap: 14px; }
+  .wrap { padding: 16px 12px 40px; }
+  header { margin-bottom: 20px; }
+  .topbar { gap: 12px; flex-direction: column; align-items: flex-start; }
+  .brand h1 { font-size: 17px; }
+  .brand .sub { font-size: 11px; }
+  .top-actions { width: 100%; flex-wrap: wrap; gap: 6px; }
+  .top-actions .pill { width: 100%; padding: 6px 10px; }
+  .top-actions .pill code { max-width: none; flex: 1; }
+  .top-actions .btn { padding: 6px 10px; font-size: 12px; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { min-height: auto; padding: 14px; gap: 10px; }
+  .stat .s-icon { width: 34px; height: 34px; font-size: 15px; }
+  .stat .s-num { font-size: 18px; }
+  .toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .grid { grid-template-columns: 1fr; gap: 12px; }
   .grid > .card, .grid > .add-card { grid-column: span 1; }
-  .top-actions, .top-actions .pill { width: 100%; }
-  .top-actions .pill code { max-width: none; }
-  .play { grid-template-columns: 1fr; gap: 14px; }
+  .card { padding: 14px; gap: 10px; }
+  .card-head { gap: 8px; }
+  .ava { width: 34px; height: 34px; font-size: 14px; }
+  .card-foot { gap: 6px; }
+  .modal { width: calc(100vw - 24px); border-radius: 14px; }
+  .modal-body { padding: 14px 16px; }
+  .login-card { width: calc(100vw - 32px); padding: 28px 20px 24px; }
 }
