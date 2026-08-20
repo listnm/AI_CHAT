@@ -263,8 +263,8 @@ def init_db():
             for col, default in [("selected_model", "''"), ("group_name", "''"), ("is_active", "1")]:
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} DEFAULT {default}")
-                except sqlite3.OperationalError:
-                    pass
+                except Exception:
+                    pass  # 列已存在则跳过（SQLite 和 PostgreSQL 异常不同）
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn, commit=False)
