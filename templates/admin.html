@@ -320,11 +320,21 @@ async function testAll() {
     toast(`测速完成：${d.results.filter(r=>r.ok).length}/${d.results.length} 个可用`, true);
   } else toast(d.message);
 }
-async function setDefault(id, on) {
-  const d = on
-    ? await api('/api/stations/' + id + '/default', {method: 'POST'})
-    : await api('/api/stations/' + id + '/default', {method: 'DELETE'});
-  toast(d.message, d.ok); if (d.ok) load();
+function setDefault(id, on) {
+  const s = stations.find(x => x.id === id);
+  const name = s ? s.name : '';
+  confirmCb = async () => {
+    const d = on
+      ? await api('/api/stations/' + id + '/default', {method: 'POST'})
+      : await api('/api/stations/' + id + '/default', {method: 'DELETE'});
+    toast(d.message, d.ok); if (d.ok) load();
+  };
+  $('cf-title').textContent = on ? '设为默认中转站' : '取消默认中转站';
+  $('cf-msg').textContent = on
+    ? `确定将「${name}」设为默认中转站吗？转发时将优先使用该站。`
+    : `确定取消「${name}」的默认状态吗？转发时将自动选择最快的中转站。`;
+  $('cf-ok').textContent = on ? '设为默认' : '取消默认';
+  $('confirm').hidden = false;
 }
 function askDelete(id, name) {
   confirmCb = async () => {
