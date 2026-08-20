@@ -20,16 +20,17 @@
         </div>
       </div>
       <div class="top-actions">
+        {% if logged_in %}
         <span class="pill"><span>转发地址</span><code>{{ proxy_url }}</code>
           <button class="copy" onclick="copyText('{{ proxy_url }}')">⧉</button></span>
         <span class="pill"><span>转发密钥</span><code>{{ proxy_key }}</code>
           <button class="copy" onclick="copyText('{{ proxy_key }}')">⧉</button></span>
+        <a class="btn sm" href="/admin">⚙ 管理后台</a>
         <form method="post" action="/logout" style="margin:0"><button class="btn sm">退出</button></form>
+        {% else %}
+        <a class="btn sm" href="/login">⚙ 管理登录</a>
+        {% endif %}
       </div>
-    </div>
-    <div class="nav">
-      <a class="nav-tab" href="/admin">▦ 中转站管理</a>
-      <a class="nav-tab active" href="/playground">◈ 游乐场</a>
     </div>
   </header>
 
