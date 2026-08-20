@@ -1,21 +1,24 @@
 """
 OAuth 提供商配置和工具函数
 
-支持 OpenAI、Google、Microsoft 三种 OAuth 登录方式。
+基于 sub2api 的上游 AI 平台 OAuth 支持：
+- OpenAI：ChatGPT Plus/Pro 订阅账号
+- Grok (xAI)：xAI 订阅账号
+- Gemini：Google Gemini 订阅账号
+- Antigravity：国产 AI 编程助手
 """
 
 import os
 import secrets
-import hashlib
-import base64
 
 # ================================================================
-#  OAuth 提供商配置
+#  OAuth 提供商配置（上游 AI 平台订阅账号）
 # ================================================================
 
 PROVIDERS = {
     "openai": {
         "name": "OpenAI",
+        "desc": "ChatGPT Plus / Pro 订阅账号",
         "icon": "🤖",
         "color": "#10a37f",
         "auth_url": "https://auth0.openai.com/authorize",
@@ -25,30 +28,49 @@ PROVIDERS = {
         "client_id_env": "OPENAI_CLIENT_ID",
         "client_secret_env": "OPENAI_CLIENT_SECRET",
         "callback_path": "/oa/callback/openai",
+        "auth_extra": {"audience": "https://api.openai.com/v1"},
     },
-    "google": {
-        "name": "Google",
-        "icon": "🔍",
-        "color": "#4285f4",
+    "grok": {
+        "name": "Grok (xAI)",
+        "desc": "xAI Grok 订阅账号",
+        "icon": "⚡",
+        "color": "#1d1d1f",
+        "auth_url": "https://accounts.x.ai/oauth2/auth",
+        "token_url": "https://accounts.x.ai/oauth2/token",
+        "userinfo_url": "https://api.x.ai/v1/user/me",
+        "scope": "openid profile email",
+        "client_id_env": "GROK_CLIENT_ID",
+        "client_secret_env": "GROK_CLIENT_SECRET",
+        "callback_path": "/oa/callback/grok",
+        "auth_extra": {},
+    },
+    "gemini": {
+        "name": "Gemini",
+        "desc": "Google Gemini 订阅账号",
+        "icon": "💎",
+        "color": "#1a73e8",
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
         "token_url": "https://oauth2.googleapis.com/token",
         "userinfo_url": "https://www.googleapis.com/oauth2/v3/userinfo",
         "scope": "openid profile email",
-        "client_id_env": "GOOGLE_CLIENT_ID",
-        "client_secret_env": "GOOGLE_CLIENT_SECRET",
-        "callback_path": "/oa/callback/google",
+        "client_id_env": "GEMINI_CLIENT_ID",
+        "client_secret_env": "GEMINI_CLIENT_SECRET",
+        "callback_path": "/oa/callback/gemini",
+        "auth_extra": {"access_type": "offline", "prompt": "consent"},
     },
-    "microsoft": {
-        "name": "Microsoft",
-        "icon": "🪟",
-        "color": "#00a4ef",
-        "auth_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-        "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-        "userinfo_url": "https://graph.microsoft.com/v1.0/me",
-        "scope": "openid profile email User.Read",
-        "client_id_env": "MICROSOFT_CLIENT_ID",
-        "client_secret_env": "MICROSOFT_CLIENT_SECRET",
-        "callback_path": "/oa/callback/microsoft",
+    "antigravity": {
+        "name": "Antigravity",
+        "desc": "国产 AI 编程助手",
+        "icon": "🚀",
+        "color": "#ff6b35",
+        "auth_url": "https://antigravity.example.com/oauth2/authorize",
+        "token_url": "https://antigravity.example.com/oauth2/token",
+        "userinfo_url": "https://antigravity.example.com/api/userinfo",
+        "scope": "openid profile email",
+        "client_id_env": "ANTIGRAVITY_CLIENT_ID",
+        "client_secret_env": "ANTIGRAVITY_CLIENT_SECRET",
+        "callback_path": "/oa/callback/antigravity",
+        "auth_extra": {},
     },
 }
 
@@ -74,13 +96,10 @@ def build_auth_url(provider_key: str, client_id: str, redirect_uri: str, state: 
         "response_type": "code",
         "scope": provider["scope"],
         "state": state,
-        "access_type": "offline",  # Google 需要这个来获取 refresh_token
-        "prompt": "consent",  # 强制显示授权页面以获取 refresh_token
     }
 
-    # OpenAI 特殊参数
-    if provider_key == "openai":
-        params["audience"] = "https://api.openai.com/v1"
+    # 合并提供商特殊参数
+    params.update(provider.get("auth_extra", {}))
 
     query = "&".join(f"{k}={v}" for k, v in params.items())
     return f"{provider['auth_url']}?{query}"
@@ -103,9 +122,8 @@ def exchange_code(provider_key: str, client_id: str, client_secret: str,
         "redirect_uri": redirect_uri,
     }
 
-    # OpenAI 特殊参数
-    if provider_key == "openai":
-        data["audience"] = "https://api.openai.com/v1"
+    # 合并提供商特殊参数
+    data.update(provider.get("auth_extra", {}))
 
     try:
         resp = requests.post(provider["token_url"], data=data, timeout=30)
@@ -162,20 +180,20 @@ def parse_user_info(provider_key: str, raw_info: dict) -> dict:
     if "error" in raw_info:
         return {"email": "unknown", "display_name": "Unknown"}
 
-    if provider_key == "openai":
+    if provider_key in ("openai", "grok"):
         return {
             "email": raw_info.get("email", ""),
             "display_name": raw_info.get("name", "") or raw_info.get("nickname", ""),
         }
-    elif provider_key == "google":
+    elif provider_key == "gemini":
         return {
             "email": raw_info.get("email", ""),
             "display_name": raw_info.get("name", ""),
         }
-    elif provider_key == "microsoft":
+    elif provider_key == "antigravity":
         return {
-            "email": raw_info.get("mail", "") or raw_info.get("userPrincipalName", ""),
-            "display_name": raw_info.get("displayName", ""),
+            "email": raw_info.get("email", ""),
+            "display_name": raw_info.get("name", "") or raw_info.get("username", ""),
         }
     return {"email": "", "display_name": ""}
 
