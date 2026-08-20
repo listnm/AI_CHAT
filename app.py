@@ -663,7 +663,7 @@ def api_stations_unset_default(station_id):
         return guard
     if not find_station(station_id):
         return {"ok": False, "message": "中转站不存在"}
-    update_station(station_id, {"is_default": 0})
+    update_station(station_id, {"is_default": False})
     return {"ok": True, "message": "已取消默认，转发时将自动选择最快的中转站"}
 
 
