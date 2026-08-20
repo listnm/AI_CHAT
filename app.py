@@ -28,12 +28,10 @@ try:
     import psycopg
     from psycopg.rows import dict_row
     from psycopg.types.json import Json
-    from psycopg_pool import ConnectionPool
 except ImportError:
     psycopg = None
     dict_row = None
     Json = None
-    ConnectionPool = None
 
 from flask import (Flask, render_template, request, Response,
                    stream_with_context, session, redirect)
@@ -169,20 +167,11 @@ def _db_datetime(value):
 
 
 def get_db():
-    global _PG_POOL
     if _USE_PG:
-        if psycopg is None or ConnectionPool is None:
-            raise RuntimeError("DATABASE_URL 已设置，但未安装 psycopg[binary,pool]")
-        if _PG_POOL is None:
-            _PG_POOL = ConnectionPool(
-                conninfo=DATABASE_URL,
-                min_size=1,
-                max_size=8,
-                kwargs={"row_factory": dict_row},
-                open=True,
-            )
-        # connection() 返回上下文管理器，调用 __enter__ 获取真正的连接对象
-        return _PG_POOL.connection().__enter__()
+        if psycopg is None:
+            raise RuntimeError("DATABASE_URL 已设置，但未安装 psycopg[binary]")
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        return conn
 
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
     conn.execute("PRAGMA busy_timeout = 30000")
@@ -192,16 +181,12 @@ def get_db():
 
 
 def _close_db(conn, commit=False):
-    if _USE_PG:
+    try:
         if commit:
             conn.commit()
         else:
             conn.rollback()
-        # psycopg3 连接归还连接池（不调 close）
-        conn.release()
-    else:
-        if commit:
-            conn.commit()
+    finally:
         conn.close()
 
 
