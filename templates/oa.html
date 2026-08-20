@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OAuth 账号管理 - 中转站管理池</title>
+<title>OAuth 订阅账号 - 中转站管理池</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -15,8 +15,8 @@
       <div class="brand">
         <div class="logo"><span class="icon icon-bolt">✦</span></div>
         <div>
-          <h1>OAuth 账号管理</h1>
-          <div class="sub">管理 OpenAI / Google / Microsoft 订阅账号</div>
+          <h1>OAuth 订阅账号</h1>
+          <div class="sub">管理 AI 平台订阅账号（OpenAI / Grok / Gemini / Antigravity）</div>
         </div>
       </div>
       <div class="top-actions">
@@ -29,7 +29,7 @@
   <!-- 提示信息 -->
   {% if request.args.get('success') %}
   <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px">
-    ✅ OAuth 账号连接成功！
+    ✅ 订阅账号连接成功！
   </div>
   {% endif %}
   {% if request.args.get('error') %}
@@ -39,75 +39,85 @@
   {% endif %}
 
   <!-- 提供商卡片 -->
-  <div class="sec-title"><h2>授权登录</h2></div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:30px">
+  <div class="sec-title"><h2>授权登录</h2>
+    <span class="hint">通过 OAuth 获取 AI 平台订阅账号令牌</span>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:30px">
     {% for key, cfg in providers.items() %}
-    <div class="card" style="padding:20px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="width:42px;height:42px;border-radius:12px;background:{{ cfg.color }};display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff">
+    <div class="card" style="padding:18px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:38px;height:38px;border-radius:10px;background:{{ cfg.color }};display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">
           {{ cfg.icon }}
         </div>
         <div>
-          <div style="font-size:15px;font-weight:700">{{ cfg.name }}</div>
-          <div style="font-size:12px;color:var(--muted)">
-            {% if cfg.has_config %}
-              已配置 · {{ cfg.client_id_preview }}
-            {% else %}
-              未配置（需设置环境变量）
-            {% endif %}
-          </div>
+          <div style="font-size:14px;font-weight:700">{{ cfg.name }}</div>
+          <div style="font-size:11px;color:var(--muted)">{{ cfg.desc }}</div>
         </div>
       </div>
       {% if cfg.has_config %}
-      <a class="btn primary" href="/oa/login/{{ key }}" style="width:100%;justify-content:center">
+      <a class="btn primary" href="/oa/login/{{ key }}" style="width:100%;justify-content:center;font-size:13px">
         登录 {{ cfg.name }}
       </a>
       {% else %}
-      <div style="padding:10px;background:var(--grad-soft);border-radius:10px;font-size:12px;color:var(--muted)">
-        请在环境变量中设置 <code>{{ key | upper }}_CLIENT_ID</code> 和 <code>{{ key | upper }}_CLIENT_SECRET</code>
+      <div style="padding:8px 10px;background:var(--grad-soft);border-radius:8px;font-size:11px;color:var(--muted)">
+        需设置环境变量 <code style="font-size:10px">{{ key | upper }}_CLIENT_ID</code>
       </div>
       {% endif %}
     </div>
     {% endfor %}
   </div>
 
+  <!-- 环境变量配置说明 -->
+  <div class="card" style="padding:16px;margin-bottom:30px;background:#fafbfc">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">📋 Render 环境变量配置</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8">
+      在 Render 控制台 Environment 中添加以下变量：<br>
+      <code>OPENAI_CLIENT_ID=</code> <code>OPENAI_CLIENT_SECRET=</code><br>
+      <code>GROK_CLIENT_ID=</code> <code>GROK_CLIENT_SECRET=</code><br>
+      <code>GEMINI_CLIENT_ID=</code> <code>GEMINI_CLIENT_SECRET=</code><br>
+      <code>ANTIGRAVITY_CLIENT_ID=</code> <code>ANTIGRAVITY_CLIENT_SECRET=</code><br>
+      <span style="color:var(--green)">Client ID/Secret 需在各平台开发者后台创建 OAuth 应用获取</span>
+    </div>
+  </div>
+
   <!-- 已授权账号列表 -->
-  <div class="sec-title"><h2>已授权账号</h2>
-    <span class="hint">{{ accounts | length }} 个账号</span>
+  <div class="sec-title"><h2>已授权订阅账号</h2>
+    <span class="hint">{{ accounts | length }} 个</span>
   </div>
 
   {% if not accounts %}
   <div class="empty" style="grid-column:1/-1">
     <div class="big">🔑</div>
-    还没有 OAuth 账号，点击上方按钮授权登录
+    还没有授权账号，点击上方按钮开始<br>
+    <span style="font-size:12px">授权后可将订阅账号作为中转站使用</span>
   </div>
   {% else %}
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
     {% for acc in accounts %}
     <div class="card" style="padding:16px;{{ '' if acc.is_active else 'opacity:.6' }}">
       <div class="card-head">
-        <div class="ava" style="background:{% if acc.provider == 'openai' %}#10a37f{% elif acc.provider == 'google' %}#4285f4{% else %}#00a4ef{% endif %}">
-          {% if acc.provider == 'openai' %}🤖{% elif acc.provider == 'google' %}🔍{% else %}🪟{% endif %}
+        <div class="ava" style="background:{% if acc.provider == 'openai' %}#10a37f{% elif acc.provider == 'grok' %}#1d1d1f{% elif acc.provider == 'gemini' %}#1a73e8{% else %}#ff6b35{% endif %}">
+          {% if acc.provider == 'openai' %}🤖{% elif acc.provider == 'grok' %}⚡{% elif acc.provider == 'gemini' %}💎{% else %}🚀{% endif %}
         </div>
         <div class="card-title">
           <div class="name">{{ acc.display_name or acc.email }}</div>
-          <div class="sub">{{ acc.email }}</div>
+          <div class="sub">{{ acc.email }} · {{ acc.provider | upper }}</div>
         </div>
         <span class="badge {{ 'fast' if acc.is_active else 'fail' }}" style="font-size:10px">
           {{ '启用' if acc.is_active else '禁用' }}
         </span>
       </div>
       <div class="row" style="margin-top:8px">
-        <span class="lbl">类型</span>
-        <span class="val">{{ acc.provider | upper }} 订阅账号</span>
+        <span class="lbl">令牌</span>
+        <span class="val">已加密存储</span>
       </div>
       <div class="row">
         <span class="lbl">过期</span>
         <span class="val">{{ acc.expires_at[:19] if acc.expires_at else '未知' }}</span>
       </div>
       <div class="row">
-        <span class="lbl">添加</span>
-        <span class="val">{{ acc.created_at[:19] if acc.created_at else '' }}</span>
+        <span class="lbl">刷新</span>
+        <span class="val">{{ '支持' if acc.has_refresh_token else '不支持' }}</span>
       </div>
       <div class="card-foot">
         <button class="btn sm" onclick="toggleAccount('{{ acc.id }}')">
@@ -124,8 +134,8 @@
   {% endif %}
 
   <footer style="margin-top:30px">
-    OAuth 账号令牌加密存储 · 支持自动刷新
-    <span class="dot">·</span>可在转发接口中使用
+    订阅账号令牌加密存储 · 支持自动刷新
+    <span class="dot">·</span>参考 sub2api 项目
   </footer>
 </div>
 
@@ -180,7 +190,7 @@ function deleteAccount(id, name) {
     toast(d.message, d.ok);
     if (d.ok) location.reload();
   };
-  $('cf-title').textContent = '删除账号';
+  $('cf-title').textContent = '删除订阅账号';
   $('cf-msg').textContent = `确定删除「${name}」的 OAuth 授权吗？`;
   $('cf-ok').textContent = '删除';
   $('confirm').hidden = false;
