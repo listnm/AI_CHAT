@@ -805,13 +805,18 @@ def api_chat():
     model = (data.get("model") or "").strip()
     messages = data.get("messages", [])
 
-    if not station_id:
-        return _sse_error("请先选择中转站")
-    st = find_station(station_id)
-    if not st:
-        return _sse_error("中转站不存在")
     if not messages:
         return _sse_error("消息不能为空")
+
+    # 自动选择中转站：指定 id → 用指定的；未指定 → 默认中转站 → 按延迟排序第一个
+    st = None
+    if station_id:
+        st = find_station(station_id)
+    if not st:
+        stations = load_stations()
+        st = next((s for s in stations if s["is_default"]), stations[0] if stations else None)
+    if not st:
+        return _sse_error("没有可用的中转站，请先在管理后台添加")
 
     if not model:
         model = st["selected_model"] or (st["models"][0] if st["models"] else "")
