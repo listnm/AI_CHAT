@@ -146,11 +146,12 @@ _PG_POOL = None
 
 _STATION_COLUMNS = (
     "id, name, base_url, api_key_encrypted, models, selected_model, "
-    "latency_ms, last_test_at, is_default, remark, created_at, updated_at"
+    "latency_ms, last_test_at, is_default, remark, group_name, is_active, created_at, updated_at"
 )
 _UPDATEABLE_FIELDS = {
     "name", "base_url", "models", "selected_model", "latency_ms",
     "last_test_at", "is_default", "remark", "api_key_encrypted",
+    "group_name", "is_active",
 }
 
 
@@ -227,6 +228,8 @@ def init_db():
                     last_test_at TIMESTAMPTZ,
                     is_default BOOLEAN NOT NULL DEFAULT FALSE,
                     remark TEXT NOT NULL DEFAULT '',
+                    group_name TEXT NOT NULL DEFAULT '',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMPTZ NOT NULL,
                     updated_at TIMESTAMPTZ NOT NULL
                 )
@@ -250,15 +253,18 @@ def init_db():
                     last_test_at TEXT,
                     is_default INTEGER NOT NULL DEFAULT 0,
                     remark TEXT DEFAULT '',
+                    group_name TEXT DEFAULT '',
+                    is_active INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
-            try:
-                conn.execute("ALTER TABLE stations ADD COLUMN selected_model TEXT DEFAULT ''")
-            except sqlite3.OperationalError:
-                pass
+            for col, default in [("selected_model", "''"), ("group_name", "''"), ("is_active", "1")]:
+                try:
+                    conn.execute(f"ALTER TABLE stations ADD COLUMN {col} DEFAULT {default}")
+                except sqlite3.OperationalError:
+                    pass
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn, commit=False)
@@ -281,6 +287,8 @@ def _row_to_station(row) -> dict:
         "last_test_at": row["last_test_at"],
         "is_default": bool(row["is_default"]),
         "remark": row["remark"] or "",
+        "group_name": row["group_name"] or "",
+        "is_active": bool(row["is_active"]),
     }
 
 
@@ -560,6 +568,8 @@ def api_stations_list():
             "last_test_at": s["last_test_at"],
             "is_default": s["is_default"],
             "remark": s["remark"],
+            "group_name": s["group_name"],
+            "is_active": s["is_active"],
         })
     return {"ok": True, "stations": safe}
 
@@ -594,6 +604,8 @@ def api_stations_add():
         "last_test_at": None,
         "is_default": False,
         "remark": remark,
+        "group_name": (data.get("group_name") or "").strip(),
+        "is_active": True,
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
     save_station(st)
@@ -741,6 +753,120 @@ def api_test_all():
 
     results.sort(key=lambda r: (0 if r["ok"] else 1, r["latency_ms"] if r["latency_ms"] is not None else 99999))
     return {"ok": True, "results": results}
+
+
+# ================================================================
+#  渠道管理 API（启用/禁用、分组、批量操作）
+# ================================================================
+
+@app.route("/api/channels/<channel_id>/toggle", methods=["POST"])
+def api_channel_toggle(channel_id):
+    """启用/禁用渠道"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    st = find_station(channel_id)
+    if not st:
+        return {"ok": False, "message": "渠道不存在"}
+    new_status = not st["is_active"]
+    update_station(channel_id, {"is_active": new_status})
+    return {"ok": True, "is_active": new_status, "message": f"已{'启用' if new_status else '禁用'}「{st['name']}」"}
+
+
+@app.route("/api/channels/<channel_id>/group", methods=["PUT"])
+def api_channel_group(channel_id):
+    """设置渠道分组"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    st = find_station(channel_id)
+    if not st:
+        return {"ok": False, "message": "渠道不存在"}
+    data = request.get_json(force=True) or {}
+    group_name = (data.get("group_name") or "").strip()
+    update_station(channel_id, {"group_name": group_name})
+    return {"ok": True, "message": f"已将「{st['name']}」移至「{group_name or '默认分组'}」"}
+
+
+@app.route("/api/channels/groups", methods=["GET"])
+def api_channel_groups():
+    """获取所有分组列表"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    stations = load_stations()
+    groups = {}
+    for s in stations:
+        g = s["group_name"] or "默认分组"
+        if g not in groups:
+            groups[g] = {"name": g, "count": 0, "active_count": 0}
+        groups[g]["count"] += 1
+        if s["is_active"]:
+            groups[g]["active_count"] += 1
+    return {"ok": True, "groups": list(groups.values())}
+
+
+@app.route("/api/channels/batch", methods=["POST"])
+def api_channels_batch():
+    """批量操作渠道"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.get_json(force=True) or {}
+    action = data.get("action", "")
+    ids = data.get("ids", [])
+
+    if not ids:
+        return {"ok": False, "message": "请选择要操作的渠道"}
+    if action not in ("test", "delete", "enable", "disable", "set_group"):
+        return {"ok": False, "message": "不支持的操作"}
+
+    stations = load_stations()
+    id_set = set(ids)
+    targets = [s for s in stations if s["id"] in id_set]
+
+    if action == "delete":
+        for st in targets:
+            delete_station(st["id"])
+        return {"ok": True, "message": f"已删除 {len(targets)} 个渠道"}
+
+    if action in ("enable", "disable"):
+        val = action == "enable"
+        for st in targets:
+            update_station(st["id"], {"is_active": val})
+        return {"ok": True, "message": f"已{'启用' if val else '禁用'} {len(targets)} 个渠道"}
+
+    if action == "set_group":
+        group_name = (data.get("group_name") or "").strip()
+        for st in targets:
+            update_station(st["id"], {"group_name": group_name})
+        return {"ok": True, "message": f"已将 {len(targets)} 个渠道移至「{group_name or '默认分组'}」"}
+
+    if action == "test":
+        # 并行测速
+        results = [None] * len(targets)
+        def work(i, st):
+            ok, latency, message, model_ids = test_station(st)
+            results[i] = _apply_test_result(st, ok, latency, message, model_ids)
+        threads = [threading.Thread(target=work, args=(i, s)) for i, s in enumerate(targets)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+        # 写入数据库
+        conn = get_db()
+        try:
+            for st in targets:
+                conn.execute(
+                    _sql("UPDATE stations SET latency_ms = ?, last_test_at = ?, models = ? WHERE id = ?"),
+                    (st["latency_ms"], st["last_test_at"], _models_value(st["models"]), st["id"]),
+                )
+            _close_db(conn, commit=True)
+        except Exception:
+            _close_db(conn)
+            raise
+        ok_n = sum(1 for r in results if r and r["ok"])
+        return {"ok": True, "message": f"测速完成：{ok_n}/{len(targets)} 个可用", "results": results}
+
+    return {"ok": False, "message": "未知操作"}
 
 
 # ================================================================
