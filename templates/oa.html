@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OAuth 账号管理 - 中转站管理池</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"><span class="icon icon-bolt">✦</span></div>
+        <div>
+          <h1>OAuth 账号管理</h1>
+          <div class="sub">管理 OpenAI / Google / Microsoft 订阅账号</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <a class="btn sm" href="/admin">⚙ 管理后台</a>
+        <form method="post" action="/logout" style="margin:0"><button class="btn sm">退出</button></form>
+      </div>
+    </div>
+  </header>
+
+  <!-- 提示信息 -->
+  {% if request.args.get('success') %}
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px">
+    ✅ OAuth 账号连接成功！
+  </div>
+  {% endif %}
+  {% if request.args.get('error') %}
+  <div style="background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px">
+    ❌ 连接失败：{{ request.args.get('error') }}
+  </div>
+  {% endif %}
+
+  <!-- 提供商卡片 -->
+  <div class="sec-title"><h2>授权登录</h2></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:30px">
+    {% for key, cfg in providers.items() %}
+    <div class="card" style="padding:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="width:42px;height:42px;border-radius:12px;background:{{ cfg.color }};display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff">
+          {{ cfg.icon }}
+        </div>
+        <div>
+          <div style="font-size:15px;font-weight:700">{{ cfg.name }}</div>
+          <div style="font-size:12px;color:var(--muted)">
+            {% if cfg.has_config %}
+              已配置 · {{ cfg.client_id_preview }}
+            {% else %}
+              未配置（需设置环境变量）
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% if cfg.has_config %}
+      <a class="btn primary" href="/oa/login/{{ key }}" style="width:100%;justify-content:center">
+        登录 {{ cfg.name }}
+      </a>
+      {% else %}
+      <div style="padding:10px;background:var(--grad-soft);border-radius:10px;font-size:12px;color:var(--muted)">
+        请在环境变量中设置 <code>{{ key | upper }}_CLIENT_ID</code> 和 <code>{{ key | upper }}_CLIENT_SECRET</code>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 已授权账号列表 -->
+  <div class="sec-title"><h2>已授权账号</h2>
+    <span class="hint">{{ accounts | length }} 个账号</span>
+  </div>
+
+  {% if not accounts %}
+  <div class="empty" style="grid-column:1/-1">
+    <div class="big">🔑</div>
+    还没有 OAuth 账号，点击上方按钮授权登录
+  </div>
+  {% else %}
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
+    {% for acc in accounts %}
+    <div class="card" style="padding:16px;{{ '' if acc.is_active else 'opacity:.6' }}">
+      <div class="card-head">
+        <div class="ava" style="background:{% if acc.provider == 'openai' %}#10a37f{% elif acc.provider == 'google' %}#4285f4{% else %}#00a4ef{% endif %}">
+          {% if acc.provider == 'openai' %}🤖{% elif acc.provider == 'google' %}🔍{% else %}🪟{% endif %}
+        </div>
+        <div class="card-title">
+          <div class="name">{{ acc.display_name or acc.email }}</div>
+          <div class="sub">{{ acc.email }}</div>
+        </div>
+        <span class="badge {{ 'fast' if acc.is_active else 'fail' }}" style="font-size:10px">
+          {{ '启用' if acc.is_active else '禁用' }}
+        </span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="lbl">类型</span>
+        <span class="val">{{ acc.provider | upper }} 订阅账号</span>
+      </div>
+      <div class="row">
+        <span class="lbl">过期</span>
+        <span class="val">{{ acc.expires_at[:19] if acc.expires_at else '未知' }}</span>
+      </div>
+      <div class="row">
+        <span class="lbl">添加</span>
+        <span class="val">{{ acc.created_at[:19] if acc.created_at else '' }}</span>
+      </div>
+      <div class="card-foot">
+        <button class="btn sm" onclick="toggleAccount('{{ acc.id }}')">
+          {{ '禁用' if acc.is_active else '启用' }}
+        </button>
+        {% if acc.has_refresh_token %}
+        <button class="btn soft sm" onclick="refreshAccount('{{ acc.id }}')">🔄 刷新令牌</button>
+        {% endif %}
+        <button class="btn danger sm" onclick="deleteAccount('{{ acc.id }}', '{{ acc.display_name or acc.email }}')">×</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <footer style="margin-top:30px">
+    OAuth 账号令牌加密存储 · 支持自动刷新
+    <span class="dot">·</span>可在转发接口中使用
+  </footer>
+</div>
+
+<!-- 确认弹窗 -->
+<div class="modal-overlay" id="confirm" hidden>
+  <div class="modal small">
+    <div class="modal-head"><h3 id="cf-title">确认操作</h3></div>
+    <div class="modal-body"><div class="msg" id="cf-msg"></div></div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeConfirm()">取消</button>
+      <button class="btn danger" id="cf-ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let confirmCb = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function toast(msg, ok) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'show' + (ok ? ' ok' : ' err');
+  setTimeout(() => { t.className = ''; }, 2800);
+}
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: {'Content-Type': 'application/json'}, ...opts });
+  return res.json().catch(() => ({}));
+}
+
+async function toggleAccount(id) {
+  const d = await api('/api/oa/accounts/' + id + '/toggle', {method: 'POST'});
+  toast(d.message, d.ok);
+  if (d.ok) location.reload();
+}
+
+async function refreshAccount(id) {
+  toast('正在刷新令牌...');
+  const d = await api('/api/oa/accounts/' + id + '/refresh', {method: 'POST'});
+  toast(d.message, d.ok);
+  if (d.ok) location.reload();
+}
+
+function deleteAccount(id, name) {
+  confirmCb = async () => {
+    const d = await api('/api/oa/accounts/' + id, {method: 'DELETE'});
+    toast(d.message, d.ok);
+    if (d.ok) location.reload();
+  };
+  $('cf-title').textContent = '删除账号';
+  $('cf-msg').textContent = `确定删除「${name}」的 OAuth 授权吗？`;
+  $('cf-ok').textContent = '删除';
+  $('confirm').hidden = false;
+}
+
+function closeConfirm() { $('confirm').hidden = true; confirmCb = null; }
+$('cf-ok').addEventListener('click', () => { if (confirmCb) confirmCb(); closeConfirm(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeConfirm(); });
+</script>
+</body>
+</html>
