@@ -16,9 +16,9 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       - key: PROXY_API_KEY
-        sync: false
+        generateValue: true
       - key: FLASK_SECRET_KEY
-        sync: false
+        generateValue: true
       - key: ENCRYPTION_KEY
         sync: false
     disk:
