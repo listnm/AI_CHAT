@@ -35,6 +35,10 @@ except ImportError:
 
 from flask import (Flask, render_template, request, Response,
                    stream_with_context, session, redirect)
+from providers import (
+    claude_to_openai, openai_to_claude, relay_stream_claude,
+    gemini_to_openai, openai_to_gemini, relay_stream_gemini,
+)
 
 # ================================================================
 #  基础配置（可用环境变量覆盖，start.bat 里可改）
@@ -1023,6 +1027,220 @@ def proxy_models():
     if not merged:
         return {"object": "list", "data": [{"id": "auto", "object": "model"}]}
     return {"object": "list", "data": [{"id": m, "object": "model"} for m in merged]}
+
+
+# ================================================================
+#  多供应商认证（Claude / Gemini / OpenAI 统一）
+# ================================================================
+
+def _authenticate() -> str | None:
+    """
+    从请求中提取 API Key 并验证。
+    支持多种认证方式：
+    - Authorization: Bearer {key}（OpenAI / Claude）
+    - x-api-key: {key}（Claude）
+    - key={key} 查询参数（Gemini）
+    - x-goog-api-key: {key}（Gemini）
+    返回 None 表示认证通过，返回字符串表示错误 JSON。
+    """
+    auth = request.headers.get("Authorization", "")
+    x_api_key = request.headers.get("x-api-key", "")
+    goog_key = request.headers.get("x-goog-api-key", "")
+    query_key = request.args.get("key", "")
+
+    api_key = ""
+    if auth.startswith("Bearer "):
+        api_key = auth[7:]
+    elif x_api_key:
+        api_key = x_api_key
+    elif goog_key:
+        api_key = goog_key
+    elif query_key:
+        api_key = query_key
+
+    if api_key != PROXY_API_KEY:
+        return {"error": {"message": "Invalid API Key", "type": "auth_error", "code": 401}}
+    return None
+
+
+def _forward_to_upstream(openai_payload: dict, stream: bool):
+    """
+    复用现有逻辑：选择中转站 → 转发 OpenAI 格式请求 → 返回上游响应。
+    返回 (upstream_response, station_dict) 或抛出异常。
+    失败时直接返回 Flask Response（已含错误信息）。
+    """
+    account_name = openai_payload.pop("account", "")
+    model = openai_payload.get("model", "")
+    is_auto = not model or model == "auto"
+
+    stations = load_stations()
+    if not stations:
+        return None, None, {"error": {"message": "中转站池为空", "type": "no_station", "code": 503}}, 503
+
+    candidates = _ordered_candidates(stations, account_name)
+    if not candidates:
+        return None, None, {"error": {"message": f"找不到名为「{account_name}」的中转站", "type": "not_found", "code": 404}}, 404
+
+    last_error = "unknown"
+    for st in candidates:
+        api_url = normalize_chat_url(st["base_url"])
+        if not api_url or not st["api_key"]:
+            last_error = f"{st['name']} 地址或 Key 为空"
+            continue
+        effective_model = (
+            st["selected_model"] or (st["models"][0] if st["models"] else "")
+        ) if is_auto else model
+        if not effective_model:
+            last_error = f"{st['name']} 没有可用模型"
+            continue
+
+        headers = {"Authorization": f"Bearer {st['api_key']}", "Content-Type": "application/json"}
+        payload = {k: v for k, v in openai_payload.items() if k != "account"}
+        payload["model"] = effective_model
+        payload["stream"] = stream
+
+        try:
+            upstream = requests.post(
+                api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
+            )
+            upstream.raise_for_status()
+            upstream.encoding = "utf-8"
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else 0
+            body = ""
+            if e.response is not None:
+                try:
+                    err = e.response.json().get("error", {})
+                    body = err.get("message", "") if isinstance(err, dict) else str(err)
+                except Exception:
+                    body = e.response.text[:200]
+            if status and status < 500 and status != 429:
+                return None, None, {"error": {"message": body or f"HTTP {status}", "type": "upstream_error", "code": status}}, status
+            last_error = f"HTTP {status}" + (f"：{body[:80]}" if body else "")
+            continue
+        except requests.exceptions.Timeout:
+            last_error = f"{st['name']} 连接超时"
+            continue
+        except requests.exceptions.RequestException as e:
+            last_error = f"{st['name']}：{str(e)[:100]}"
+            continue
+
+        return upstream, st, None, None
+
+    return None, None, {"error": {"message": f"所有中转站均不可用：{last_error}", "type": "all_failed", "code": 502}}, 502
+
+
+# ================================================================
+#  Claude Messages API（/v1/messages）
+# ================================================================
+
+@app.route("/v1/messages", methods=["POST"])
+def claude_messages():
+    """
+    Anthropic Claude Messages API 兼容端点。
+    客户端可用 Claude SDK 直接调用。
+    """
+    auth_err = _authenticate()
+    if auth_err:
+        return auth_err, 401
+
+    body = request.get_json(force=True) or {}
+    stream = body.get("stream", False)
+
+    # 转换为 OpenAI 格式
+    openai_payload = claude_to_openai(body)
+
+    # 转发
+    upstream, st, err, status = _forward_to_upstream(openai_payload, stream)
+    if err:
+        return err, status
+
+    provider_headers = {
+        "X-Provider-Name": _ascii_header(st["name"]),
+        "X-Provider-Model": _ascii_header(openai_payload.get("model", "")),
+    }
+
+    if stream:
+        return Response(
+            stream_with_context(relay_stream_claude(upstream)),
+            mimetype="text/event-stream; charset=utf-8",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                     "Connection": "keep-alive", **provider_headers},
+        )
+
+    # 非流式：转换响应
+    try:
+        openai_resp = upstream.json()
+    except Exception:
+        return upstream.content, upstream.status_code, {"Content-Type": "application/json"}
+
+    claude_resp = openai_to_claude(openai_resp)
+    return app.response_class(
+        response=json.dumps(claude_resp, ensure_ascii=False).encode("utf-8"),
+        mimetype="application/json; charset=utf-8",
+        headers=provider_headers,
+    )
+
+
+# ================================================================
+#  Gemini API（/v1beta/models/<model>:*）
+# ================================================================
+
+def _gemini_core(model_name: str, stream: bool):
+    """Gemini API 核心处理逻辑（非流式和流式共用）"""
+    auth_err = _authenticate()
+    if auth_err:
+        return auth_err, 401
+
+    body = request.get_json(force=True) or {}
+
+    # 转换为 OpenAI 格式
+    openai_payload = gemini_to_openai(body, model_name)
+
+    # 转发
+    upstream, st, err, status = _forward_to_upstream(openai_payload, stream)
+    if err:
+        return err, status
+
+    provider_headers = {
+        "X-Provider-Name": _ascii_header(st["name"]),
+        "X-Provider-Model": _ascii_header(openai_payload.get("model", "")),
+    }
+
+    if stream:
+        return Response(
+            stream_with_context(relay_stream_gemini(upstream)),
+            mimetype="text/event-stream; charset=utf-8",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
+                     "Connection": "keep-alive", **provider_headers},
+        )
+
+    # 非流式：转换响应
+    try:
+        openai_resp = upstream.json()
+    except Exception:
+        return upstream.content, upstream.status_code, {"Content-Type": "application/json"}
+
+    gemini_resp = openai_to_gemini(openai_resp)
+    return app.response_class(
+        response=json.dumps(gemini_resp, ensure_ascii=False).encode("utf-8"),
+        mimetype="application/json; charset=utf-8",
+        headers=provider_headers,
+    )
+
+
+@app.route("/v1beta/models/<model>:generateContent", methods=["POST"])
+@app.route("/v1/models/<model>:generateContent", methods=["POST"])
+def gemini_generate(model):
+    """Gemini 非流式 API"""
+    return _gemini_core(model, stream=False)
+
+
+@app.route("/v1beta/models/<model>:streamGenerateContent", methods=["POST"])
+@app.route("/v1/models/<model>:streamGenerateContent", methods=["POST"])
+def gemini_stream(model):
+    """Gemini 流式 API"""
+    return _gemini_core(model, stream=True)
 
 
 @app.route("/healthz")
