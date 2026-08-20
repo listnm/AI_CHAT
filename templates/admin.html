@@ -69,10 +69,21 @@
 
     <div class="toolbar">
       <button class="btn primary" id="btn-test-all" onclick="testAll()"><span class="btn-icon">↯</span> 全部测速</button>
-      <span class="status">轻量测速不消耗 token · 卡片上可下拉选择默认模型</span>
+      <button class="btn" id="btn-batch-test" onclick="batchTest()" hidden>⚡ 批量测速 (<span id="sel-count">0</span>)</button>
+      <button class="btn danger" id="btn-batch-delete" onclick="batchDelete()" hidden>× 批量删除 (<span id="sel-count2">0</span>)</button>
+      <button class="btn" id="btn-batch-enable" onclick="batchEnable(true)" hidden>✓ 批量启用</button>
+      <button class="btn" id="btn-batch-disable" onclick="batchEnable(false)" hidden>× 批量禁用</button>
+      <label class="btn" style="cursor:pointer">📁 分组筛选
+        <select id="filter-group" onchange="render()" style="border:none;background:none;font-size:12px;color:var(--deep);cursor:pointer">
+          <option value="">全部</option>
+        </select>
+      </label>
+      <span class="status" id="toolbar-status">轻量测速不消耗 token</span>
     </div>
 
-    <div class="sec-title"><h2>中转站</h2></div>
+    <div class="sec-title"><h2>渠道管理</h2>
+      <span class="hint" id="channel-count"></span>
+    </div>
     <div class="grid" id="grid">
       <div class="card add-card" onclick="openModal('add')">
         <div class="plus">＋</div><span>添加中转站</span>
@@ -105,6 +116,9 @@
           <input id="m-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
           <button class="btn sm" id="m-reveal" onclick="revealKey()">查看当前</button>
         </div>
+      </label>
+      <label>分组（可选）
+        <input id="m-group" placeholder="如：GPT系列、Claude系列" autocomplete="off">
       </label>
       <label>备注（可选）
         <input id="m-remark" placeholder="备注信息" autocomplete="off">
@@ -139,6 +153,8 @@ let testing = {};
 let shownKeys = {};
 let editingId = null;
 let confirmCb = null;
+let selectedIds = new Set();
+let currentFilter = '';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -189,17 +205,28 @@ function modelOptions(s) {
 }
 function render() {
   renderStats();
+  updateGroupFilter();
+  updateBatchButtons();
   const grid = $('grid');
-  const addCard = '<div class="card add-card" onclick="openModal(\'add\')"><div class="plus">＋</div><span>添加中转站</span></div>';
-  if (!stations.length) {
-    grid.innerHTML = addCard + `<div class="empty"><div class="big">□</div>还没有中转站，点击「添加中转站」开始<br><span style="font-size:12px">添加后点「↯ 测速」即可自动获取模型列表与延迟</span></div>`;
+  const addCard = '<div class="card add-card" onclick="openModal(\'add\')"><div class="plus">＋</div><span>添加渠道</span></div>';
+  currentFilter = $('filter-group').value;
+  const filtered = currentFilter ? stations.filter(s => (s.group_name || '默认分组') === currentFilter) : stations;
+  $('channel-count').textContent = `显示 ${filtered.length}/${stations.length} 个渠道`;
+  if (!filtered.length) {
+    grid.innerHTML = addCard + `<div class="empty"><div class="big">□</div>${currentFilter ? '该分组下没有渠道' : '还没有渠道，点击「添加渠道」开始'}<br><span style="font-size:12px">添加后点「↯ 测速」即可自动获取模型列表与延迟</span></div>`;
     return;
   }
   const fast = fastestLatency();
-  const cards = stations.map((s, i) => {
+  const cards = filtered.map((s, i) => {
     const li = latencyInfo(s);
     const isTesting = testing[s.id];
+    const isSelected = selectedIds.has(s.id);
+    const isActive = s.is_active !== false;
     const badge = isTesting ? '<span class="badge testing">测试中…</span>' : `<span class="badge ${li.cls}">${li.txt}</span>`;
+    const activeBadge = isActive
+      ? '<span class="badge fast" style="font-size:10px">启用</span>'
+      : '<span class="badge fail" style="font-size:10px">禁用</span>';
+    const groupBadge = s.group_name ? `<span class="badge none" style="font-size:10px">${esc(s.group_name)}</span>` : '';
     const star = s.is_default
       ? '<button class="icon-btn" title="取消默认" onclick="setDefault(\'' + s.id + '\', false)">★</button>'
       : '<button class="icon-btn" title="设为默认" onclick="setDefault(\'' + s.id + '\', true)">☆</button>';
@@ -209,13 +236,14 @@ function render() {
       : '<button class="icon-btn" title="查看" onclick="toggleKey(\'' + s.id + '\')">⌁</button>';
     const tested = s.last_test_at ? '测于 ' + esc(s.last_test_at).replace('T', ' ') : '';
     const cnt = s.models && s.models.length ? s.models.length + ' 个' : '未获取';
-    return `<div class="card" style="animation-delay:${i*55}ms">
+    return `<div class="card${isActive?'':'  style="opacity:.6"'}" style="animation-delay:${i*55}ms">
       <div class="card-head">
+        <input type="checkbox" ${isSelected?'checked':''} onchange="toggleSelect('${s.id}')" style="cursor:pointer;margin-right:4px">
         <div class="ava ava-${i%4}">${esc((s.name||'?').charAt(0))}</div>
         <div class="card-title">
           <div class="name">${esc(s.name)} ${s.is_default?'<span class="star">★</span>':''}</div>
-          <div class="sub">${esc(s.remark)||'未填写备注'}</div>
-        </div>${badge}
+          <div class="sub">${esc(s.remark)||'未填写备注'} ${groupBadge}</div>
+        </div>${badge}${activeBadge}
       </div>
       <div class="row"><span class="lbl">地址</span><span class="val" title="${esc(s.base_url)}">${esc(s.base_url)}</span>
         <button class="icon-btn" title="复制" onclick="copyText('${esc(s.base_url)}')">⧉</button></div>
@@ -225,7 +253,8 @@ function render() {
         <span class="cnt">${cnt}</span></div>
       <div class="card-foot">
         ${isTesting?'<button class="btn soft sm" disabled><span class="spin" style="border-color:rgba(14,167,94,.3);border-top-color:#0ea75e"></span> 测速中</button>':'<button class="btn soft sm" onclick="testStation(\''+s.id+'\')">↯ 测速</button>'}
-        <button class="btn sm" onclick="openModal('edit','${s.id}')">✎ 编辑</button>${star}
+        <button class="btn sm" onclick="openModal('edit','${s.id}')">✎ 编辑</button>
+        <button class="btn sm" onclick="toggleActive('${s.id}')">${isActive?'禁用':'启用'}</button>${star}
         <button class="btn danger sm" onclick="askDelete('${s.id}','${esc(s.name)}')">×</button>
         <span class="tested">${tested}</span>
       </div>
@@ -261,16 +290,16 @@ async function setModel(id, val) {
 }
 function openModal(mode, id) {
   editingId = mode === 'edit' ? id : null;
-  $('m-title').textContent = mode === 'edit' ? '编辑中转站' : '添加中转站';
+  $('m-title').textContent = mode === 'edit' ? '编辑渠道' : '添加渠道';
   $('m-name').value = ''; $('m-url').value = '';
-  $('m-key').value = ''; $('m-remark').value = '';
+  $('m-key').value = ''; $('m-remark').value = ''; $('m-group').value = '';
   $('m-msg').textContent = '';
   $('m-reveal').style.display = mode === 'edit' ? '' : 'none';
   if (mode === 'edit') {
     const s = stations.find(x => x.id === id);
     if (s) {
       $('m-name').value = s.name; $('m-url').value = s.base_url;
-      $('m-remark').value = s.remark;
+      $('m-remark').value = s.remark; $('m-group').value = s.group_name || '';
       $('m-key').placeholder = s.api_key_preview ? s.api_key_preview + ' · 留空不修改' : 'sk-...';
     }
   } else { $('m-key').placeholder = 'sk-...'; }
@@ -285,7 +314,7 @@ async function revealKey() {
   else toast(d.message || '获取失败');
 }
 async function saveStation() {
-  const payload = { name: $('m-name').value.trim(), base_url: $('m-url').value.trim(), remark: $('m-remark').value.trim() };
+  const payload = { name: $('m-name').value.trim(), base_url: $('m-url').value.trim(), remark: $('m-remark').value.trim(), group_name: $('m-group').value.trim() };
   if (!payload.name) { toast('请填写名称'); return; }
   if (!payload.base_url) { toast('请填写 Base URL'); return; }
   const key = $('m-key').value.trim();
@@ -352,6 +381,64 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeModal(); closeConfirm(); }
   if (e.key === 'Enter' && !$('modal').hidden && e.target.tagName === 'INPUT') saveStation();
 });
+
+/* ---------- 渠道管理：启用/禁用 ---------- */
+async function toggleActive(id) {
+  const d = await api('/api/channels/' + id + '/toggle', {method: 'POST'});
+  toast(d.message, d.ok);
+  if (d.ok) { const s = stations.find(x => x.id === id); if (s) s.is_active = d.is_active; render(); }
+}
+
+/* ---------- 渠道管理：分组筛选 ---------- */
+function updateGroupFilter() {
+  const groups = new Set();
+  stations.forEach(s => groups.add(s.group_name || '默认分组'));
+  const sel = $('filter-group');
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">全部</option>' + [...groups].sort().map(g => `<option value="${esc(g)}" ${g===prev?'selected':''}>${esc(g)}</option>`).join('');
+}
+
+/* ---------- 渠道管理：批量选择 ---------- */
+function toggleSelect(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+  updateBatchButtons();
+}
+function updateBatchButtons() {
+  const n = selectedIds.size;
+  const show = n > 0;
+  $('btn-batch-test').hidden = !show;
+  $('btn-batch-delete').hidden = !show;
+  $('btn-batch-enable').hidden = !show;
+  $('btn-batch-disable').hidden = !show;
+  $('sel-count').textContent = n;
+  $('sel-count2').textContent = n;
+}
+
+/* ---------- 渠道管理：批量操作 ---------- */
+async function batchTest() {
+  const ids = [...selectedIds];
+  toast(`开始批量测速 ${ids.length} 个渠道...`);
+  const d = await api('/api/channels/batch', {method: 'POST', body: JSON.stringify({action: 'test', ids})});
+  if (d.ok) { load(); toast(d.message, true); } else toast(d.message);
+}
+function batchDelete() {
+  confirmCb = async () => {
+    const ids = [...selectedIds];
+    const d = await api('/api/channels/batch', {method: 'POST', body: JSON.stringify({action: 'delete', ids})});
+    if (d.ok) { selectedIds.clear(); load(); toast(d.message, true); } else toast(d.message);
+  };
+  $('cf-title').textContent = '批量删除';
+  $('cf-msg').textContent = `确定删除选中的 ${selectedIds.size} 个渠道吗？删除后不可恢复。`;
+  $('cf-ok').textContent = '删除';
+  $('confirm').hidden = false;
+}
+async function batchEnable(enable) {
+  const ids = [...selectedIds];
+  const d = await api('/api/channels/batch', {method: 'POST', body: JSON.stringify({action: enable ? 'enable' : 'disable', ids})});
+  toast(d.message, d.ok);
+  if (d.ok) { selectedIds.clear(); load(); }
+}
+
 load();
 </script>
 {% endif %}
