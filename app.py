@@ -503,7 +503,18 @@ def _proxy_url():
 
 @app.route("/")
 def index():
-    return redirect("/admin")
+    """主页 = 游乐场，无需登录"""
+    return render_template(
+        "playground.html",
+        proxy_key=PROXY_API_KEY,
+        proxy_url=_proxy_url(),
+        logged_in=_is_admin(),
+    )
+
+
+@app.route("/playground")
+def playground():
+    return redirect("/")
 
 
 @app.route("/admin")
@@ -516,17 +527,6 @@ def admin():
         proxy_key=PROXY_API_KEY,
         proxy_url=_proxy_url(),
         db_info=db_info,
-    )
-
-
-@app.route("/playground")
-def playground():
-    if not _is_admin():
-        return redirect("/login")
-    return render_template(
-        "playground.html",
-        proxy_key=PROXY_API_KEY,
-        proxy_url=_proxy_url(),
     )
 
 
@@ -546,7 +546,7 @@ def login():
 @app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
-    return redirect("/login")
+    return redirect("/")
 
 
 def _require_admin():
@@ -561,9 +561,7 @@ def _require_admin():
 
 @app.route("/api/stations", methods=["GET"])
 def api_stations_list():
-    guard = _require_admin()
-    if guard:
-        return guard
+    """中转站列表（Key 脱敏，公开接口供游乐场使用）"""
     stations = load_stations()
     safe = []
     for s in stations:
@@ -807,10 +805,7 @@ def _relay_sse(upstream: requests.Response):
 
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
-    """游乐场对话：直接向指定中转站转发（stream=True），SSE 返回"""
-    guard = _require_admin()
-    if guard:
-        return guard
+    """游乐场对话：直接向指定中转站转发（stream=True），SSE 返回（无需登录）"""
     data = request.get_json(force=True) or {}
     station_id = data.get("station_id", "")
     model = (data.get("model") or "").strip()
