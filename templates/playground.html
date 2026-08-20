@@ -3,10 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>游乐场 - 中转站管理池</title>
-<link rel="stylesheet" href="/static/style.css">
+<title>Playground - 中转站管理池</title>
 <style>
-/* ============ new-api 风格游乐场 ============ */
 :root {
   --pg-bg: #f8fafc;
   --pg-surface: #ffffff;
@@ -24,24 +22,22 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; overflow: hidden; }
 body {
-  background: var(--pg-bg);
-  color: var(--pg-text);
+  background: var(--pg-bg); color: var(--pg-text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
   font-size: 14px; line-height: 1.6;
 }
-::selection { background: rgba(59,130,246,.3); }
+::selection { background: rgba(59,130,246,.2); }
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-/* 主容器 */
 .pg-app { display: flex; flex-direction: column; height: 100vh; }
 
 /* 顶栏 */
 .pg-header {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: center;
   padding: 12px 20px; border-bottom: 1px solid var(--pg-border);
-  background: var(--pg-surface); flex-shrink: 0; z-index: 10;
+  background: var(--pg-surface); flex-shrink: 0;
 }
 .pg-brand { display: flex; align-items: center; gap: 10px; }
 .pg-brand .logo {
@@ -50,57 +46,40 @@ body {
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; color: #fff; font-weight: 700;
 }
-.pg-brand h1 { font-size: 15px; font-weight: 700; color: var(--pg-text); letter-spacing: -.02em; }
-.pg-header-actions { display: flex; align-items: center; gap: 8px; }
-.pg-header-actions a, .pg-header-actions button {
-  padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
-  text-decoration: none; cursor: pointer; border: 1px solid var(--pg-border);
-  background: var(--pg-surface2); color: var(--pg-text2); transition: all .15s;
-}
-.pg-header-actions a:hover, .pg-header-actions button:hover {
-  background: var(--pg-border); color: var(--pg-text);
-}
+.pg-brand h1 { font-size: 15px; font-weight: 700; color: var(--pg-text); }
 
-/* 对话区域 */
-.pg-chat {
-  flex: 1; overflow-y: auto; display: flex; flex-direction: column;
-  padding: 0;
-}
+/* 对话区 */
+.pg-chat { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
 .pg-chat-inner {
-  width: 100%; max-width: 800px; margin: 0 auto;
-  padding: 24px 20px; display: flex; flex-direction: column; gap: 24px;
+  width: 100%; max-width: 760px; margin: 0 auto;
+  padding: 24px 20px; display: flex; flex-direction: column; gap: 20px;
 }
 
 /* 空状态 */
-.pg-empty {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  min-height: 400px;
-}
-.pg-empty-card {
-  text-align: center; max-width: 520px; padding: 40px 32px;
-}
+.pg-empty { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 300px; }
+.pg-empty-card { text-align: center; max-width: 440px; padding: 32px 24px; }
 .pg-empty-icon {
-  width: 56px; height: 56px; border-radius: 14px; margin: 0 auto 16px;
+  width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 14px;
   background: var(--pg-surface2); display: flex; align-items: center; justify-content: center;
   font-size: 24px; color: var(--pg-text2);
 }
-.pg-empty-card h2 { font-size: 18px; font-weight: 600; color: var(--pg-text); margin-bottom: 6px; }
-.pg-empty-card p { font-size: 13px; color: var(--pg-text3); margin-bottom: 24px; }
+.pg-empty-card h2 { font-size: 17px; font-weight: 600; color: var(--pg-text); margin-bottom: 4px; }
+.pg-empty-card p { font-size: 13px; color: var(--pg-text3); margin-bottom: 20px; }
 .pg-prompts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .pg-prompt-btn {
   padding: 10px 14px; border-radius: 10px; border: 1px solid var(--pg-border);
   background: var(--pg-surface); color: var(--pg-text2); font-size: 12.5px;
   cursor: pointer; transition: all .15s; text-align: left; line-height: 1.5;
 }
-.pg-prompt-btn:hover { border-color: var(--pg-primary); color: var(--pg-text); background: rgba(59,130,246,.06); }
+.pg-prompt-btn:hover { border-color: var(--pg-primary); color: var(--pg-text); background: rgba(59,130,246,.04); }
 
 /* 消息 */
-.pg-msg { display: flex; gap: 12px; max-width: 100%; animation: fadeIn .2s ease; }
+.pg-msg { display: flex; gap: 10px; max-width: 100%; animation: fadeIn .2s ease; }
 .pg-msg.user { flex-direction: row-reverse; }
 .pg-msg-avatar {
-  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700; color: #fff; margin-top: 2px;
+  font-size: 11px; font-weight: 700; color: #fff; margin-top: 2px;
 }
 .pg-msg.user .pg-msg-avatar { background: linear-gradient(135deg, #3b82f6, #8b5cf6); }
 .pg-msg.asst .pg-msg-avatar { background: var(--pg-surface2); color: var(--pg-text2); }
@@ -110,28 +89,27 @@ body {
   overflow-wrap: break-word; word-break: break-word;
 }
 .pg-msg.user .pg-msg-bubble {
-  background: var(--pg-primary); color: #fff;
-  border-top-right-radius: 4px;
+  background: var(--pg-primary); color: #fff; border-top-right-radius: 4px;
 }
 .pg-msg.asst .pg-msg-bubble {
   background: var(--pg-surface); border: 1px solid var(--pg-border);
   border-top-left-radius: 4px; color: var(--pg-text);
 }
 .pg-msg-actions {
-  display: flex; gap: 4px; margin-top: 6px; opacity: 0; transition: opacity .15s;
+  display: flex; gap: 4px; margin-top: 4px; opacity: 0; transition: opacity .15s;
 }
 .pg-msg:hover .pg-msg-actions { opacity: 1; }
 .pg-msg-action {
-  padding: 4px 8px; border-radius: 6px; border: none; background: none;
-  color: var(--pg-text3); font-size: 12px; cursor: pointer; transition: all .12s;
+  padding: 3px 8px; border-radius: 6px; border: none; background: none;
+  color: var(--pg-text3); font-size: 11.5px; cursor: pointer; transition: all .12s;
 }
 .pg-msg-action:hover { background: var(--pg-surface2); color: var(--pg-text); }
 .pg-msg-error { color: var(--pg-danger); font-size: 13px; padding: 8px 12px;
-  background: rgba(239,68,68,.08); border-radius: 8px; border: 1px solid rgba(239,68,68,.2); }
+  background: rgba(239,68,68,.06); border-radius: 8px; border: 1px solid rgba(239,68,68,.15); }
 .pg-cursor { display: inline-block; width: 7px; height: 15px; background: var(--pg-primary);
   border-radius: 2px; margin-left: 2px; vertical-align: -2px; animation: blink .8s infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } }
 
 /* Markdown */
 .md p { margin: 3px 0; }
@@ -140,211 +118,86 @@ body {
 .md pre { background: var(--pg-surface2); border: 1px solid var(--pg-border); border-radius: 8px;
   padding: 10px 12px; overflow-x: auto; margin: 6px 0; font-size: 12.5px; }
 .md pre code { font-family: "JetBrains Mono", Consolas, monospace; color: #334155; background: none; }
-.md code { background: var(--pg-surface2); color: #93c5fd; border-radius: 4px;
+.md code { background: var(--pg-surface2); color: #2563eb; border-radius: 4px;
   padding: 1px 5px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.5px; }
 .md ul { margin: 4px 0 4px 18px; } .md li { margin: 2px 0; }
-.md blockquote { border-left: 3px solid var(--pg-primary); background: rgba(59,130,246,.06);
+.md blockquote { border-left: 3px solid var(--pg-primary); background: rgba(59,130,246,.04);
   padding: 6px 12px; border-radius: 0 8px 8px 0; margin: 6px 0; color: var(--pg-text2); }
 .md a { color: var(--pg-primary); text-decoration: none; }
 .md a:hover { text-decoration: underline; }
 .md-gap { height: 6px; }
 
-/* 输入区域 */
-.pg-input-wrap {
-  flex-shrink: 0; padding: 0 20px 20px;
-}
+/* 输入区 */
+.pg-input-wrap { flex-shrink: 0; padding: 0 20px 20px; }
 .pg-input-box {
-  max-width: 800px; margin: 0 auto; border-radius: var(--pg-radius);
+  max-width: 760px; margin: 0 auto; border-radius: var(--pg-radius);
   border: 1px solid var(--pg-border); background: var(--pg-surface);
   box-shadow: var(--pg-shadow); overflow: hidden;
   transition: border-color .2s, box-shadow .2s;
 }
 .pg-input-box:focus-within {
-  border-color: rgba(59,130,246,.4);
+  border-color: rgba(59,130,246,.35);
   box-shadow: 0 0 0 3px rgba(59,130,246,.08);
 }
 .pg-textarea {
-  width: 100%; min-height: 48px; max-height: 200px; padding: 14px 16px 8px;
+  width: 100%; min-height: 44px; max-height: 180px; padding: 12px 16px 8px;
   border: none; background: none; color: var(--pg-text); font-size: 14px;
   font-family: inherit; line-height: 1.6; resize: none; outline: none;
 }
 .pg-textarea::placeholder { color: var(--pg-text3); }
-
-/* 输入底部工具栏 */
 .pg-input-footer {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 12px; border-top: 1px solid var(--pg-border);
-  background: rgba(241,245,249,.6); gap: 8px;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 6px 10px; border-top: 1px solid var(--pg-border);
 }
-.pg-tools { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.pg-tool-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 5px 10px; border-radius: 7px; border: 1px solid var(--pg-border);
-  background: var(--pg-surface2); color: var(--pg-text2); font-size: 12px;
-  cursor: pointer; transition: all .12s; white-space: nowrap;
-}
-.pg-tool-btn:hover { border-color: #52525b; color: var(--pg-text); }
-.pg-tool-btn.active { border-color: var(--pg-primary); color: var(--pg-primary); background: rgba(59,130,246,.08); }
-.pg-tool-btn .badge {
-  display: inline-flex; align-items: center; justify-content: center;
-  min-width: 16px; height: 16px; border-radius: 8px; font-size: 10px;
-  background: var(--pg-primary); color: #fff; padding: 0 4px; font-weight: 600;
-}
-
-/* 模型选择器 */
-.pg-model-select {
-  display: flex; align-items: center; gap: 6px;
-}
-.pg-model-btn {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 10px; border-radius: 7px; border: 1px solid var(--pg-border);
-  background: var(--pg-surface2); color: var(--pg-text2); font-size: 12px;
-  cursor: pointer; transition: all .12s; max-width: 260px;
-}
-.pg-model-btn:hover { border-color: #52525b; color: var(--pg-text); }
-.pg-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pg-model-chevron { font-size: 10px; opacity: .5; }
-
-/* 发送按钮 */
 .pg-send-btn {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 7px 16px; border-radius: 8px; border: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 16px; border-radius: 8px; border: none;
   background: var(--pg-primary); color: #fff; font-size: 13px; font-weight: 600;
   cursor: pointer; transition: all .15s; white-space: nowrap;
 }
 .pg-send-btn:hover { background: var(--pg-primary-hover); }
-.pg-send-btn:disabled { opacity: .5; cursor: not-allowed; }
+.pg-send-btn:disabled { opacity: .45; cursor: not-allowed; }
 .pg-send-btn.stop { background: var(--pg-danger); }
 .pg-send-btn.stop:hover { background: #dc2626; }
 
-/* 参数面板弹出 */
-.pg-params-popover {
-  position: absolute; bottom: calc(100% + 8px); left: 0;
-  width: 320px; background: var(--pg-surface); border: 1px solid var(--pg-border);
-  border-radius: var(--pg-radius); box-shadow: 0 16px 48px rgba(15,23,42,.12);
-  padding: 16px; z-index: 20; display: none;
-}
-.pg-params-popover.show { display: block; }
-.pg-params-popover h4 { font-size: 13px; font-weight: 600; color: var(--pg-text); margin-bottom: 4px; }
-.pg-params-popover .sub { font-size: 11.5px; color: var(--pg-text3); margin-bottom: 14px; }
-.pg-param-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 0; border-bottom: 1px solid var(--pg-border);
-}
-.pg-param-row:last-child { border-bottom: none; }
-.pg-param-label { font-size: 12.5px; color: var(--pg-text2); }
-.pg-param-value { font-size: 12px; color: var(--pg-text3); font-family: Consolas, monospace; min-width: 32px; text-align: right; }
-.pg-param-slider { flex: 1; margin: 0 10px; accent-color: var(--pg-primary); }
-.pg-param-input {
-  width: 64px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--pg-border);
-  background: var(--pg-surface2); color: var(--pg-text); font-size: 12px;
-  font-family: Consolas, monospace; text-align: center; outline: none;
-}
-.pg-param-input:focus { border-color: var(--pg-primary); }
-.pg-param-toggle {
-  width: 32px; height: 18px; border-radius: 9px; border: none;
-  background: var(--pg-surface2); cursor: pointer; position: relative; transition: background .2s;
-}
-.pg-param-toggle.on { background: var(--pg-primary); }
-.pg-param-toggle::after {
-  content: ""; position: absolute; top: 2px; left: 2px;
-  width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .2s;
-}
-.pg-param-toggle.on::after { transform: translateX(14px); }
-
-/* 模型下拉面板 */
-.pg-model-panel {
-  position: absolute; bottom: calc(100% + 8px); right: 0;
-  width: 340px; max-height: 400px; background: var(--pg-surface);
-  border: 1px solid var(--pg-border); border-radius: var(--pg-radius);
-  box-shadow: 0 16px 48px rgba(15,23,42,.12); z-index: 20; display: none;
-  overflow: hidden;
-}
-.pg-model-panel.show { display: flex; flex-direction: column; }
-.pg-model-search {
-  padding: 10px; border-bottom: 1px solid var(--pg-border);
-}
-.pg-model-search input {
-  width: 100%; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--pg-border);
-  background: var(--pg-surface2); color: var(--pg-text); font-size: 12.5px; outline: none;
-}
-.pg-model-search input:focus { border-color: var(--pg-primary); }
-.pg-model-list { flex: 1; overflow-y: auto; padding: 6px; }
-.pg-model-group { padding: 4px 8px; font-size: 11px; font-weight: 600; color: var(--pg-text3); text-transform: uppercase; letter-spacing: .5px; }
-.pg-model-option {
-  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px;
-  cursor: pointer; transition: background .1s; font-size: 12.5px; color: var(--pg-text2);
-}
-.pg-model-option:hover { background: var(--pg-surface2); color: var(--pg-text); }
-.pg-model-option.active { background: rgba(59,130,246,.1); color: var(--pg-primary); }
-.pg-model-option .check { width: 14px; font-size: 12px; color: var(--pg-primary); }
-
-/* 下拉选择器通用 */
-.pg-dropdown { position: relative; }
-.pg-dropdown-menu {
-  position: absolute; bottom: calc(100% + 6px); left: 0;
-  min-width: 180px; background: var(--pg-surface); border: 1px solid var(--pg-border);
-  border-radius: 10px; box-shadow: 0 12px 36px rgba(15,23,42,.12);
-  padding: 4px; z-index: 30; display: none;
-}
-.pg-dropdown-menu.show { display: block; }
-.pg-dropdown-item {
-  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px;
-  cursor: pointer; transition: background .1s; font-size: 12.5px; color: var(--pg-text2);
-  border: none; background: none; width: 100%; text-align: left;
-}
-.pg-dropdown-item:hover { background: var(--pg-surface2); color: var(--pg-text); }
-
 /* Toast */
 #toast {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(16px);
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(12px);
   background: var(--pg-surface); border: 1px solid var(--pg-border); color: var(--pg-text);
   padding: 10px 18px; border-radius: 10px; font-size: 13px;
-  box-shadow: 0 8px 24px rgba(15,23,42,.12); opacity: 0; pointer-events: none;
+  box-shadow: 0 8px 24px rgba(15,23,42,.1); opacity: 0; pointer-events: none;
   transition: all .2s ease; z-index: 99; max-width: 80vw;
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-#toast.ok { border-color: rgba(59,130,246,.5); }
-#toast.err { border-color: rgba(239,68,68,.5); }
+#toast.ok { border-color: rgba(59,130,246,.4); }
+#toast.err { border-color: rgba(239,68,68,.4); }
 
-/* ---- 手机端适配 ---- */
+/* 手机端 */
 @media (max-width: 768px) {
   .pg-header { padding: 10px 14px; }
+  .pg-brand .logo { width: 28px; height: 28px; font-size: 14px; }
   .pg-brand h1 { font-size: 14px; }
   .pg-chat-inner { padding: 16px 12px; gap: 16px; }
-  .pg-msg-content { max-width: 90%; }
+  .pg-msg-content { max-width: 88%; }
   .pg-input-wrap { padding: 0 10px 12px; }
-  .pg-input-footer { flex-wrap: wrap; gap: 6px; padding: 6px 10px; }
-  .pg-tools { width: 100%; justify-content: flex-start; }
-  .pg-model-btn { max-width: 140px; font-size: 11px; padding: 4px 8px; }
-  .pg-send-btn { padding: 6px 14px; font-size: 12px; }
   .pg-prompts { grid-template-columns: 1fr; }
-  .pg-empty-card { padding: 24px 16px; }
-  .pg-empty-card h2 { font-size: 16px; }
 }
 @media (max-width: 480px) {
   .pg-header { padding: 8px 10px; }
-  .pg-brand .logo { width: 26px; height: 26px; font-size: 13px; border-radius: 6px; }
+  .pg-brand .logo { width: 24px; height: 24px; font-size: 12px; border-radius: 6px; }
   .pg-brand h1 { font-size: 13px; }
   .pg-chat-inner { padding: 12px 8px; }
   .pg-input-wrap { padding: 0 6px 8px; }
-  .pg-input-box { border-radius: 10px; }
-  .pg-textarea { padding: 10px 12px 6px; font-size: 13px; min-height: 40px; }
-  .pg-input-footer { padding: 6px 8px; }
-  .pg-tool-btn { padding: 4px 8px; font-size: 11px; }
-  .pg-model-btn { max-width: 110px; font-size: 11px; }
-  .pg-send-btn { padding: 5px 12px; font-size: 12px; }
-  .pg-msg-avatar { width: 26px; height: 26px; font-size: 11px; border-radius: 6px; }
+  .pg-textarea { padding: 10px 12px 6px; font-size: 13px; min-height: 38px; }
+  .pg-msg-avatar { width: 24px; height: 24px; font-size: 10px; border-radius: 6px; }
   .pg-msg-bubble { padding: 8px 10px; font-size: 13px; }
-  .pg-model-panel { width: calc(100vw - 12px); left: -4px; right: 0; max-height: 60vh; }
-  .pg-params-popover { width: calc(100vw - 12px); left: -4px; }
+  .pg-send-btn { padding: 5px 12px; font-size: 12px; }
 }
 </style>
 </head>
 <body>
 
 <div class="pg-app">
-  <!-- 顶栏 -->
   <div class="pg-header">
     <div class="pg-brand">
       <div class="logo">✦</div>
@@ -352,77 +205,28 @@ body {
     </div>
   </div>
 
-  <!-- 对话区 -->
   <div class="pg-chat" id="pg-chat">
     <div class="pg-empty" id="pg-empty">
       <div class="pg-empty-card">
         <div class="pg-empty-icon">💬</div>
         <h2>开始对话</h2>
-        <p>选择模型，输入消息，测试 AI 对话</p>
+        <p>直接输入消息，自动使用后台配置的模型</p>
         <div class="pg-prompts">
-          <button class="pg-prompt-btn" onclick="pgPrompt('帮我分析一段数据并给出可视化建议')">📊 分析数据</button>
-          <button class="pg-prompt-btn" onclick="pgPrompt('请帮我总结以下内容的核心要点：')">📝 总结文本</button>
-          <button class="pg-prompt-btn" onclick="pgPrompt('用 Python 写一个快速排序算法')">💻 写代码</button>
-          <button class="pg-prompt-btn" onclick="pgPrompt('给我一些关于人工智能发展趋势的建议')">💡 获取建议</button>
+          <button class="pg-prompt-btn" onclick="pgSend('帮我分析一段数据并给出可视化建议')">📊 分析数据</button>
+          <button class="pg-prompt-btn" onclick="pgSend('请帮我总结以下内容的核心要点：')">📝 总结文本</button>
+          <button class="pg-prompt-btn" onclick="pgSend('用 Python 写一个快速排序算法')">💻 写代码</button>
+          <button class="pg-prompt-btn" onclick="pgSend('给我一些关于人工智能发展趋势的建议')">💡 获取建议</button>
         </div>
       </div>
     </div>
     <div class="pg-chat-inner" id="pg-messages" style="display:none"></div>
   </div>
 
-  <!-- 输入区 -->
   <div class="pg-input-wrap">
     <div class="pg-input-box">
       <textarea class="pg-textarea" id="pg-input" placeholder="输入消息…" rows="1"></textarea>
       <div class="pg-input-footer">
-        <div class="pg-tools">
-          <!-- 参数按钮 -->
-          <div class="pg-dropdown" style="position:relative">
-            <button class="pg-tool-btn" id="pg-params-btn" onclick="toggleParams()">
-              ⚙ 参数 <span class="badge" id="pg-params-badge">0</span>
-            </button>
-            <div class="pg-params-popover" id="pg-params-pop">
-              <h4>参数设置</h4>
-              <div class="sub">仅启用的参数会随请求发送</div>
-              <div class="pg-param-row">
-                <span class="pg-param-label">Temperature</span>
-                <input type="range" class="pg-param-slider" id="p-temp" min="0" max="2" step="0.1" value="0.7" oninput="pgParamChange()">
-                <span class="pg-param-value" id="p-temp-val">0.7</span>
-                <button class="pg-param-toggle" id="p-temp-on" onclick="pgToggleParam(this)"></button>
-              </div>
-              <div class="pg-param-row">
-                <span class="pg-param-label">Top P</span>
-                <input type="range" class="pg-param-slider" id="p-topp" min="0" max="1" step="0.1" value="1" oninput="pgParamChange()">
-                <span class="pg-param-value" id="p-topp-val">1</span>
-                <button class="pg-param-toggle" id="p-topp-on" onclick="pgToggleParam(this)"></button>
-              </div>
-              <div class="pg-param-row">
-                <span class="pg-param-label">Max Tokens</span>
-                <input type="number" class="pg-param-input" id="p-maxtokens" value="4096" min="1" oninput="pgParamChange()">
-                <button class="pg-param-toggle" id="p-maxtokens-on" onclick="pgToggleParam(this)"></button>
-              </div>
-            </div>
-          </div>
-          <!-- 清空 -->
-          <button class="pg-tool-btn" onclick="pgClear()" title="清空对话">🗑</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <!-- 模型选择器 -->
-          <div class="pg-dropdown" style="position:relative">
-            <button class="pg-model-btn" id="pg-model-btn" onclick="toggleModelPanel()">
-              <span class="pg-model-name" id="pg-model-label">选择模型…</span>
-              <span class="pg-model-chevron">▾</span>
-            </button>
-            <div class="pg-model-panel" id="pg-model-panel">
-              <div class="pg-model-search">
-                <input type="text" id="pg-model-search" placeholder="搜索模型…" oninput="filterModels()">
-              </div>
-              <div class="pg-model-list" id="pg-model-list"></div>
-            </div>
-          </div>
-          <!-- 发送 -->
-          <button class="pg-send-btn" id="pg-send" onclick="pgSend()">发送</button>
-        </div>
+        <button class="pg-send-btn" id="pg-send" onclick="pgSend()">发送</button>
       </div>
     </div>
   </div>
@@ -432,14 +236,11 @@ body {
 
 <script>
 const $ = id => document.getElementById(id);
-let stations = [];
 let pgHistory = [];
 let pgBusy = false;
 let pgStreamEl = null;
-let pgSelectedStation = '';
-let pgSelectedModel = '';
+let pgAbortCtrl = null;
 
-/* ---- 工具 ---- */
 function esc(s) {
   return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -448,187 +249,38 @@ function toast(msg, ok) {
   t.className = 'show' + (ok ? ' ok' : ' err');
   setTimeout(()=>{ t.className = ''; }, 2800);
 }
-async function api(path, opts={}) {
-  const r = await fetch(path, {headers:{'Content-Type':'application/json'},...opts});
-  return r.json().catch(()=>({}));
+
+function pgSend(text) {
+  if (pgBusy) { pgAbort(); return; }
+  const input = $('pg-input');
+  const msg = (text || input.value).trim();
+  if (!msg) return;
+  if (!text) input.value = '';
+  autoResize();
+  pgGo(msg);
 }
 
-/* ---- 加载中转站 ---- */
-async function loadStations() {
-  const d = await api('/api/stations');
-  if (d.ok) {
-    stations = d.stations;
-    // 自动选默认或第一个
-    const def = stations.find(s => s.is_default) || stations[0];
-    if (def) {
-      pgSelectedStation = def.id;
-      pgSelectedModel = def.selected_model || (def.models && def.models[0]) || '';
-    }
-    renderModelPanel();
-  }
-}
-
-/* ---- 模型面板 ---- */
-function renderModelPanel() {
-  const st = stations.find(s => s.id === pgSelectedStation);
-  const list = $('pg-model-list');
-  if (!st || !st.models || !st.models.length) {
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--pg-text3);font-size:12px">该中转站暂无模型，请先在管理后台测速</div>';
-    updateModelLabel();
-    return;
-  }
-  // 按中转站分组
-  let html = '';
-  stations.forEach(s => {
-    if (!s.models || !s.models.length) return;
-    html += `<div class="pg-model-group">${esc(s.name)}</div>`;
-    s.models.forEach(m => {
-      const active = s.id === pgSelectedStation && m === pgSelectedModel ? ' active' : '';
-      html += `<div class="pg-model-option${active}" onclick="selectModel('${s.id}','${esc(m)}')">
-        <span class="check">${active ? '✓' : ''}</span>${esc(m)}</div>`;
-    });
-  });
-  list.innerHTML = html;
-  updateModelLabel();
-}
-function selectModel(stationId, model) {
-  pgSelectedStation = stationId;
-  pgSelectedModel = model;
-  renderModelPanel();
-  $('pg-model-panel').classList.remove('show');
-}
-function updateModelLabel() {
-  const label = $('pg-model-label');
-  if (pgSelectedModel) label.textContent = pgSelectedModel;
-  else if (pgSelectedStation) {
-    const st = stations.find(s => s.id === pgSelectedStation);
-    label.textContent = st ? st.name + ' (auto)' : '选择模型…';
-  } else label.textContent = '选择模型…';
-}
-function filterModels() {
-  const q = $('pg-model-search').value.toLowerCase();
-  $('pg-model-list').querySelectorAll('.pg-model-option').forEach(el => {
-    el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
-  });
-}
-function toggleModelPanel() {
-  const p = $('pg-model-panel');
-  const show = !p.classList.contains('show');
-  $('pg-params-pop').classList.remove('show');
-  p.classList.toggle('show', show);
-  if (show) { renderModelPanel(); $('pg-model-search').value = ''; filterModels(); }
-}
-
-/* ---- 参数 ---- */
-function toggleParams() {
-  const p = $('pg-params-pop');
-  const show = !p.classList.contains('show');
-  $('pg-model-panel').classList.remove('show');
-  p.classList.toggle('show', show);
-}
-function pgToggleParam(btn) { btn.classList.toggle('on'); pgParamChange(); }
-function pgParamChange() {
-  $('p-temp-val').textContent = $('p-temp').value;
-  $('p-topp-val').textContent = $('p-topp').value;
-  let n = 0;
-  if ($('p-temp-on').classList.contains('on')) n++;
-  if ($('p-topp-on').classList.contains('on')) n++;
-  if ($('p-maxtokens-on').classList.contains('on')) n++;
-  $('pg-params-badge').textContent = n;
-}
-
-/* 点击外部关闭面板 */
-document.addEventListener('click', e => {
-  if (!e.target.closest('.pg-dropdown') && !e.target.closest('.pg-tool-btn')) {
-    $('pg-model-panel').classList.remove('show');
-    $('pg-params-pop').classList.remove('show');
-  }
-});
-
-/* ---- 对话 ---- */
-function pgPrompt(text) { $('pg-input').value = text; pgSend(); }
-function pgClear() {
-  pgHistory = [];
-  $('pg-messages').innerHTML = '';
-  $('pg-messages').style.display = 'none';
-  $('pg-empty').style.display = '';
-}
-function scrollChat() { const c = $('pg-chat'); c.scrollTop = c.scrollHeight; }
-function appendMsg(role, content) {
+function pgGo(msg) {
+  pgHistory.push({role:'user', content:msg});
   $('pg-empty').style.display = 'none';
   $('pg-messages').style.display = '';
-  const div = document.createElement('div');
-  div.className = 'pg-msg ' + role;
-  const avatar = role === 'user' ? '我' : 'AI';
-  if (role === 'user') {
-    div.innerHTML = `<div class="pg-msg-avatar">${avatar}</div><div class="pg-msg-content"><div class="pg-msg-bubble">${esc(content)}</div></div>`;
-  } else {
-    div.innerHTML = `<div class="pg-msg-avatar">${avatar}</div><div class="pg-msg-content"><div class="pg-msg-bubble md"></div>
-      <div class="pg-msg-actions">
-        <button class="pg-msg-action" onclick="pgCopyMsg(this)">复制</button>
-        <button class="pg-msg-action" onclick="pgRegenerate()">重新生成</button>
-      </div></div>`;
-    if (content) div.querySelector('.pg-msg-bubble').innerHTML = md(content);
-  }
-  $('pg-messages').appendChild(div);
-  scrollChat();
-  return role === 'assistant' ? div.querySelector('.pg-msg-bubble') : null;
-}
-function renderStream(text, done) {
-  if (!pgStreamEl) return;
-  pgStreamEl.innerHTML = md(text) + (done ? '' : '<span class="pg-cursor"></span>');
-  scrollChat();
-}
-function pgCopyMsg(btn) {
-  const bubble = btn.closest('.pg-msg-content').querySelector('.pg-msg-bubble');
-  navigator.clipboard.writeText(bubble.textContent).then(()=>toast('已复制',true));
-}
-async function pgRegenerate() {
-  if (pgBusy || !pgHistory.length) return;
-  // 移除最后一条 assistant 消息
-  pgHistory.pop();
-  const msgs = $('pg-messages').children;
-  if (msgs.length) msgs[msgs.length - 1].remove();
-  pgSend();
-}
-function buildMessages() {
-  const msgs = [];
-  if ($('p-topp-on').classList.contains('on') || $('p-temp-on').classList.contains('on') || $('p-maxtokens-on').classList.contains('on')) {
-    // system prompt for params is handled in payload
-  }
-  return pgHistory.map(m => ({role: m.role, content: m.content}));
-}
-
-async function pgSend() {
-  if (pgBusy) { pgAbort(); return; }
-  const text = $('pg-input').value.trim();
-  if (!text) return;
-  if (!pgSelectedStation) { toast('请先在管理后台添加中转站并测速'); return; }
-
-  pgHistory.push({role:'user', content:text});
-  $('pg-input').value = '';
-  autoResize();
-  appendMsg('user', text);
+  appendMsg('user', msg);
   pgStreamEl = appendMsg('assistant', '');
   pgBusy = true;
   setSendBtn(true);
 
-  const payload = {
-    station_id: pgSelectedStation,
-    model: pgSelectedModel,
-    messages: buildMessages(),
-  };
-  if ($('p-temp-on').classList.contains('on')) payload.temperature = parseFloat($('p-temp').value);
-  if ($('p-topp-on').classList.contains('on')) payload.top_p = parseFloat($('p-topp').value);
-  if ($('p-maxtokens-on').classList.contains('on')) payload.max_tokens = parseInt($('p-maxtokens').value);
+  pgStream(pgHistory.slice()).catch(()=>{});
+}
 
+async function pgStream(msgs) {
   let ctrl = null;
   try {
     ctrl = new AbortController();
     pgAbortCtrl = ctrl;
     const res = await fetch('/api/chat', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(payload), signal: ctrl.signal,
+      body: JSON.stringify({station_id:'', model:'', messages:msgs}),
+      signal: ctrl.signal,
     });
     if (!res.ok || !res.body) throw new Error('HTTP ' + res.status);
     const reader = res.body.getReader();
@@ -658,42 +310,65 @@ async function pgSend() {
       renderStream(full, true);
     }
   } catch(e) {
-    if (e.name === 'AbortError') {
-      // 用户取消
-    } else {
-      pgStreamEl.innerHTML = '<div class="pg-msg-error">⚠ 请求失败，请检查中转站与网络</div>';
+    if (e.name !== 'AbortError') {
+      pgStreamEl.innerHTML = '<div class="pg-msg-error">⚠ 请求失败，请检查后台中转站配置</div>';
     }
   }
   pgBusy = false; setSendBtn(false); pgStreamEl = null;
   pgAbortCtrl = null; scrollChat();
 }
-let pgAbortCtrl = null;
-function pgAbort() {
-  if (pgAbortCtrl) pgAbortCtrl.abort();
-}
+
+function pgAbort() { if (pgAbortCtrl) pgAbortCtrl.abort(); }
 function setSendBtn(busy) {
   const btn = $('pg-send');
-  if (busy) {
-    btn.textContent = '停止';
-    btn.className = 'pg-send-btn stop';
-  } else {
-    btn.textContent = '发送';
-    btn.className = 'pg-send-btn';
-  }
+  btn.textContent = busy ? '停止' : '发送';
+  btn.className = busy ? 'pg-send-btn stop' : 'pg-send-btn';
 }
-
-/* ---- Textarea 自适应 ---- */
+function appendMsg(role, content) {
+  const div = document.createElement('div');
+  div.className = 'pg-msg ' + role;
+  if (role === 'user') {
+    div.innerHTML = `<div class="pg-msg-avatar">我</div><div class="pg-msg-content"><div class="pg-msg-bubble">${esc(content)}</div></div>`;
+  } else {
+    div.innerHTML = `<div class="pg-msg-avatar">AI</div><div class="pg-msg-content"><div class="pg-msg-bubble md"></div>
+      <div class="pg-msg-actions">
+        <button class="pg-msg-action" onclick="pgCopyMsg(this)">复制</button>
+        <button class="pg-msg-action" onclick="pgRedo()">重新生成</button>
+      </div></div>`;
+    if (content) div.querySelector('.pg-msg-bubble').innerHTML = md(content);
+  }
+  $('pg-messages').appendChild(div);
+  scrollChat();
+  return role === 'assistant' ? div.querySelector('.pg-msg-bubble') : null;
+}
+function renderStream(text, done) {
+  if (!pgStreamEl) return;
+  pgStreamEl.innerHTML = md(text) + (done ? '' : '<span class="pg-cursor"></span>');
+  scrollChat();
+}
+function pgCopyMsg(btn) {
+  const bubble = btn.closest('.pg-msg-content').querySelector('.pg-msg-bubble');
+  navigator.clipboard.writeText(bubble.textContent).then(()=>toast('已复制',true));
+}
+function pgRedo() {
+  if (pgBusy || pgHistory.length < 2) return;
+  pgHistory.pop();
+  const msgs = $('pg-messages').children;
+  if (msgs.length) msgs[msgs.length - 1].remove();
+  pgStream(pgHistory.slice()).catch(()=>{});
+}
+function scrollChat() { const c = $('pg-chat'); c.scrollTop = c.scrollHeight; }
 function autoResize() {
   const el = $('pg-input');
   el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  el.style.height = Math.min(el.scrollHeight, 180) + 'px';
 }
 $('pg-input').addEventListener('input', autoResize);
 $('pg-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); pgSend(); }
 });
 
-/* ---- Markdown ---- */
+/* Markdown */
 function inline(s) {
   return esc(s)
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -723,8 +398,6 @@ function md(src) {
   }
   flushList(); return out;
 }
-
-loadStations();
 </script>
 </body>
 </html>
