@@ -43,6 +43,7 @@ from oauth_providers import (
     PROVIDERS, generate_state, build_authorize_url, exchange_code_for_tokens,
     refresh_access_token, fetch_user_info, extract_user_info,
     _generate_pkce_openai, _generate_pkce_standard,
+    import_token,
 )
 
 # ================================================================
@@ -1605,6 +1606,58 @@ def oa_accounts_list():
         "has_refresh_token": bool(a["refresh_token"]),
     } for a in accounts]
     return {"ok": True, "accounts": safe}
+
+
+@app.route("/api/oa/import", methods=["POST"])
+def oa_import_token():
+    """通过粘贴 Token/JSON 导入订阅账号"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.get_json(force=True) or {}
+    provider = data.get("provider", "")
+    content = data.get("content", "").strip()
+
+    if provider not in PROVIDERS:
+        return {"ok": False, "message": "未知提供商"}
+    if not content:
+        return {"ok": False, "message": "请输入 Token 或 JSON 数据"}
+
+    result = import_token(provider, content)
+    if not result.get("ok"):
+        return {"ok": False, "message": result.get("message", "导入失败")}
+
+    # 存入数据库
+    from datetime import datetime, timezone, timedelta
+    expires_at = ""
+    if result.get("extra", {}).get("expires_at"):
+        try:
+            exp_ts = result["extra"]["expires_at"]
+            expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()
+        except Exception:
+            pass
+
+    conn = get_db()
+    try:
+        account_id = str(uuid.uuid4())
+        now = _db_now()
+        conn.execute(
+            _sql("""INSERT INTO oauth_accounts
+                (id, provider, email, display_name, access_token_encrypted,
+                 refresh_token_encrypted, token_type, expires_at, scope,
+                 is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+            (account_id, provider, result["email"], result["display_name"],
+             _encrypt(result["access_token"]),
+             _encrypt(result["refresh_token"]) if result.get("refresh_token") else "",
+             "Bearer", expires_at, "", True, now, now),
+        )
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
+
+    return {"ok": True, "message": f"已导入 {result['email'] or result['display_name']}"}
 
 
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
