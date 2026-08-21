@@ -39,7 +39,11 @@ from providers import (
     claude_to_openai, openai_to_claude, relay_stream_claude,
     gemini_to_openai, openai_to_gemini, relay_stream_gemini,
 )
-from oauth_providers import PROVIDERS, generate_state, build_auth_url, exchange_code, refresh_token, get_user_info, parse_user_info
+from oauth_providers import (
+    PROVIDERS, generate_state, build_authorize_url, exchange_code_for_tokens,
+    refresh_access_token, fetch_user_info, extract_user_info,
+    _generate_pkce_openai, _generate_pkce_standard,
+)
 
 # ================================================================
 #  基础配置（可用环境变量覆盖，start.bat 里可改）
@@ -1494,7 +1498,6 @@ def oa_page():
             "desc": cfg["desc"],
             "icon": cfg["icon"],
             "color": cfg["color"],
-            "client_id_preview": cfg["client_id"][:12] + "****",
         }
     return render_template("oa.html", accounts=accounts, providers=provider_configs)
 
@@ -1507,29 +1510,28 @@ def oa_login(provider):
     if provider not in PROVIDERS:
         return "未知提供商", 404
 
-    # 构建重定向地址
     cfg = PROVIDERS[provider]
     redirect_uri = request.host_url.rstrip("/") + cfg["callback_path"]
 
-    # 生成 state 和 PKCE
-    from oauth_providers import generate_pkce_pair, generate_pkce_pair_openai
+    # 生成 state + PKCE
     state = generate_state()
     if provider == "openai":
-        verifier, challenge, method = generate_pkce_pair_openai()
+        verifier, challenge = _generate_pkce_openai()
     else:
-        verifier, challenge, method = generate_pkce_pair()
+        verifier, challenge = _generate_pkce_standard()
 
-    # 存储 state 和 code_verifier（用于回调时换取令牌）
-    _oauth_states[state] = {"provider": provider, "code_verifier": verifier}
+    # 存到 session（回调时取回 code_verifier）
+    session["oauth_state"] = state
+    session["oauth_provider"] = provider
+    session["oauth_verifier"] = verifier
 
-    # 构建授权 URL
-    auth_url = build_auth_url(provider, redirect_uri, state)
+    auth_url = build_authorize_url(provider, redirect_uri, state, challenge)
     return redirect(auth_url)
 
 
 @app.route("/oa/callback/<provider>")
 def oa_callback(provider):
-    """OAuth 回调，处理授权码（带 PKCE）"""
+    """OAuth 回调：用 code + PKCE verifier 换取令牌"""
     if provider not in PROVIDERS:
         return "未知提供商", 404
 
@@ -1539,38 +1541,32 @@ def oa_callback(provider):
 
     if error:
         return redirect(f"/oa?error={error}")
-    if not code or state not in _oauth_states:
+    if not code or state != session.get("oauth_state"):
         return redirect("/oa?error=invalid_state")
 
-    # 消费 state，获取 code_verifier
-    state_data = _oauth_states.pop(state)
-    code_verifier = state_data.get("code_verifier", "")
+    verifier = session.pop("oauth_verifier", "")
+    session.pop("oauth_state", None)
+    session.pop("oauth_provider", None)
 
-    # 构建重定向地址
     cfg = PROVIDERS[provider]
     redirect_uri = request.host_url.rstrip("/") + cfg["callback_path"]
 
-    # 换取令牌（带 PKCE）
-    token_data = exchange_code(provider, code, redirect_uri, code_verifier)
+    # 换取令牌
+    token_data = exchange_code_for_tokens(provider, code, redirect_uri, verifier)
     if "error" in token_data:
-        return redirect(f"/oa?error=token_exchange_failed")
+        return redirect(f"/oa?error={token_data['error']}")
 
     access_token = token_data.get("access_token", "")
     refresh_token_val = token_data.get("refresh_token", "")
-    token_type = token_data.get("token_type", "Bearer")
-    expires_in = token_data.get("expires_in", 0)
-    scope = token_data.get("scope", "")
-
     if not access_token:
         return redirect("/oa?error=no_access_token")
 
-    # 计算过期时间
-    from datetime import datetime, timezone, timedelta
-    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
+    # 提取用户信息
+    raw_info = fetch_user_info(provider, access_token)
+    info = extract_user_info(provider, token_data, raw_info)
 
-    # 获取用户信息
-    raw_info = get_user_info(provider, access_token)
-    user_info = parse_user_info(provider, raw_info)
+    expires_in = info["expires_in"]
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
 
     # 存入数据库
     conn = get_db()
@@ -1579,13 +1575,14 @@ def oa_callback(provider):
         now = _db_now()
         conn.execute(
             _sql("""INSERT INTO oauth_accounts
-                (id, provider, email, display_name, access_token_encrypted, refresh_token_encrypted,
-                 token_type, expires_at, scope, is_active, created_at, updated_at)
+                (id, provider, email, display_name, access_token_encrypted,
+                 refresh_token_encrypted, token_type, expires_at, scope,
+                 is_active, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
-            (account_id, provider, user_info["email"], user_info["display_name"],
+            (account_id, provider, info["email"], info["display_name"],
              _encrypt(access_token),
              _encrypt(refresh_token_val) if refresh_token_val else "",
-             token_type, expires_at, scope, True, now, now),
+             "Bearer", expires_at, info["scope"], True, now, now),
         )
         _close_db(conn, commit=True)
     except Exception:
@@ -1597,30 +1594,21 @@ def oa_callback(provider):
 
 @app.route("/api/oa/accounts", methods=["GET"])
 def oa_accounts_list():
-    """获取所有 OAuth 账号列表"""
     guard = _require_admin()
     if guard:
         return guard
     accounts = _load_oauth_accounts()
-    safe = []
-    for a in accounts:
-        safe.append({
-            "id": a["id"],
-            "provider": a["provider"],
-            "email": a["email"],
-            "display_name": a["display_name"],
-            "token_type": a["token_type"],
-            "expires_at": a["expires_at"],
-            "is_active": a["is_active"],
-            "created_at": a["created_at"],
-            "has_refresh_token": bool(a["refresh_token"]),
-        })
+    safe = [{
+        "id": a["id"], "provider": a["provider"], "email": a["email"],
+        "display_name": a["display_name"], "expires_at": a["expires_at"],
+        "is_active": a["is_active"], "created_at": a["created_at"],
+        "has_refresh_token": bool(a["refresh_token"]),
+    } for a in accounts]
     return {"ok": True, "accounts": safe}
 
 
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
 def oa_account_delete(account_id):
-    """删除 OAuth 账号"""
     guard = _require_admin()
     if guard:
         return guard
@@ -1636,7 +1624,6 @@ def oa_account_delete(account_id):
 
 @app.route("/api/oa/accounts/<account_id>/toggle", methods=["POST"])
 def oa_account_toggle(account_id):
-    """启用/禁用 OAuth 账号"""
     guard = _require_admin()
     if guard:
         return guard
@@ -1647,9 +1634,8 @@ def oa_account_toggle(account_id):
     conn = get_db()
     try:
         conn.execute(
-            _sql("UPDATE oauth_accounts SET is_active = ?, updated_at = ? WHERE id = ?"),
-            (new_status, _db_now(), account_id),
-        )
+            _sql("UPDATE oauth_accounts SET is_active=?, updated_at=? WHERE id=?"),
+            (new_status, _db_now(), account_id))
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn)
@@ -1659,7 +1645,6 @@ def oa_account_toggle(account_id):
 
 @app.route("/api/oa/accounts/<account_id>/refresh", methods=["POST"])
 def oa_account_refresh(account_id):
-    """手动刷新 OAuth 令牌"""
     guard = _require_admin()
     if guard:
         return guard
@@ -1667,25 +1652,23 @@ def oa_account_refresh(account_id):
     if not acc:
         return {"ok": False, "message": "账号不存在"}
     if not acc["refresh_token"]:
-        return {"ok": False, "message": "该账号没有 refresh_token"}
+        return {"ok": False, "message": "无 refresh_token"}
 
-    token_data = refresh_token(acc["provider"], acc["refresh_token"])
+    token_data = refresh_access_token(acc["provider"], acc["refresh_token"])
     if "error" in token_data:
         return {"ok": False, "message": token_data["error"]}
 
     new_access = token_data.get("access_token", "")
     new_refresh = token_data.get("refresh_token", acc["refresh_token"])
     expires_in = token_data.get("expires_in", 0)
-
-    from datetime import datetime, timezone, timedelta
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else acc["expires_at"]
 
     conn = get_db()
     try:
         conn.execute(
             _sql("UPDATE oauth_accounts SET access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=? WHERE id=?"),
-            (_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "", expires_at, _db_now(), account_id),
-        )
+            (_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "",
+             expires_at, _db_now(), account_id))
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn)
