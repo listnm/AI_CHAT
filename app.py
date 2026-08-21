@@ -1020,6 +1020,13 @@ def api_chat():
         return _sse_error("中转站地址或 Key 为空")
 
     headers = {"Authorization": f"Bearer {st['api_key']}", "Content-Type": "application/json"}
+    # Grok CLI 代理需要特殊 headers
+    if "cli-chat-proxy.grok.com" in st.get("base_url", "") or "grok" in st.get("remark", "").lower():
+        headers.update({
+            "X-Grok-Client-Version": "1.0.0",
+            "User-Agent": "GrokCLI/1.0",
+            "Accept": "application/json, text/event-stream",
+        })
     payload = {"model": model, "messages": messages, "stream": True}
     if data.get("temperature") is not None:
         try:
@@ -1163,6 +1170,13 @@ def proxy_chat_completions():
             continue
 
         headers = {"Authorization": f"Bearer {st['api_key']}", "Content-Type": "application/json"}
+        # Grok CLI 代理需要特殊 headers
+        if "cli-chat-proxy.grok.com" in st.get("base_url", "") or "grok" in st.get("remark", "").lower():
+            headers.update({
+                "X-Grok-Client-Version": "1.0.0",
+                "User-Agent": "GrokCLI/1.0",
+                "Accept": "application/json, text/event-stream",
+            })
         payload = {k: v for k, v in data.items() if k != "account"}
         payload["model"] = effective_model
         payload["messages"] = messages
@@ -1904,10 +1918,11 @@ def oa_account_sync_to_station(account_id):
             pass
 
     # 确定 base_url
+    # Grok 使用 CLI 代理（网页版后端），不需要 API 额度
     provider = acc["provider"]
     base_urls = {
         "openai": "https://api.openai.com/v1",
-        "grok": "https://api.x.ai/v1",
+        "grok": "https://cli-chat-proxy.grok.com/v1",
         "gemini": "https://generativelanguage.googleapis.com/v1beta",
     }
     base_url = base_urls.get(provider, "")
