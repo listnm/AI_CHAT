@@ -209,3 +209,175 @@ def extract_user_info(provider_key, token_data, user_info):
         "expires_in": token_data.get("expires_in", 0),
         "scope": token_data.get("scope", ""),
     }
+
+
+# ================================================================
+#  Token 导入功能（基于 sub2api ImportCodexSession）
+# ================================================================
+
+def parse_import_content(content: str) -> list:
+    """
+    解析导入内容，支持多种格式：
+    - 纯 access_token 字符串（每行一个）
+    - Codex session JSON 对象
+    - JSON 数组
+    - 混合格式
+    """
+    content = content.strip()
+    if not content:
+        return []
+
+    entries = []
+
+    # 尝试 JSON 解析
+    if content.startswith("{") or content.startswith("["):
+        try:
+            # 尝试解析为 JSON
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                entries.extend(parsed)
+            elif isinstance(parsed, dict):
+                entries.append(parsed)
+            return entries
+        except json.JSONDecodeError:
+            pass
+
+    # 按行分割，每行尝试解析
+    for line in content.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # 尝试 JSON 解析
+        if line.startswith("{"):
+            try:
+                entries.append(json.loads(line))
+                continue
+            except json.JSONDecodeError:
+                pass
+        # 当作 access_token 字符串
+        entries.append({"access_token": line})
+
+    return entries
+
+
+def normalize_import_entry(entry: dict) -> dict:
+    """
+    标准化导入条目，从各种格式中提取标准字段。
+    支持 sub2api 的 Codex session JSON 格式。
+    """
+    if isinstance(entry, str):
+        entry = {"access_token": entry}
+
+    def first_str(*keys):
+        for k in keys:
+            v = entry.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        # 嵌套查找
+        for top in ["tokens", "account", "user", "credentials"]:
+            obj = entry.get(top, {})
+            if isinstance(obj, dict):
+                for k in keys:
+                    v = obj.get(k)
+                    if isinstance(v, str) and v.strip():
+                        return v.strip()
+        return ""
+
+    access_token = first_str("access_token", "accessToken", "token")
+    refresh_token = first_str("refresh_token", "refreshToken")
+    id_token = first_str("id_token", "idToken")
+    email = first_str("email")
+    display_name = first_str("name", "display_name", "displayName")
+
+    # 从 JWT 解析额外信息
+    extra = {}
+    if access_token and "." in access_token:
+        try:
+            parts = access_token.split(".")
+            if len(parts) >= 2:
+                payload = parts[1]
+                payload += "=" * (4 - len(payload) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+                email = email or claims.get("email", "")
+                display_name = display_name or claims.get("name", "")
+                extra["sub"] = claims.get("sub", "")
+                extra["chatgpt_account_id"] = claims.get("chatgpt_account_id", "")
+                extra["chatgpt_user_id"] = claims.get("chatgpt_user_id", "")
+                extra["plan_type"] = claims.get("chatgpt_plan_type", "")
+                extra["expires_at"] = claims.get("exp", 0)
+        except Exception:
+            pass
+
+    # 也从 id_token 解析
+    if id_token and "." in id_token:
+        try:
+            parts = id_token.split(".")
+            if len(parts) >= 2:
+                payload = parts[1]
+                payload += "=" * (4 - len(payload) % 4)
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+                email = email or claims.get("email", "")
+                display_name = display_name or claims.get("name", "")
+                extra["chatgpt_account_id"] = claims.get("chatgpt_account_id", extra.get("chatgpt_account_id", ""))
+                extra["plan_type"] = claims.get("chatgpt_plan_type", extra.get("plan_type", ""))
+        except Exception:
+            pass
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "id_token": id_token,
+        "email": email,
+        "display_name": display_name,
+        "extra": extra,
+    }
+
+
+def validate_token(provider_key: str, access_token: str) -> dict:
+    """
+    验证 token 是否有效，返回用户信息。
+    通过调用 userinfo 接口验证。
+    """
+    user_info = fetch_user_info(provider_key, access_token)
+    if not user_info or "error" in user_info:
+        return {"valid": False, "error": user_info.get("error", "无法获取用户信息")}
+
+    return {
+        "valid": True,
+        "email": user_info.get("email", ""),
+        "display_name": user_info.get("name", "") or user_info.get("nickname", ""),
+    }
+
+
+def import_token(provider_key: str, content: str) -> dict:
+    """
+    导入 token：解析内容 → 验证 → 返回标准化数据。
+    """
+    entries = parse_import_content(content)
+    if not entries:
+        return {"ok": False, "message": "未找到有效的 token 或 JSON 数据"}
+
+    results = []
+    for entry in entries[:1]:  # 暂时只处理第一个
+        normalized = normalize_import_entry(entry)
+        if not normalized["access_token"]:
+            results.append({"ok": False, "message": "未找到 access_token"})
+            continue
+
+        # 验证 token
+        validation = validate_token(provider_key, normalized["access_token"])
+        if not validation["valid"]:
+            results.append({"ok": False, "message": f"Token 无效: {validation['error']}"})
+            continue
+
+        results.append({
+            "ok": True,
+            "access_token": normalized["access_token"],
+            "refresh_token": normalized["refresh_token"],
+            "id_token": normalized["id_token"],
+            "email": validation["email"] or normalized["email"],
+            "display_name": validation["display_name"] or normalized["display_name"],
+            "extra": normalized["extra"],
+        })
+
+    return results[0] if results else {"ok": False, "message": "解析失败"}
