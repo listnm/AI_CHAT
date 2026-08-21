@@ -1765,6 +1765,51 @@ def oa_import_token():
     return {"ok": True, "message": f"已导入 {result['email'] or result['display_name'] or '账号'}"}
 
 
+@app.route("/api/oa/password-login", methods=["POST"])
+def oa_password_login():
+    """通过账号密码登录 Grok"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.get_json(force=True) or {}
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+
+    if not email or not password:
+        return {"ok": False, "message": "请输入邮箱和密码"}
+
+    from oauth_providers import grok_password_login
+    result = grok_password_login(email, password)
+    if not result.get("ok"):
+        return {"ok": False, "message": result.get("message", "登录失败")}
+
+    # 存入数据库
+    from datetime import datetime, timezone, timedelta
+    expires_at = result.get("expires_at", "")
+
+    conn = get_db()
+    try:
+        account_id = str(uuid.uuid4())
+        now = _db_now()
+        conn.execute(
+            _sql("""INSERT INTO oauth_accounts
+                (id, provider, email, display_name, access_token_encrypted,
+                 refresh_token_encrypted, token_type, expires_at, scope,
+                 is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+            (account_id, "grok", result["email"], result["display_name"],
+             _encrypt(result["access_token"]),
+             _encrypt(result["refresh_token"]) if result.get("refresh_token") else "",
+             "Bearer", expires_at, "", True, now, now),
+        )
+        _close_db(conn, commit=True)
+    except Exception as e:
+        _close_db(conn)
+        return {"ok": False, "message": f"数据库错误: {str(e)[:100]}"}
+
+    return {"ok": True, "message": f"已登录 {result['email'] or result['display_name']}"}
+
+
 @app.route("/api/oa/accounts/<account_id>/sync", methods=["POST"])
 def oa_account_sync_to_station(account_id):
     """将 OAuth 账号同步为中转站，使其可用于转发"""
