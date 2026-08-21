@@ -43,7 +43,7 @@ from oauth_providers import (
     PROVIDERS, generate_state, build_authorize_url, exchange_code_for_tokens,
     refresh_access_token, fetch_user_info, extract_user_info,
     _generate_pkce_openai, _generate_pkce_standard,
-    import_token,
+    import_token, grok_password_login,
 )
 
 # ================================================================
@@ -300,11 +300,17 @@ def init_db():
                     token_type TEXT NOT NULL DEFAULT 'Bearer',
                     expires_at TEXT,
                     scope TEXT DEFAULT '',
+                    model TEXT DEFAULT '',
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMPTZ NOT NULL,
                     updated_at TIMESTAMPTZ NOT NULL
                 )
             """)
+            for col, typedef in [("model", "TEXT DEFAULT ''")]:
+                try:
+                    conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} {typedef}")
+                except Exception:
+                    pass
         else:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS oauth_accounts (
@@ -317,11 +323,17 @@ def init_db():
                     token_type TEXT DEFAULT 'Bearer',
                     expires_at TEXT,
                     scope TEXT DEFAULT '',
+                    model TEXT DEFAULT '',
                     is_active INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
             """)
+            for col in ["model"]:
+                try:
+                    conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} TEXT DEFAULT ''")
+                except Exception:
+                    pass
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn, commit=False)
@@ -1446,7 +1458,7 @@ _oauth_states = {}  # {state: provider_key}，CSRF 防护
 
 OAUTH_COLUMNS = (
     "id, provider, email, display_name, access_token_encrypted, "
-    "refresh_token_encrypted, token_type, expires_at, scope, is_active, created_at, updated_at"
+    "refresh_token_encrypted, token_type, expires_at, scope, model, is_active, created_at, updated_at"
 )
 
 
@@ -1463,6 +1475,7 @@ def _oauth_row_to_dict(row) -> dict:
         "token_type": row["token_type"],
         "expires_at": row["expires_at"],
         "scope": row["scope"],
+        "model": row["model"] or "",
         "is_active": bool(row["is_active"]),
         "created_at": row["created_at"],
     }
@@ -1881,6 +1894,26 @@ def oa_account_sync_to_station(account_id):
             return {"ok": True, "message": f"已创建中转站「{name}」"}
     except Exception as e:
         return {"ok": False, "message": f"同步失败: {str(e)[:100]}"}
+
+
+@app.route("/api/oa/accounts/<account_id>/model", methods=["PUT"])
+def oa_account_set_model(account_id):
+    """设置 OAuth 账号的模型"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    data = request.get_json(force=True) or {}
+    model = data.get("model", "").strip()
+    conn = get_db()
+    try:
+        conn.execute(
+            _sql("UPDATE oauth_accounts SET model=?, updated_at=? WHERE id=?"),
+            (model, _db_now(), account_id))
+        _close_db(conn, commit=True)
+    except Exception:
+        _close_db(conn)
+        raise
+    return {"ok": True, "message": "模型已保存"}
 
 
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
