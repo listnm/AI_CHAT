@@ -1526,6 +1526,7 @@ def _auto_refresh_expired_tokens(accounts: list) -> int:
         provider = acc["provider"]
         token_data = refresh_access_token(provider, acc["refresh_token"])
         if "error" in token_data:
+            print(f"[OA] 自动刷新失败 {acc.get('email', acc['id'])}: {token_data['error']}")
             continue
 
         new_access = token_data.get("access_token", "")
@@ -1534,6 +1535,7 @@ def _auto_refresh_expired_tokens(accounts: list) -> int:
         new_expires_at = (now + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
 
         if not new_access:
+            print(f"[OA] 自动刷新返回空 access_token: {acc.get('email', acc['id'])}")
             continue
 
         conn = get_db()
@@ -1544,6 +1546,7 @@ def _auto_refresh_expired_tokens(accounts: list) -> int:
                  new_expires_at, _db_now(), acc["id"]))
             _close_db(conn, commit=True)
             refreshed += 1
+            print(f"[OA] 自动刷新成功: {acc.get('email', acc['id'])}")
         except Exception:
             _close_db(conn)
 
@@ -1867,12 +1870,18 @@ def oa_account_sync_to_station(account_id):
             break
 
     try:
+        # 同步 OA 账号的模型设置到中转站
+        oa_model = (acc.get("model") or "").strip()
         if existing:
-            update_station(existing["id"], {
+            update_data = {
                 "base_url": base_url,
                 "api_key_encrypted": _encrypt(access_token),
-            })
-            return {"ok": True, "message": f"已更新中转站「{existing['name']}」"}
+            }
+            # 如果 OA 账号设置了模型，同步到中转站的 selected_model
+            if oa_model:
+                update_data["selected_model"] = oa_model
+            update_station(existing["id"], update_data)
+            return {"ok": True, "message": f"已更新中转站「{existing['name']}」" + (f"，模型: {oa_model}" if oa_model else "")}
         else:
             name = acc["email"] or acc["display_name"] or f"{provider} OAuth"
             st = {
@@ -1881,7 +1890,7 @@ def oa_account_sync_to_station(account_id):
                 "base_url": base_url,
                 "api_key": access_token,
                 "models": [],
-                "selected_model": "",
+                "selected_model": oa_model,
                 "latency_ms": None,
                 "last_test_at": None,
                 "is_default": False,
@@ -1891,14 +1900,14 @@ def oa_account_sync_to_station(account_id):
                 "created_at": datetime.now().isoformat(timespec="seconds"),
             }
             save_station(st)
-            return {"ok": True, "message": f"已创建中转站「{name}」"}
+            return {"ok": True, "message": f"已创建中转站「{name}」" + (f"，模型: {oa_model}" if oa_model else "")}
     except Exception as e:
         return {"ok": False, "message": f"同步失败: {str(e)[:100]}"}
 
 
 @app.route("/api/oa/accounts/<account_id>/model", methods=["PUT"])
 def oa_account_set_model(account_id):
-    """设置 OAuth 账号的模型"""
+    """设置 OAuth 账号的模型，并同步到对应的中转站"""
     guard = _require_admin()
     if guard:
         return guard
@@ -1913,7 +1922,20 @@ def oa_account_set_model(account_id):
     except Exception:
         _close_db(conn)
         raise
-    return {"ok": True, "message": "模型已保存"}
+
+    # 同步模型到对应的中转站（通过名称匹配）
+    try:
+        acc = _find_oauth_account(account_id)
+        if acc:
+            stations = load_stations()
+            for s in stations:
+                if s["name"] == acc["email"] or s["name"] == acc["display_name"]:
+                    update_station(s["id"], {"selected_model": model})
+                    break
+    except Exception:
+        pass  # 同步失败不影响模型保存
+
+    return {"ok": True, "message": f"模型已保存: {model or '自动'}"}
 
 
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
@@ -1961,11 +1983,13 @@ def oa_account_refresh(account_id):
     if not acc:
         return {"ok": False, "message": "账号不存在"}
     if not acc["refresh_token"]:
-        return {"ok": False, "message": "无 refresh_token"}
+        return {"ok": False, "message": "该账号无 refresh_token，请重新授权登录"}
 
+    print(f"[OA] 手动刷新令牌: {acc.get('email', acc['id'])} (provider: {acc['provider']})")
     token_data = refresh_access_token(acc["provider"], acc["refresh_token"])
     if "error" in token_data:
-        return {"ok": False, "message": token_data["error"]}
+        print(f"[OA] 手动刷新失败: {token_data['error']}")
+        return {"ok": False, "message": f"刷新失败: {token_data['error']}"}
 
     new_access = token_data.get("access_token", "")
     new_refresh = token_data.get("refresh_token", acc["refresh_token"])

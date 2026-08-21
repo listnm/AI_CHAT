@@ -156,9 +156,13 @@ def refresh_access_token(provider_key, refresh_token_val):
         "client_id": p["client_id"],
         "refresh_token": refresh_token_val,
     }
-    # Grok 需要额外的 scope 参数
+    # Grok 需要额外的 scope 和 audience 参数
     if provider_key == "grok":
-        data["scope"] = p.get("scope", "")
+        data["scope"] = p.get("scope", "openid profile email offline_access grok-cli:access api:access")
+        data["audience"] = "https://api.x.ai"
+    # OpenAI 需要 audience 参数
+    if provider_key == "openai":
+        data["audience"] = "https://api.openai.com/v1"
 
     try:
         r = req.post(p["token_url"], data=data,
@@ -167,16 +171,17 @@ def refresh_access_token(provider_key, refresh_token_val):
         if r.status_code != 200:
             err = ""
             try:
-                err = r.json().get("error_description", "") or r.json().get("error", "")
+                err_json = r.json()
+                err = err_json.get("error_description", "") or err_json.get("error", "") or str(err_json)
             except Exception:
                 pass
-            return {"error": f"HTTP {r.status_code}: {err or r.text[:100]}"}
+            return {"error": f"HTTP {r.status_code}: {err or r.text[:200]}"}
         result = r.json()
         if not result.get("refresh_token"):
             result["refresh_token"] = refresh_token_val
         return result
     except Exception as e:
-        return {"error": str(e)[:100]}
+        return {"error": str(e)[:200]}
 
 
 def fetch_user_info(provider_key, access_token):
