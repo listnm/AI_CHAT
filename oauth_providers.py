@@ -420,3 +420,87 @@ def import_token(provider_key: str, content: str) -> dict:
         })
 
     return results[0] if results else {"ok": False, "message": "解析失败"}
+
+
+# ================================================================
+#  账号密码登录（Grok SSO 转换）
+# ================================================================
+
+def grok_password_login(email: str, password: str) -> dict:
+    """
+    通过 Grok 账号密码登录，获取 OAuth 令牌。
+    流程：SSO 登录 → 获取 SSO token → 转换为 OAuth tokens
+    """
+    import requests as req
+
+    # Step 1: SSO 登录获取 cookie
+    sso_url = "https://grok.com/rest/auth/login"
+    try:
+        login_resp = req.post(sso_url, json={
+            "email": email,
+            "password": password,
+        }, timeout=15)
+        login_resp.raise_for_status()
+    except req.exceptions.RequestException as e:
+        return {"ok": False, "message": f"登录失败: {str(e)[:100]}"}
+
+    # 提取 SSO token
+    cookies = login_resp.cookies
+    sso_token = cookies.get("sso_token") or cookies.get("__Secure-next-auth.session-token") or ""
+
+    if not sso_token:
+        # 尝试从响应中获取
+        try:
+            login_data = login_resp.json()
+            sso_token = login_data.get("sso_token", "")
+        except Exception:
+            pass
+
+    if not sso_token:
+        return {"ok": False, "message": "无法获取 SSO token，请检查账号密码"}
+
+    # Step 2: 使用 SSO token 获取 OAuth tokens
+    return grok_sso_to_oauth(sso_token)
+
+
+def grok_sso_to_oauth(sso_token: str) -> dict:
+    """将 Grok SSO token 转换为 OAuth tokens"""
+    import requests as req
+
+    # 使用 SSO token 获取 access_token
+    token_url = "https://auth.x.ai/oauth2/token"
+    try:
+        token_resp = req.post(token_url, data={
+            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "subject_token": sso_token,
+            "subject_token_type": "urn:ietf:params:oauth:token-type:access_token",
+            "client_id": "b1a00492-073a-47ea-816f-4c329264a828",
+        }, headers={"Content-Type": "application/x-www-form-urlencoded"}, timeout=15)
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+    except req.exceptions.RequestException as e:
+        return {"ok": False, "message": f"获取令牌失败: {str(e)[:100]}"}
+
+    access_token = token_data.get("access_token", "")
+    refresh_token_val = token_data.get("refresh_token", "")
+    expires_in = token_data.get("expires_in", 0)
+
+    if not access_token:
+        return {"ok": False, "message": "未获取到 access_token"}
+
+    # 获取用户信息
+    user_info = fetch_user_info("grok", access_token)
+    email = user_info.get("email", "") if user_info else ""
+    name = user_info.get("name", "") if user_info else ""
+
+    from datetime import datetime, timezone, timedelta
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
+
+    return {
+        "ok": True,
+        "access_token": access_token,
+        "refresh_token": refresh_token_val,
+        "email": email,
+        "display_name": name,
+        "expires_at": expires_at,
+    }
