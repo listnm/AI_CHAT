@@ -1773,7 +1773,7 @@ def oa_account_sync_to_station(account_id):
         return {"ok": False, "message": "账号不存在"}
 
     # 获取最新的 access_token
-    access_token = acc["access_token"]
+    access_token = acc.get("access_token", "")
     if not access_token:
         return {"ok": False, "message": "无 access_token"}
 
@@ -1805,32 +1805,34 @@ def oa_account_sync_to_station(account_id):
             existing = s
             break
 
-    if existing:
-        # 更新已有中转站
-        update_station(existing["id"], {
-            "base_url": base_url,
-            "api_key_encrypted": _encrypt(access_token),
-        })
-        return {"ok": True, "message": f"已更新中转站「{existing['name']}」"}
-    else:
-        # 创建新中转站
-        st = {
-            "id": str(uuid.uuid4()),
-            "name": acc["email"] or acc["display_name"] or f"{provider} OAuth",
-            "base_url": base_url,
-            "api_key": access_token,
-            "models": [],
-            "selected_model": "",
-            "latency_ms": None,
-            "last_test_at": None,
-            "is_default": False,
-            "remark": f"OAuth 导入 - {provider}",
-            "group_name": "OAuth",
-            "is_active": True,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
-        }
-        save_station(st)
-        return {"ok": True, "message": f"已创建中转站「{st['name']}」"}
+    try:
+        if existing:
+            update_station(existing["id"], {
+                "base_url": base_url,
+                "api_key_encrypted": _encrypt(access_token),
+            })
+            return {"ok": True, "message": f"已更新中转站「{existing['name']}」"}
+        else:
+            name = acc["email"] or acc["display_name"] or f"{provider} OAuth"
+            st = {
+                "id": str(uuid.uuid4()),
+                "name": name,
+                "base_url": base_url,
+                "api_key": access_token,
+                "models": [],
+                "selected_model": "",
+                "latency_ms": None,
+                "last_test_at": None,
+                "is_default": False,
+                "remark": f"OAuth 导入 - {provider}",
+                "group_name": "OAuth",
+                "is_active": True,
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            save_station(st)
+            return {"ok": True, "message": f"已创建中转站「{name}」"}
+    except Exception as e:
+        return {"ok": False, "message": f"同步失败: {str(e)[:100]}"}
 
 
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
