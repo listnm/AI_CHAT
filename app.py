@@ -248,7 +248,10 @@ def init_db():
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} {typedef}")
                 except Exception:
-                    pass
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
         else:
             conn.execute(
                 """
