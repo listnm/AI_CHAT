@@ -108,6 +108,27 @@
     </div>
   </div>
 
+  <!-- Grok 账号密码登录 -->
+  <div class="sec-title"><h2>Grok 密码登录</h2>
+    <span class="hint">通过邮箱密码直接登录（无需 OAuth）</span>
+  </div>
+  <div class="card" style="padding:20px;margin-bottom:30px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div>
+        <label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px">邮箱</label>
+        <input id="grok-email" type="email" placeholder="your@email.com" style="width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:#f7fbf8;font-size:13px">
+      </div>
+      <div>
+        <label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px">密码</label>
+        <input id="grok-password" type="password" placeholder="••••••••" style="width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:#f7fbf8;font-size:13px">
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="btn primary" onclick="grokPasswordLogin()">⚡ 登录 Grok</button>
+      <span id="grok-login-status" style="font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+  </div>
+
   <!-- 已授权账号列表 -->
   <div class="sec-title"><h2>已授权订阅账号</h2>
     <span class="hint">{{ accounts | length }} 个</span>
@@ -244,6 +265,32 @@ async function syncToStation(id) {
   const d = await api('/api/oa/accounts/' + id + '/sync', {method: 'POST'});
   toast(d.message, d.ok);
   if (d.ok) setTimeout(() => location.reload(), 500);
+}
+
+async function grokPasswordLogin() {
+  const email = $('grok-email').value.trim();
+  const password = $('grok-password').value;
+  if (!email || !password) { toast('请输入邮箱和密码'); return; }
+
+  const status = $('grok-login-status');
+  status.textContent = '正在登录...';
+  status.style.color = 'var(--muted)';
+
+  const d = await api('/api/oa/password-login', {
+    method: 'POST',
+    body: JSON.stringify({email, password}),
+  });
+
+  if (d.ok) {
+    status.textContent = '✅ ' + d.message;
+    status.style.color = 'var(--green)';
+    toast(d.message, true);
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    status.textContent = '❌ ' + d.message;
+    status.style.color = 'var(--danger)';
+    toast(d.message);
+  }
 }
 
 function deleteAccount(id, name) {
