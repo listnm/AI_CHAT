@@ -77,6 +77,32 @@
     </div>
   </div>
 
+  <!-- Token/JSON 导入 -->
+  <div class="sec-title"><h2>导入账号</h2>
+    <span class="hint">粘贴 Token 或 Codex Session JSON</span>
+  </div>
+  <div class="card" style="padding:20px;margin-bottom:30px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px">选择提供商</label>
+        <select id="import-provider" style="width:100%;padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:#f7fbf8;font-size:13px">
+          <option value="openai">🤖 OpenAI</option>
+          <option value="grok">⚡ Grok (xAI)</option>
+          <option value="gemini">💎 Gemini</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+    <label style="display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;margin-top:12px">
+      粘贴 Token 或 JSON
+    </label>
+    <textarea id="import-content" rows="5" placeholder="粘贴以下任一格式：&#10;• access_token（每行一个）&#10;• Codex Session JSON&#10;• JSON 数组&#10;• JWT Token 字符串" style="width:100%;padding:10px;border-radius:9px;border:1px solid var(--line);background:#f7fbf8;font-size:12.5px;font-family:Consolas,monospace;resize:vertical"></textarea>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button class="btn primary" onclick="importToken()">📥 导入</button>
+      <span id="import-status" style="font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+  </div>
+
   <!-- 已授权账号列表 -->
   <div class="sec-title"><h2>已授权订阅账号</h2>
     <span class="hint">{{ accounts | length }} 个</span>
@@ -179,6 +205,33 @@ async function refreshAccount(id) {
   const d = await api('/api/oa/accounts/' + id + '/refresh', {method: 'POST'});
   toast(d.message, d.ok);
   if (d.ok) location.reload();
+}
+
+async function importToken() {
+  const provider = $('import-provider').value;
+  const content = $('import-content').value.trim();
+  if (!content) { toast('请输入 Token 或 JSON 数据'); return; }
+
+  const status = $('import-status');
+  status.textContent = '正在验证...';
+  status.style.color = 'var(--muted)';
+
+  const d = await api('/api/oa/import', {
+    method: 'POST',
+    body: JSON.stringify({provider, content}),
+  });
+
+  if (d.ok) {
+    status.textContent = '✅ ' + d.message;
+    status.style.color = 'var(--green)';
+    toast(d.message, true);
+    setTimeout(() => location.reload(), 1000);
+  } else {
+    status.textContent = '❌ ' + d.message;
+    status.style.color = 'var(--danger)';
+    toast(d.message);
+  }
+}
 }
 
 function deleteAccount(id, name) {
