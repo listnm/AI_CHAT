@@ -350,6 +350,7 @@ def validate_token(provider_key: str, access_token: str) -> dict:
     """
     验证 token 是否有效。
     优先从 JWT 解析用户信息，成功则直接返回（不调远程 API）。
+    过期的 token 也允许导入（可用 refresh_token 刷新）。
     """
     # 1. 先从 JWT 解析
     if "." in access_token:
@@ -362,11 +363,7 @@ def validate_token(provider_key: str, access_token: str) -> dict:
                 email = claims.get("email", "")
                 name = claims.get("name", "")
                 sub = claims.get("sub", "")
-                # 检查是否过期
-                exp = claims.get("exp", 0)
-                if exp and exp < time.time():
-                    return {"valid": False, "error": "Token 已过期"}
-                # JWT 格式正确，即使没有 email/name 也允许导入
+                # JWT 格式正确就允许导入（即使过期，可用 refresh_token 刷新）
                 return {
                     "valid": True,
                     "email": email,
