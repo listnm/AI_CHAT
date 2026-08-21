@@ -170,7 +170,7 @@
       </div>
       <div class="row" style="margin-top:4px">
         <span class="lbl">模型</span>
-        <input id="model-{{ acc.id }}" value="{{ acc.model or '' }}" placeholder="如 grok-3, gpt-4o"
+        <input id="model-{{ acc.id }}" value="{{ acc.model or '' }}" placeholder="如 grok-3, gpt-4o, fast, auto"
           style="flex:1;min-width:0;padding:4px 8px;border-radius:6px;border:1px solid var(--line);font-size:12px;font-family:Consolas,monospace"
           onchange="saveModel('{{ acc.id }}', this.value)">
       </div>
@@ -236,8 +236,12 @@ async function toggleAccount(id) {
 async function refreshAccount(id) {
   toast('正在刷新令牌...');
   const d = await api('/api/oa/accounts/' + id + '/refresh', {method: 'POST'});
-  toast(d.message, d.ok);
-  if (d.ok) location.reload();
+  if (d.ok) {
+    toast('✅ 令牌已刷新', true);
+    setTimeout(() => location.reload(), 500);
+  } else {
+    toast('❌ ' + (d.message || '刷新失败'), false);
+  }
 }
 
 async function importToken() {
@@ -312,10 +316,16 @@ function deleteAccount(id, name) {
 }
 
 async function saveModel(id, model) {
-  await api('/api/oa/accounts/' + id + '/model', {
+  toast('正在保存模型...');
+  const d = await api('/api/oa/accounts/' + id + '/model', {
     method: 'PUT',
     body: JSON.stringify({model}),
   });
+  if (d.ok) {
+    toast('模型已保存: ' + (model || '自动'), true);
+  } else {
+    toast(d.message || '保存失败');
+  }
 }
 
 function closeConfirm() { $('confirm').hidden = true; confirmCb = null; }
