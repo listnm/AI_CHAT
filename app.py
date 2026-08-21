@@ -1458,7 +1458,7 @@ _oauth_states = {}  # {state: provider_key}，CSRF 防护
 
 OAUTH_COLUMNS = (
     "id, provider, email, display_name, access_token_encrypted, "
-    "refresh_token_encrypted, token_type, expires_at, scope, model, is_active, created_at, updated_at, sso_token_encrypted"
+    "refresh_token_encrypted, token_type, expires_at, scope, model, is_active, created_at, updated_at"
 )
 
 
@@ -1466,7 +1466,9 @@ def _oauth_row_to_dict(row) -> dict:
     refresh_token = row["refresh_token_encrypted"] and _decrypt(row["refresh_token_encrypted"])
     sso_token = ""
     try:
-        sso_token = row["sso_token_encrypted"] and _decrypt(row["sso_token_encrypted"])
+        val = row["sso_token_encrypted"]
+        if val:
+            sso_token = _decrypt(val)
     except Exception:
         pass
     return {
@@ -1490,7 +1492,10 @@ def _oauth_row_to_dict(row) -> dict:
 def _load_oauth_accounts() -> list:
     conn = get_db()
     try:
-        rows = conn.execute(f"SELECT {OAUTH_COLUMNS} FROM oauth_accounts ORDER BY created_at DESC").fetchall()
+        try:
+            rows = conn.execute(f"SELECT {OAUTH_COLUMNS}, sso_token_encrypted FROM oauth_accounts ORDER BY created_at DESC").fetchall()
+        except Exception:
+            rows = conn.execute(f"SELECT {OAUTH_COLUMNS} FROM oauth_accounts ORDER BY created_at DESC").fetchall()
         return [_oauth_row_to_dict(r) for r in rows]
     finally:
         _close_db(conn)
@@ -1499,10 +1504,16 @@ def _load_oauth_accounts() -> list:
 def _find_oauth_account(account_id: str) -> dict | None:
     conn = get_db()
     try:
-        row = conn.execute(
-            _sql(f"SELECT {OAUTH_COLUMNS} FROM oauth_accounts WHERE id = ?"),
-            (account_id,),
-        ).fetchone()
+        try:
+            row = conn.execute(
+                _sql(f"SELECT {OAUTH_COLUMNS}, sso_token_encrypted FROM oauth_accounts WHERE id = ?"),
+                (account_id,),
+            ).fetchone()
+        except Exception:
+            row = conn.execute(
+                _sql(f"SELECT {OAUTH_COLUMNS} FROM oauth_accounts WHERE id = ?"),
+                (account_id,),
+            ).fetchone()
         return _oauth_row_to_dict(row) if row else None
     finally:
         _close_db(conn)
