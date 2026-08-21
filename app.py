@@ -1927,10 +1927,14 @@ def oa_account_sync_to_station(account_id):
     }
     base_url = base_urls.get(provider, "")
 
-    # 检查是否已同步（同名中转站）
+    # 检查是否已同步（同名或同 provider 的 OAuth 中转站）
     existing = None
     for s in load_stations():
         if s["name"] == acc["email"] or s["name"] == acc["display_name"]:
+            existing = s
+            break
+        # 也匹配同 provider 的 OAuth 导入中转站
+        if f"OAuth 导入 - {provider}" in (s.get("remark") or ""):
             existing = s
             break
 
