@@ -1762,6 +1762,77 @@ def oa_import_token():
     return {"ok": True, "message": f"已导入 {result['email'] or result['display_name'] or '账号'}"}
 
 
+@app.route("/api/oa/accounts/<account_id>/sync", methods=["POST"])
+def oa_account_sync_to_station(account_id):
+    """将 OAuth 账号同步为中转站，使其可用于转发"""
+    guard = _require_admin()
+    if guard:
+        return guard
+    acc = _find_oauth_account(account_id)
+    if not acc:
+        return {"ok": False, "message": "账号不存在"}
+
+    # 获取最新的 access_token
+    access_token = acc["access_token"]
+    if not access_token:
+        return {"ok": False, "message": "无 access_token"}
+
+    # 如果令牌过期且有 refresh_token，先刷新
+    from datetime import datetime, timezone, timedelta
+    if acc.get("expires_at") and acc.get("refresh_token"):
+        try:
+            exp = datetime.fromisoformat(acc["expires_at"].replace("Z", "+00:00"))
+            if exp < datetime.now(timezone.utc):
+                token_data = refresh_access_token(acc["provider"], acc["refresh_token"])
+                if token_data.get("access_token"):
+                    access_token = token_data["access_token"]
+        except Exception:
+            pass
+
+    # 确定 base_url
+    provider = acc["provider"]
+    base_urls = {
+        "openai": "https://api.openai.com/v1",
+        "grok": "https://cli-chat-proxy.grok.com/v1",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta",
+    }
+    base_url = base_urls.get(provider, "")
+
+    # 检查是否已同步（同名中转站）
+    existing = None
+    for s in load_stations():
+        if s["name"] == acc["email"] or s["name"] == acc["display_name"]:
+            existing = s
+            break
+
+    if existing:
+        # 更新已有中转站
+        update_station(existing["id"], {
+            "base_url": base_url,
+            "api_key_encrypted": _encrypt(access_token),
+        })
+        return {"ok": True, "message": f"已更新中转站「{existing['name']}」"}
+    else:
+        # 创建新中转站
+        st = {
+            "id": str(uuid.uuid4()),
+            "name": acc["email"] or acc["display_name"] or f"{provider} OAuth",
+            "base_url": base_url,
+            "api_key": access_token,
+            "models": [],
+            "selected_model": "",
+            "latency_ms": None,
+            "last_test_at": None,
+            "is_default": False,
+            "remark": f"OAuth 导入 - {provider}",
+            "group_name": "OAuth",
+            "is_active": True,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        save_station(st)
+        return {"ok": True, "message": f"已创建中转站「{st['name']}」"}
+
+
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
 def oa_account_delete(account_id):
     guard = _require_admin()
