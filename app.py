@@ -1486,12 +1486,66 @@ def _find_oauth_account(account_id: str) -> dict | None:
         _close_db(conn)
 
 
+def _auto_refresh_expired_tokens(accounts: list) -> int:
+    """自动刷新即将过期的令牌（提前 1 小时刷新），返回刷新数量"""
+    from datetime import datetime, timezone, timedelta
+    refreshed = 0
+    now = datetime.now(timezone.utc)
+    threshold = now + timedelta(hours=1)  # 提前 1 小时刷新
+
+    for acc in accounts:
+        if not acc.get("is_active") or not acc.get("refresh_token"):
+            continue
+        expires_at = acc.get("expires_at", "")
+        if not expires_at:
+            continue
+        try:
+            exp_time = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if exp_time > threshold:
+                continue  # 还没过期，跳过
+        except Exception:
+            continue
+
+        # 令牌即将过期，尝试刷新
+        provider = acc["provider"]
+        token_data = refresh_access_token(provider, acc["refresh_token"])
+        if "error" in token_data:
+            continue
+
+        new_access = token_data.get("access_token", "")
+        new_refresh = token_data.get("refresh_token", acc["refresh_token"])
+        expires_in = token_data.get("expires_in", 0)
+        new_expires_at = (now + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
+
+        if not new_access:
+            continue
+
+        conn = get_db()
+        try:
+            conn.execute(
+                _sql("UPDATE oauth_accounts SET access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=? WHERE id=?"),
+                (_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "",
+                 new_expires_at, _db_now(), acc["id"]))
+            _close_db(conn, commit=True)
+            refreshed += 1
+        except Exception:
+            _close_db(conn)
+
+    return refreshed
+
+
 @app.route("/oa")
 def oa_page():
     """OAuth 账号管理页面"""
     if not _is_admin():
         return redirect("/admin")
     accounts = _load_oauth_accounts()
+
+    # 自动刷新即将过期的令牌
+    refreshed = _auto_refresh_expired_tokens(accounts)
+    if refreshed:
+        accounts = _load_oauth_accounts()  # 重新加载
+
     provider_configs = {}
     for key, cfg in PROVIDERS.items():
         cid = cfg.get("client_id", "")
@@ -1502,7 +1556,8 @@ def oa_page():
             "color": cfg["color"],
             "client_id_preview": cid[:12] + "****" if len(cid) > 12 else cid,
         }
-    return render_template("oa.html", accounts=accounts, providers=provider_configs)
+    return render_template("oa.html", accounts=accounts, providers=provider_configs,
+                           refreshed_count=refreshed)
 
 
 @app.route("/oa/login/<provider>")
