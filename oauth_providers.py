@@ -391,19 +391,34 @@ def validate_token(provider_key: str, access_token: str) -> dict:
 def import_token(provider_key: str, content: str) -> dict:
     """
     导入 token：解析内容 → 验证 → 返回标准化数据。
+    支持：access_token、sub2api JSON、Grok SSO cookie
     """
+    content = content.strip()
+
+    # 检测 Grok SSO cookie（只有 session_id 的 JWT）
+    if provider_key == "grok" and content.startswith("eyJ"):
+        try:
+            parts = content.split(".")
+            if len(parts) >= 2:
+                payload = parts[1] + "=="
+                claims = json.loads(base64.urlsafe_b64decode(payload))
+                # 如果只有 session_id，说明是 SSO cookie，需要转换
+                if "session_id" in claims and "email" not in claims:
+                    return grok_sso_login(content)
+        except Exception:
+            pass
+
     entries = parse_import_content(content)
     if not entries:
         return {"ok": False, "message": "未找到有效的 token 或 JSON 数据"}
 
     results = []
-    for entry in entries[:1]:  # 暂时只处理第一个
+    for entry in entries[:1]:
         normalized = normalize_import_entry(entry)
-        if not normalized["access_token"]:
+        if not normalized.get("access_token"):
             results.append({"ok": False, "message": "未找到 access_token"})
             continue
 
-        # 验证 token
         validation = validate_token(provider_key, normalized["access_token"])
         if not validation["valid"]:
             results.append({"ok": False, "message": f"Token 无效: {validation['error']}"})
@@ -412,11 +427,11 @@ def import_token(provider_key: str, content: str) -> dict:
         results.append({
             "ok": True,
             "access_token": normalized["access_token"],
-            "refresh_token": normalized["refresh_token"],
-            "id_token": normalized["id_token"],
+            "refresh_token": normalized.get("refresh_token", ""),
+            "id_token": normalized.get("id_token", ""),
             "email": validation["email"] or normalized["email"],
             "display_name": validation["display_name"] or normalized["display_name"],
-            "extra": normalized["extra"],
+            "extra": normalized.get("extra", {}),
         })
 
     return results[0] if results else {"ok": False, "message": "解析失败"}
@@ -461,6 +476,50 @@ def grok_password_login(email: str, password: str) -> dict:
 
     # Step 2: 使用 SSO token 获取 OAuth tokens
     return grok_sso_to_oauth(sso_token)
+
+
+def grok_sso_login(sso_token: str) -> dict:
+    """使用 Grok SSO cookie 登录，获取 OAuth 令牌"""
+    import requests as req
+
+    # 使用 SSO cookie 调用 Grok API 获取 access_token
+    try:
+        resp = req.post(
+            "https://grok.com/rest/auth/session",
+            cookies={"sso": sso_token, "sso-rw": sso_token},
+            headers={"Content-Type": "application/json"},
+            timeout=15
+        )
+        resp.raise_for_status()
+        session_data = resp.json()
+    except req.exceptions.RequestException as e:
+        return {"ok": False, "message": f"SSO 登录失败: {str(e)[:100]}"}
+
+    # 从 session 中获取 access_token
+    access_token = session_data.get("access_token", "")
+    if not access_token:
+        # 尝试其他字段
+        access_token = session_data.get("token", "")
+
+    if not access_token:
+        return {"ok": False, "message": "无法从 SSO 获取 access_token，请检查 SSO token 是否有效"}
+
+    # 获取用户信息
+    user_info = fetch_user_info("grok", access_token)
+    email = user_info.get("email", "") if user_info else ""
+    name = user_info.get("name", "") if user_info else ""
+
+    from datetime import datetime, timezone, timedelta
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+
+    return {
+        "ok": True,
+        "access_token": access_token,
+        "refresh_token": "",
+        "email": email,
+        "display_name": name,
+        "expires_at": expires_at,
+    }
 
 
 def grok_sso_to_oauth(sso_token: str) -> dict:
