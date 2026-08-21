@@ -1610,7 +1610,7 @@ def oa_accounts_list():
 
 @app.route("/api/oa/import", methods=["POST"])
 def oa_import_token():
-    """通过粘贴 Token/JSON 导入订阅账号"""
+    """通过粘贴 Token/JSON 导入订阅账号（支持 sub2api 导出格式）"""
     guard = _require_admin()
     if guard:
         return guard
@@ -1618,13 +1618,53 @@ def oa_import_token():
     provider = data.get("provider", "")
     content = data.get("content", "").strip()
 
-    if provider not in PROVIDERS:
-        return {"ok": False, "message": "未知提供商"}
     if not content:
         return {"ok": False, "message": "请输入 Token 或 JSON 数据"}
 
+    # 尝试从 JSON 中提取 platform（sub2api 导出格式）
+    if not provider or provider not in PROVIDERS:
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and parsed.get("accounts"):
+                first = parsed["accounts"][0]
+                provider = first.get("platform", "")
+        except Exception:
+            pass
+
+    if provider not in PROVIDERS:
+        return {"ok": False, "message": "未知提供商，请手动选择"}
+
     try:
-        result = import_token(provider, content)
+        # sub2api 导出格式：提取 accounts 数组
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict) and parsed.get("accounts"):
+                entries = parsed["accounts"]
+                results = []
+                for entry in entries[:1]:
+                    from oauth_providers import normalize_import_entry, validate_token
+                    normalized = normalize_import_entry(entry)
+                    if not normalized.get("access_token"):
+                        results.append({"ok": False, "message": "未找到 access_token"})
+                        continue
+                    validation = validate_token(provider, normalized["access_token"])
+                    if not validation["valid"]:
+                        results.append({"ok": False, "message": f"Token 无效: {validation['error']}"})
+                        continue
+                    results.append({
+                        "ok": True,
+                        "access_token": normalized["access_token"],
+                        "refresh_token": normalized.get("refresh_token", ""),
+                        "id_token": normalized.get("id_token", ""),
+                        "email": validation["email"] or normalized["email"],
+                        "display_name": entry.get("name", "") or validation["display_name"] or normalized["display_name"],
+                        "extra": normalized.get("extra", {}),
+                    })
+                result = results[0] if results else {"ok": False, "message": "解析失败"}
+            else:
+                result = import_token(provider, content)
+        except json.JSONDecodeError:
+            result = import_token(provider, content)
     except Exception as e:
         return {"ok": False, "message": f"解析失败: {str(e)[:100]}"}
 
