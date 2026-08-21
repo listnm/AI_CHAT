@@ -147,41 +147,188 @@ def exchange_code_for_tokens(provider_key, code, redirect_uri, code_verifier):
         return {"error": f"{str(e)[:80]} {desc}".strip()}
 
 
-def refresh_access_token(provider_key, refresh_token_val):
-    """刷新 access_token"""
+def refresh_access_token(provider_key, refresh_token_val, sso_token=""):
+    """
+    刷新 access_token。
+    标准流程：使用 refresh_token 进行 OAuth2 refresh。
+    Grok 回退：如果 refresh 失败且有 sso_token，通过 Device Code 流程重新获取令牌。
+    """
     import requests as req
     p = PROVIDERS[provider_key]
+
+    # 检查 refresh_token 是否有效
+    if not refresh_token_val or not refresh_token_val.strip():
+        # 如果没有 refresh_token 但有 sso_token，直接走 re-auth
+        if sso_token and provider_key == "grok":
+            print(f"[OAuth] 无 refresh_token，尝试 SSO re-auth provider={provider_key}")
+            return grok_reauth_with_sso(sso_token)
+        return {"error": "refresh_token 为空，请重新授权登录"}
+
     data = {
         "grant_type": "refresh_token",
         "client_id": p["client_id"],
-        "refresh_token": refresh_token_val,
+        "refresh_token": refresh_token_val.strip(),
     }
-    # Grok 需要额外的 scope 和 audience 参数
-    if provider_key == "grok":
-        data["scope"] = p.get("scope", "openid profile email offline_access grok-cli:access api:access")
-        data["audience"] = "https://api.x.ai"
-    # OpenAI 需要 audience 参数
-    if provider_key == "openai":
-        data["audience"] = "https://api.openai.com/v1"
+
+    print(f"[OAuth] 刷新令牌 provider={provider_key} url={p['token_url']} client_id={p['client_id'][:8]}...")
 
     try:
         r = req.post(p["token_url"], data=data,
-                     headers={"Content-Type": "application/x-www-form-urlencoded"},
+                     headers={"Content-Type": "application/x-www-form-urlencoded",
+                              "Accept": "application/json"},
                      timeout=30)
+
+        print(f"[OAuth] 刷新响应 status={r.status_code}")
+
         if r.status_code != 200:
             err = ""
             try:
                 err_json = r.json()
                 err = err_json.get("error_description", "") or err_json.get("error", "") or str(err_json)
             except Exception:
-                pass
-            return {"error": f"HTTP {r.status_code}: {err or r.text[:200]}"}
+                err = r.text[:200]
+            print(f"[OAuth] 标准刷新失败: {err}")
+
+            # Grok 回退：如果标准刷新失败且有 sso_token，通过 Device Code 重新获取
+            if provider_key == "grok" and sso_token:
+                print(f"[OAuth] 尝试 SSO re-auth 回退...")
+                return grok_reauth_with_sso(sso_token)
+            return {"error": f"HTTP {r.status_code}: {err}"}
+
         result = r.json()
+        print(f"[OAuth] 刷新成功 has_access={bool(result.get('access_token'))} has_refresh={bool(result.get('refresh_token'))}")
+
+        if not result.get("access_token"):
+            # Grok 回退
+            if provider_key == "grok" and sso_token:
+                print(f"[OAuth] 刷新返回空 access_token，尝试 SSO re-auth 回退...")
+                return grok_reauth_with_sso(sso_token)
+            return {"error": f"刷新返回空 access_token, 响应: {str(result)[:200]}"}
+        # 如果新响应没有 refresh_token，保留旧的
         if not result.get("refresh_token"):
             result["refresh_token"] = refresh_token_val
         return result
     except Exception as e:
+        print(f"[OAuth] 刷新异常: {e}")
+        # Grok 回退
+        if provider_key == "grok" and sso_token:
+            print(f"[OAuth] 异常回退到 SSO re-auth...")
+            return grok_reauth_with_sso(sso_token)
         return {"error": str(e)[:200]}
+
+
+def grok_reauth_with_sso(sso_token):
+    """
+    使用 SSO token 通过 Device Code 流程重新获取 Grok OAuth 令牌。
+    当标准 refresh_token 刷新失败时作为回退方案。
+    """
+    import requests as req
+    import time
+
+    client_id = "b1a00492-073a-47ea-816f-4c329264a828"
+    scope = "openid profile email offline_access grok-cli:access api:access"
+
+    session = req.Session()
+    session.cookies.set("sso", sso_token, domain=".x.ai", path="/")
+    session.cookies.set("sso-rw", sso_token, domain=".x.ai", path="/")
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json",
+    })
+
+    # Step 1: 启动 Device Code
+    try:
+        resp = session.post(
+            "https://auth.x.ai/oauth2/device/code",
+            data={"client_id": client_id, "scope": scope},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15
+        )
+        resp.raise_for_status()
+        device_data = resp.json()
+    except Exception as e:
+        return {"error": f"SSO re-auth Device Code 失败: {str(e)[:100]}"}
+
+    device_code = device_data.get("device_code", "")
+    user_code = device_data.get("user_code", "")
+
+    if not device_code or not user_code:
+        return {"error": "SSO re-auth 未获取到 device_code"}
+
+    # Step 2: 用 SSO 自动验证
+    try:
+        session.post(
+            "https://auth.x.ai/oauth2/device/verify",
+            data={"user_code": user_code},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=True,
+            timeout=15
+        )
+    except Exception:
+        pass
+
+    # Step 3: 自动批准
+    try:
+        session.post(
+            "https://auth.x.ai/oauth2/device/approve",
+            data={
+                "user_code": user_code,
+                "action": "allow",
+                "principal_type": "User",
+                "principal_id": "",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=True,
+            timeout=15
+        )
+    except Exception:
+        pass
+
+    # Step 4: 轮询获取 token
+    for attempt in range(10):
+        time.sleep(2)
+        try:
+            resp = session.post(
+                "https://auth.x.ai/oauth2/token",
+                data={
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    "client_id": client_id,
+                    "device_code": device_code,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15
+            )
+            if resp.status_code == 200:
+                token_data = resp.json()
+                access_token = token_data.get("access_token", "")
+                refresh_token_val = token_data.get("refresh_token", "")
+                expires_in = token_data.get("expires_in", 0)
+
+                if access_token:
+                    from datetime import datetime, timezone, timedelta
+                    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
+                    print(f"[OAuth] SSO re-auth 成功, expires_in={expires_in}")
+                    return {
+                        "access_token": access_token,
+                        "refresh_token": refresh_token_val,
+                        "expires_at": expires_at,
+                        "sso_token": sso_token,
+                    }
+            else:
+                err = {}
+                try:
+                    err = resp.json()
+                except Exception:
+                    pass
+                err_msg = err.get("error", "")
+                if err_msg in ("authorization_pending", "slow_down"):
+                    time.sleep(5 if err_msg == "slow_down" else 2)
+                    continue
+                return {"error": f"SSO re-auth Token 获取失败: {err_msg or resp.text[:100]}"}
+        except Exception:
+            continue
+
+    return {"error": "SSO re-auth Device Code 超时"}
 
 
 def fetch_user_info(provider_key, access_token):
@@ -458,45 +605,9 @@ def import_token(provider_key: str, content: str) -> dict:
 
 def grok_password_login(email: str, password: str) -> dict:
     """
-    通过 Grok 账号密码登录，获取 OAuth 令牌。
-    流程：SSO 登录 → 获取 SSO token → 转换为 OAuth tokens
-    """
-    import requests as req
-
-    # Step 1: SSO 登录获取 cookie
-    sso_url = "https://grok.com/rest/auth/login"
-    try:
-        login_resp = req.post(sso_url, json={
-            "email": email,
-            "password": password,
-        }, timeout=15)
-        login_resp.raise_for_status()
-    except req.exceptions.RequestException as e:
-        return {"ok": False, "message": f"登录失败: {str(e)[:100]}"}
-
-    # 提取 SSO token
-    cookies = login_resp.cookies
-    sso_token = cookies.get("sso_token") or cookies.get("__Secure-next-auth.session-token") or ""
-
-    if not sso_token:
-        # 尝试从响应中获取
-        try:
-            login_data = login_resp.json()
-            sso_token = login_data.get("sso_token", "")
-        except Exception:
-            pass
-
-    if not sso_token:
-        return {"ok": False, "message": "无法获取 SSO token，请检查账号密码"}
-
-    # Step 2: 使用 SSO token 获取 OAuth tokens
-    return grok_sso_to_oauth(sso_token)
-
-
-def grok_password_login(email: str, password: str) -> dict:
-    """
     通过 Grok 邮箱密码登录获取 OAuth 令牌。
     基于 sub2api 实现：RPC 登录 → 获取 SSO → Device Code → Token
+    返回结果中包含 sso_token 用于后续刷新
     """
     import requests as req
     import time
@@ -544,7 +655,11 @@ def grok_password_login(email: str, password: str) -> dict:
         return {"ok": False, "message": "登录成功但未获取到 SSO token"}
 
     # Step 2: 用 SSO token 走 Device Code 流程
-    return _grok_device_code_flow(client_id, scope, sso_token, session)
+    result = _grok_device_code_flow(client_id, scope, sso_token, session)
+    # 将 SSO token 附加到结果中，用于后续刷新
+    if result.get("ok"):
+        result["sso_token"] = sso_token
+    return result
 
 
 def _grok_device_code_flow(client_id, scope, sso_token, session=None):
@@ -748,6 +863,7 @@ def grok_sso_login(sso_token: str) -> dict:
                         "email": email,
                         "display_name": name,
                         "expires_at": expires_at,
+                        "sso_token": sso_token,
                     }
             else:
                 err = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
@@ -805,4 +921,5 @@ def grok_sso_to_oauth(sso_token: str) -> dict:
         "email": email,
         "display_name": name,
         "expires_at": expires_at,
+        "sso_token": sso_token,
     }
