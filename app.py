@@ -1494,11 +1494,13 @@ def oa_page():
     accounts = _load_oauth_accounts()
     provider_configs = {}
     for key, cfg in PROVIDERS.items():
+        cid = cfg.get("client_id", "")
         provider_configs[key] = {
             "name": cfg["name"],
             "desc": cfg["desc"],
             "icon": cfg["icon"],
             "color": cfg["color"],
+            "client_id_preview": cid[:12] + "****" if len(cid) > 12 else cid,
         }
     return render_template("oa.html", accounts=accounts, providers=provider_configs)
 
