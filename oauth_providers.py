@@ -263,31 +263,44 @@ def parse_import_content(content: str) -> list:
 def normalize_import_entry(entry: dict) -> dict:
     """
     标准化导入条目，从各种格式中提取标准字段。
-    支持 sub2api 的 Codex session JSON 格式。
+    支持格式：
+    - sub2api 导出 JSON（accounts 数组，嵌套 credentials）
+    - Codex session JSON（tokens 嵌套）
+    - 纯 access_token 字符串
     """
     if isinstance(entry, str):
         entry = {"access_token": entry}
 
-    def first_str(*keys):
-        for k in keys:
-            v = entry.get(k)
-            if isinstance(v, str) and v.strip():
-                return v.strip()
-        # 嵌套查找
-        for top in ["tokens", "account", "user", "credentials"]:
-            obj = entry.get(top, {})
-            if isinstance(obj, dict):
-                for k in keys:
-                    v = obj.get(k)
-                    if isinstance(v, str) and v.strip():
-                        return v.strip()
-        return ""
+    # sub2api 导出格式：account 对象，credentials 嵌套
+    creds = entry.get("credentials", {})
+    if isinstance(creds, dict) and creds:
+        # 从 credentials 中提取
+        access_token = creds.get("access_token", "") or creds.get("accessToken", "") or creds.get("token", "")
+        refresh_token = creds.get("refresh_token", "") or creds.get("refreshToken", "")
+        id_token = creds.get("id_token", "") or creds.get("idToken", "")
+        email = creds.get("email", "")
+        display_name = entry.get("name", "") or creds.get("email", "")
+    else:
+        # 通用格式：直接在顶层查找
+        def first_str(*keys):
+            for k in keys:
+                v = entry.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+            for top in ["tokens", "account", "user"]:
+                obj = entry.get(top, {})
+                if isinstance(obj, dict):
+                    for k in keys:
+                        v = obj.get(k)
+                        if isinstance(v, str) and v.strip():
+                            return v.strip()
+            return ""
 
-    access_token = first_str("access_token", "accessToken", "token")
-    refresh_token = first_str("refresh_token", "refreshToken")
-    id_token = first_str("id_token", "idToken")
-    email = first_str("email")
-    display_name = first_str("name", "display_name", "displayName")
+        access_token = first_str("access_token", "accessToken", "token")
+        refresh_token = first_str("refresh_token", "refreshToken")
+        id_token = first_str("id_token", "idToken")
+        email = first_str("email")
+        display_name = first_str("name", "display_name", "displayName")
 
     # 从 JWT 解析额外信息
     extra = {}
