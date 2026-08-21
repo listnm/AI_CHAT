@@ -479,47 +479,126 @@ def grok_password_login(email: str, password: str) -> dict:
 
 
 def grok_sso_login(sso_token: str) -> dict:
-    """使用 Grok SSO cookie 登录，获取 OAuth 令牌"""
+    """
+    使用 Grok SSO cookie 通过 Device Code OAuth 流程获取令牌。
+    基于 sub2api 的实现：SSO → Device Code → Auto Approve → Token
+    """
     import requests as req
+    from urllib.parse import urlencode
 
-    # 使用 SSO cookie 调用 Grok API 获取 access_token
+    client_id = "b1a00492-073a-47ea-816f-4c329264a828"
+    scope = "openid profile email offline_access grok-cli:access api:access"
+
+    # 创建带 SSO cookie 的会话
+    session = req.Session()
+    session.cookies.set("sso", sso_token, domain=".x.ai", path="/")
+    session.cookies.set("sso-rw", sso_token, domain=".x.ai", path="/")
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json",
+    })
+
+    # Step 1: 启动 Device Code 流程
     try:
-        resp = req.post(
-            "https://grok.com/rest/auth/session",
-            cookies={"sso": sso_token, "sso-rw": sso_token},
-            headers={"Content-Type": "application/json"},
+        resp = session.post(
+            "https://auth.x.ai/oauth2/device/code",
+            data={"client_id": client_id, "scope": scope},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=15
         )
         resp.raise_for_status()
-        session_data = resp.json()
-    except req.exceptions.RequestException as e:
-        return {"ok": False, "message": f"SSO 登录失败: {str(e)[:100]}"}
+        device_data = resp.json()
+    except Exception as e:
+        return {"ok": False, "message": f"启动 Device Code 失败: {str(e)[:100]}"}
 
-    # 从 session 中获取 access_token
-    access_token = session_data.get("access_token", "")
-    if not access_token:
-        # 尝试其他字段
-        access_token = session_data.get("token", "")
+    device_code = device_data.get("device_code", "")
+    user_code = device_data.get("user_code", "")
+    verification_uri = device_data.get("verification_uri_complete", "")
 
-    if not access_token:
-        return {"ok": False, "message": "无法从 SSO 获取 access_token，请检查 SSO token 是否有效"}
+    if not device_code or not user_code:
+        return {"ok": False, "message": "未获取到 device_code"}
 
-    # 获取用户信息
-    user_info = fetch_user_info("grok", access_token)
-    email = user_info.get("email", "") if user_info else ""
-    name = user_info.get("name", "") if user_info else ""
+    # Step 2: 用 SSO 自动验证
+    try:
+        resp = session.post(
+            "https://auth.x.ai/oauth2/device/verify",
+            data={"user_code": user_code},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=True,
+            timeout=15
+        )
+    except Exception:
+        pass  # 可能返回非 200，继续尝试
 
-    from datetime import datetime, timezone, timedelta
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+    # Step 3: 自动批准
+    try:
+        resp = session.post(
+            "https://auth.x.ai/oauth2/device/approve",
+            data={
+                "user_code": user_code,
+                "action": "allow",
+                "principal_type": "User",
+                "principal_id": "",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=True,
+            timeout=15
+        )
+    except Exception:
+        pass  # 继续尝试
 
-    return {
-        "ok": True,
-        "access_token": access_token,
-        "refresh_token": "",
-        "email": email,
-        "display_name": name,
-        "expires_at": expires_at,
-    }
+    # Step 4: 轮询获取 token
+    import time
+    for attempt in range(10):
+        time.sleep(2)
+        try:
+            resp = session.post(
+                "https://auth.x.ai/oauth2/token",
+                data={
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    "client_id": client_id,
+                    "device_code": device_code,
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15
+            )
+            if resp.status_code == 200:
+                token_data = resp.json()
+                access_token = token_data.get("access_token", "")
+                refresh_token_val = token_data.get("refresh_token", "")
+                expires_in = token_data.get("expires_in", 0)
+
+                if access_token:
+                    # 获取用户信息
+                    user_info = fetch_user_info("grok", access_token)
+                    email = user_info.get("email", "") if user_info else ""
+                    name = user_info.get("name", "") if user_info else ""
+
+                    from datetime import datetime, timezone, timedelta
+                    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
+
+                    return {
+                        "ok": True,
+                        "access_token": access_token,
+                        "refresh_token": refresh_token_val,
+                        "email": email,
+                        "display_name": name,
+                        "expires_at": expires_at,
+                    }
+            else:
+                err = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+                err_msg = err.get("error", "")
+                if err_msg == "authorization_pending":
+                    continue  # 等待用户批准
+                elif err_msg == "slow_down":
+                    time.sleep(5)
+                    continue
+                else:
+                    return {"ok": False, "message": f"Token 获取失败: {err_msg or resp.text[:100]}"}
+        except Exception as e:
+            continue
+
+    return {"ok": False, "message": "Device Code 超时，请检查 SSO token 是否有效"}
 
 
 def grok_sso_to_oauth(sso_token: str) -> dict:
