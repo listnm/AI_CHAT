@@ -381,13 +381,14 @@ def save_station(st: dict):
             _sql(
                 f"""INSERT INTO stations
                 ({_STATION_COLUMNS})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ),
             (
                 st["id"], st["name"], st["base_url"], _encrypt(st["api_key"]),
                 _models_value(st.get("models", [])), st.get("selected_model", ""),
                 st.get("latency_ms"), _db_datetime(st.get("last_test_at")),
                 bool(st.get("is_default")), st.get("remark", ""),
+                st.get("group_name", ""), bool(st.get("is_active", True)),
                 _db_datetime(st.get("created_at")) or _db_now(), _db_now(),
             ),
         )
