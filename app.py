@@ -1451,13 +1451,15 @@ OAUTH_COLUMNS = (
 
 
 def _oauth_row_to_dict(row) -> dict:
+    refresh_token = row["refresh_token_encrypted"] and _decrypt(row["refresh_token_encrypted"])
     return {
         "id": row["id"],
         "provider": row["provider"],
         "email": row["email"],
         "display_name": row["display_name"],
         "access_token": _decrypt(row["access_token_encrypted"]),
-        "refresh_token": row["refresh_token_encrypted"] and _decrypt(row["refresh_token_encrypted"]),
+        "refresh_token": refresh_token,
+        "has_refresh_token": bool(refresh_token),
         "token_type": row["token_type"],
         "expires_at": row["expires_at"],
         "scope": row["scope"],
