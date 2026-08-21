@@ -170,13 +170,13 @@ def refresh_access_token(provider_key, refresh_token_val):
 
 
 def fetch_user_info(provider_key, access_token):
-    """获取用户信息"""
+    """获取用户信息（快速超时）"""
     import requests as req
     p = PROVIDERS[provider_key]
     try:
         r = req.get(p["userinfo_url"],
                     headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=15)
+                    timeout=5)
         r.raise_for_status()
         return r.json()
     except Exception:
@@ -336,7 +336,7 @@ def normalize_import_entry(entry: dict) -> dict:
 def validate_token(provider_key: str, access_token: str) -> dict:
     """
     验证 token 是否有效。
-    优先从 JWT 解析用户信息，失败时尝试 userinfo API。
+    优先从 JWT 解析用户信息，成功则直接返回（不调远程 API）。
     """
     # 1. 先从 JWT 解析
     if "." in access_token:
@@ -348,29 +348,33 @@ def validate_token(provider_key: str, access_token: str) -> dict:
                 claims = json.loads(base64.urlsafe_b64decode(payload))
                 email = claims.get("email", "")
                 name = claims.get("name", "")
+                sub = claims.get("sub", "")
                 # 检查是否过期
                 exp = claims.get("exp", 0)
                 if exp and exp < time.time():
                     return {"valid": False, "error": "Token 已过期"}
-                if email or name:
-                    return {
-                        "valid": True,
-                        "email": email,
-                        "display_name": name,
-                    }
+                # JWT 格式正确，即使没有 email/name 也允许导入
+                return {
+                    "valid": True,
+                    "email": email,
+                    "display_name": name or sub,
+                }
         except Exception:
             pass
 
-    # 2. 尝试 userinfo API
-    user_info = fetch_user_info(provider_key, access_token)
-    if user_info and "error" not in user_info:
-        return {
-            "valid": True,
-            "email": user_info.get("email", ""),
-            "display_name": user_info.get("name", "") or user_info.get("nickname", ""),
-        }
+    # 2. 非 JWT 格式，尝试 userinfo API（快速超时）
+    try:
+        user_info = fetch_user_info(provider_key, access_token)
+        if user_info and "error" not in user_info:
+            return {
+                "valid": True,
+                "email": user_info.get("email", ""),
+                "display_name": user_info.get("name", "") or user_info.get("nickname", ""),
+            }
+    except Exception:
+        pass
 
-    # 3. 如果都无法获取用户信息，但 token 格式正确，仍然允许导入
+    # 3. 无法验证，但仍允许导入
     return {"valid": True, "email": "", "display_name": ""}
 
 
