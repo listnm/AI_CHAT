@@ -16,7 +16,7 @@
         <div class="logo"><span class="icon icon-bolt">✦</span></div>
         <div>
           <h1>OAuth 订阅账号</h1>
-          <div class="sub">管理 AI 平台订阅账号（OpenAI / Grok / Gemini / Antigravity）</div>
+          <div class="sub">管理 AI 平台订阅账号（基于 sub2api 实现）</div>
         </div>
       </div>
       <div class="top-actions">
@@ -40,7 +40,7 @@
 
   <!-- 提供商卡片 -->
   <div class="sec-title"><h2>授权登录</h2>
-    <span class="hint">通过 OAuth 获取 AI 平台订阅账号令牌</span>
+    <span class="hint">使用内置公开客户端，无需配置 OAuth 应用</span>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:30px">
     {% for key, cfg in providers.items() %}
@@ -54,29 +54,26 @@
           <div style="font-size:11px;color:var(--muted)">{{ cfg.desc }}</div>
         </div>
       </div>
-      {% if cfg.has_config %}
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;font-family:monospace">
+        Client ID: {{ cfg.client_id_preview }}
+      </div>
       <a class="btn primary" href="/oa/login/{{ key }}" style="width:100%;justify-content:center;font-size:13px">
         登录 {{ cfg.name }}
       </a>
-      {% else %}
-      <div style="padding:8px 10px;background:var(--grad-soft);border-radius:8px;font-size:11px;color:var(--muted)">
-        需设置环境变量 <code style="font-size:10px">{{ key | upper }}_CLIENT_ID</code>
-      </div>
-      {% endif %}
     </div>
     {% endfor %}
   </div>
 
-  <!-- 环境变量配置说明 -->
+  <!-- 说明 -->
   <div class="card" style="padding:16px;margin-bottom:30px;background:#fafbfc">
-    <div style="font-size:13px;font-weight:600;margin-bottom:8px">📋 Render 环境变量配置</div>
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">🔐 OAuth 认证说明</div>
     <div style="font-size:12px;color:var(--muted);line-height:1.8">
-      在 Render 控制台 Environment 中添加以下变量：<br>
-      <code>OPENAI_CLIENT_ID=</code> <code>OPENAI_CLIENT_SECRET=</code><br>
-      <code>GROK_CLIENT_ID=</code> <code>GROK_CLIENT_SECRET=</code><br>
-      <code>GEMINI_CLIENT_ID=</code> <code>GEMINI_CLIENT_SECRET=</code><br>
-      <code>ANTIGRAVITY_CLIENT_ID=</code> <code>ANTIGRAVITY_CLIENT_SECRET=</code><br>
-      <span style="color:var(--green)">Client ID/Secret 需在各平台开发者后台创建 OAuth 应用获取</span>
+      基于 sub2api 项目实现，使用内置公开 PKCE 客户端：<br>
+      • <strong>OpenAI</strong>：使用官方 Codex CLI 客户端，无需 Client Secret<br>
+      • <strong>Grok</strong>：使用 xAI 官方客户端，无需 Client Secret<br>
+      • <strong>Gemini</strong>：使用 Google Code Assist 客户端<br>
+      • 所有提供商均使用 <strong>PKCE</strong>（Proof Key for Code Exchange）确保安全<br>
+      • <strong>无需配置环境变量</strong>，直接点击登录按钮即可
     </div>
   </div>
 
@@ -96,8 +93,8 @@
     {% for acc in accounts %}
     <div class="card" style="padding:16px;{{ '' if acc.is_active else 'opacity:.6' }}">
       <div class="card-head">
-        <div class="ava" style="background:{% if acc.provider == 'openai' %}#10a37f{% elif acc.provider == 'grok' %}#1d1d1f{% elif acc.provider == 'gemini' %}#1a73e8{% else %}#ff6b35{% endif %}">
-          {% if acc.provider == 'openai' %}🤖{% elif acc.provider == 'grok' %}⚡{% elif acc.provider == 'gemini' %}💎{% else %}🚀{% endif %}
+        <div class="ava" style="background:{% if acc.provider == 'openai' %}#10a37f{% elif acc.provider == 'grok' %}#1d1d1f{% else %}#1a73e8{% endif %}">
+          {% if acc.provider == 'openai' %}🤖{% elif acc.provider == 'grok' %}⚡{% else %}💎{% endif %}
         </div>
         <div class="card-title">
           <div class="name">{{ acc.display_name or acc.email }}</div>
@@ -135,7 +132,7 @@
 
   <footer style="margin-top:30px">
     订阅账号令牌加密存储 · 支持自动刷新
-    <span class="dot">·</span>参考 sub2api 项目
+    <span class="dot">·</span>基于 sub2api 项目
   </footer>
 </div>
 
