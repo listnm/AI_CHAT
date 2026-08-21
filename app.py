@@ -2045,6 +2045,8 @@ def oa_account_refresh(account_id):
             hint = " | 请通过「密码登录」重新授权以启用自动刷新"
         return {"ok": False, "message": f"刷新失败: {token_data['error']}{hint}"}
 
+    from datetime import datetime, timezone, timedelta
+
     new_access = token_data.get("access_token", "")
     new_refresh = token_data.get("refresh_token", acc["refresh_token"])
     new_sso = token_data.get("sso_token", "")
