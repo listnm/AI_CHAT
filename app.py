@@ -252,6 +252,7 @@ def init_db():
             ]:
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} {typedef}")
+                    conn.commit()
                 except Exception:
                     try:
                         conn.rollback()
@@ -281,6 +282,7 @@ def init_db():
             for col, default in [("selected_model", "''"), ("group_name", "''"), ("is_active", "1")]:
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} DEFAULT {default}")
+                    conn.commit()
                 except Exception:
                     try:
                         conn.rollback()
@@ -306,9 +308,11 @@ def init_db():
                     updated_at TIMESTAMPTZ NOT NULL
                 )
             """)
+            conn.commit()
             for col, typedef in [("model", "TEXT DEFAULT ''"), ("sso_token_encrypted", "TEXT DEFAULT ''")]:
                 try:
-                    conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} {typedef}")
+                    cur = conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} {typedef}")
+                    conn.commit()
                 except Exception:
                     try:
                         conn.rollback()
@@ -2036,7 +2040,10 @@ def oa_account_refresh(account_id):
     token_data = refresh_access_token(acc["provider"], acc["refresh_token"], acc.get("sso_token", ""))
     if "error" in token_data:
         print(f"[OA] 手动刷新失败: {token_data['error']}")
-        return {"ok": False, "message": f"刷新失败: {token_data['error']}"}
+        hint = ""
+        if acc["provider"] == "grok" and not acc.get("sso_token"):
+            hint = " | 请通过「密码登录」重新授权以启用自动刷新"
+        return {"ok": False, "message": f"刷新失败: {token_data['error']}{hint}"}
 
     new_access = token_data.get("access_token", "")
     new_refresh = token_data.get("refresh_token", acc["refresh_token"])
