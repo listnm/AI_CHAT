@@ -1623,7 +1623,11 @@ def oa_import_token():
     if not content:
         return {"ok": False, "message": "请输入 Token 或 JSON 数据"}
 
-    result = import_token(provider, content)
+    try:
+        result = import_token(provider, content)
+    except Exception as e:
+        return {"ok": False, "message": f"解析失败: {str(e)[:100]}"}
+
     if not result.get("ok"):
         return {"ok": False, "message": result.get("message", "导入失败")}
 
@@ -1633,7 +1637,8 @@ def oa_import_token():
     if result.get("extra", {}).get("expires_at"):
         try:
             exp_ts = result["extra"]["expires_at"]
-            expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()
+            if exp_ts > 0:
+                expires_at = datetime.fromtimestamp(exp_ts, tz=timezone.utc).isoformat()
         except Exception:
             pass
 
@@ -1653,11 +1658,11 @@ def oa_import_token():
              "Bearer", expires_at, "", True, now, now),
         )
         _close_db(conn, commit=True)
-    except Exception:
+    except Exception as e:
         _close_db(conn)
-        raise
+        return {"ok": False, "message": f"数据库错误: {str(e)[:100]}"}
 
-    return {"ok": True, "message": f"已导入 {result['email'] or result['display_name']}"}
+    return {"ok": True, "message": f"已导入 {result['email'] or result['display_name'] or '账号'}"}
 
 
 @app.route("/api/oa/accounts/<account_id>", methods=["DELETE"])
