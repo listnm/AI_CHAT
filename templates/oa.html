@@ -168,6 +168,12 @@
         <span class="lbl">刷新</span>
         <span class="val">{{ '支持' if acc.has_refresh_token else '不支持' }}</span>
       </div>
+      <div class="row" style="margin-top:4px">
+        <span class="lbl">模型</span>
+        <input id="model-{{ acc.id }}" value="{{ acc.model or '' }}" placeholder="如 grok-3, gpt-4o"
+          style="flex:1;min-width:0;padding:4px 8px;border-radius:6px;border:1px solid var(--line);font-size:12px;font-family:Consolas,monospace"
+          onchange="saveModel('{{ acc.id }}', this.value)">
+      </div>
       <div class="card-foot">
         <button class="btn primary sm" onclick="syncToStation('{{ acc.id }}')">📡 同步到中转站</button>
         <button class="btn sm" onclick="toggleAccount('{{ acc.id }}')">
@@ -303,6 +309,13 @@ function deleteAccount(id, name) {
   $('cf-msg').textContent = `确定删除「${name}」的 OAuth 授权吗？`;
   $('cf-ok').textContent = '删除';
   $('confirm').hidden = false;
+}
+
+async function saveModel(id, model) {
+  await api('/api/oa/accounts/' + id + '/model', {
+    method: 'PUT',
+    body: JSON.stringify({model}),
+  });
 }
 
 function closeConfirm() { $('confirm').hidden = true; confirmCb = null; }
