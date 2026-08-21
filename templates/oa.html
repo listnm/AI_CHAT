@@ -148,6 +148,7 @@
         <span class="val">{{ '支持' if acc.has_refresh_token else '不支持' }}</span>
       </div>
       <div class="card-foot">
+        <button class="btn primary sm" onclick="syncToStation('{{ acc.id }}')">📡 同步到中转站</button>
         <button class="btn sm" onclick="toggleAccount('{{ acc.id }}')">
           {{ '禁用' if acc.is_active else '启用' }}
         </button>
@@ -236,6 +237,13 @@ async function importToken() {
     status.style.color = 'var(--danger)';
     toast(d.message);
   }
+}
+
+async function syncToStation(id) {
+  toast('正在同步到中转站...');
+  const d = await api('/api/oa/accounts/' + id + '/sync', {method: 'POST'});
+  toast(d.message, d.ok);
+  if (d.ok) setTimeout(() => location.reload(), 500);
 }
 
 function deleteAccount(id, name) {
