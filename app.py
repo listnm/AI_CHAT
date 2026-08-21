@@ -306,7 +306,7 @@ def init_db():
                     updated_at TIMESTAMPTZ NOT NULL
                 )
             """)
-            for col, typedef in [("model", "TEXT DEFAULT ''")]:
+            for col, typedef in [("model", "TEXT DEFAULT ''"), ("sso_token_encrypted", "TEXT DEFAULT ''")]:
                 try:
                     conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} {typedef}")
                 except Exception:
@@ -329,7 +329,7 @@ def init_db():
                     updated_at TEXT NOT NULL
                 )
             """)
-            for col in ["model"]:
+            for col in ["model", "sso_token_encrypted"]:
                 try:
                     conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} TEXT DEFAULT ''")
                 except Exception:
@@ -1458,12 +1458,17 @@ _oauth_states = {}  # {state: provider_key}，CSRF 防护
 
 OAUTH_COLUMNS = (
     "id, provider, email, display_name, access_token_encrypted, "
-    "refresh_token_encrypted, token_type, expires_at, scope, model, is_active, created_at, updated_at"
+    "refresh_token_encrypted, token_type, expires_at, scope, model, is_active, created_at, updated_at, sso_token_encrypted"
 )
 
 
 def _oauth_row_to_dict(row) -> dict:
     refresh_token = row["refresh_token_encrypted"] and _decrypt(row["refresh_token_encrypted"])
+    sso_token = ""
+    try:
+        sso_token = row["sso_token_encrypted"] and _decrypt(row["sso_token_encrypted"])
+    except Exception:
+        pass
     return {
         "id": row["id"],
         "provider": row["provider"],
@@ -1478,6 +1483,7 @@ def _oauth_row_to_dict(row) -> dict:
         "model": row["model"] or "",
         "is_active": bool(row["is_active"]),
         "created_at": row["created_at"],
+        "sso_token": sso_token,
     }
 
 
@@ -1524,13 +1530,14 @@ def _auto_refresh_expired_tokens(accounts: list) -> int:
 
         # 令牌即将过期，尝试刷新
         provider = acc["provider"]
-        token_data = refresh_access_token(provider, acc["refresh_token"])
+        token_data = refresh_access_token(provider, acc["refresh_token"], acc.get("sso_token", ""))
         if "error" in token_data:
             print(f"[OA] 自动刷新失败 {acc.get('email', acc['id'])}: {token_data['error']}")
             continue
 
         new_access = token_data.get("access_token", "")
         new_refresh = token_data.get("refresh_token", acc["refresh_token"])
+        new_sso = token_data.get("sso_token", "")
         expires_in = token_data.get("expires_in", 0)
         new_expires_at = (now + timedelta(seconds=expires_in)).isoformat() if expires_in else ""
 
@@ -1540,10 +1547,16 @@ def _auto_refresh_expired_tokens(accounts: list) -> int:
 
         conn = get_db()
         try:
+            update_fields = "access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=?"
+            update_values = [_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "",
+                             new_expires_at, _db_now()]
+            if new_sso:
+                update_fields += ", sso_token_encrypted=?"
+                update_values.append(_encrypt(new_sso))
+            update_values.append(acc["id"])
             conn.execute(
-                _sql("UPDATE oauth_accounts SET access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=? WHERE id=?"),
-                (_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "",
-                 new_expires_at, _db_now(), acc["id"]))
+                _sql(f"UPDATE oauth_accounts SET {update_fields} WHERE id=?"),
+                update_values)
             _close_db(conn, commit=True)
             refreshed += 1
             print(f"[OA] 自动刷新成功: {acc.get('email', acc['id'])}")
@@ -1766,12 +1779,13 @@ def oa_import_token():
             _sql("""INSERT INTO oauth_accounts
                 (id, provider, email, display_name, access_token_encrypted,
                  refresh_token_encrypted, token_type, expires_at, scope,
-                 is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+                 is_active, created_at, updated_at, sso_token_encrypted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
             (account_id, provider, result["email"], result["display_name"],
              _encrypt(result["access_token"]),
              _encrypt(result["refresh_token"]) if result.get("refresh_token") else "",
-             "Bearer", expires_at, "", True, now, now),
+             "Bearer", expires_at, "", True, now, now,
+             _encrypt(result["sso_token"]) if result.get("sso_token") else ""),
         )
         _close_db(conn, commit=True)
     except Exception as e:
@@ -1811,12 +1825,13 @@ def oa_password_login():
             _sql("""INSERT INTO oauth_accounts
                 (id, provider, email, display_name, access_token_encrypted,
                  refresh_token_encrypted, token_type, expires_at, scope,
-                 is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
+                 is_active, created_at, updated_at, sso_token_encrypted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""),
             (account_id, "grok", result["email"], result["display_name"],
              _encrypt(result["access_token"]),
              _encrypt(result["refresh_token"]) if result.get("refresh_token") else "",
-             "Bearer", expires_at, "", True, now, now),
+             "Bearer", expires_at, "", True, now, now,
+             _encrypt(result["sso_token"]) if result.get("sso_token") else ""),
         )
         _close_db(conn, commit=True)
     except Exception as e:
@@ -1841,15 +1856,32 @@ def oa_account_sync_to_station(account_id):
     if not access_token:
         return {"ok": False, "message": "无 access_token"}
 
-    # 如果令牌过期且有 refresh_token，先刷新
+    # 如果令牌过期，尝试刷新（支持 SSO 回退）
     from datetime import datetime, timezone, timedelta
-    if acc.get("expires_at") and acc.get("refresh_token"):
+    if acc.get("expires_at"):
         try:
             exp = datetime.fromisoformat(acc["expires_at"].replace("Z", "+00:00"))
             if exp < datetime.now(timezone.utc):
-                token_data = refresh_access_token(acc["provider"], acc["refresh_token"])
+                token_data = refresh_access_token(acc["provider"], acc.get("refresh_token", ""), acc.get("sso_token", ""))
                 if token_data.get("access_token"):
                     access_token = token_data["access_token"]
+                    # 更新数据库中的令牌
+                    new_refresh = token_data.get("refresh_token", acc.get("refresh_token", ""))
+                    new_sso = token_data.get("sso_token", "")
+                    new_expires = token_data.get("expires_at", "")
+                    try:
+                        conn = get_db()
+                        update_fields = "access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=?"
+                        update_values = [_encrypt(access_token), _encrypt(new_refresh) if new_refresh else "",
+                                         new_expires, _db_now()]
+                        if new_sso:
+                            update_fields += ", sso_token_encrypted=?"
+                            update_values.append(_encrypt(new_sso))
+                        update_values.append(account_id)
+                        conn.execute(_sql(f"UPDATE oauth_accounts SET {update_fields} WHERE id=?"), update_values)
+                        _close_db(conn, commit=True)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
@@ -1986,22 +2018,30 @@ def oa_account_refresh(account_id):
         return {"ok": False, "message": "该账号无 refresh_token，请重新授权登录"}
 
     print(f"[OA] 手动刷新令牌: {acc.get('email', acc['id'])} (provider: {acc['provider']})")
-    token_data = refresh_access_token(acc["provider"], acc["refresh_token"])
+    print(f"[OA] refresh_token 长度: {len(acc['refresh_token'])} 前20字符: {acc['refresh_token'][:20]}...")
+    token_data = refresh_access_token(acc["provider"], acc["refresh_token"], acc.get("sso_token", ""))
     if "error" in token_data:
         print(f"[OA] 手动刷新失败: {token_data['error']}")
         return {"ok": False, "message": f"刷新失败: {token_data['error']}"}
 
     new_access = token_data.get("access_token", "")
     new_refresh = token_data.get("refresh_token", acc["refresh_token"])
+    new_sso = token_data.get("sso_token", "")
     expires_in = token_data.get("expires_in", 0)
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else acc["expires_at"]
 
     conn = get_db()
     try:
+        update_fields = "access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=?"
+        update_values = [_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "",
+                         expires_at, _db_now()]
+        if new_sso:
+            update_fields += ", sso_token_encrypted=?"
+            update_values.append(_encrypt(new_sso))
+        update_values.append(account_id)
         conn.execute(
-            _sql("UPDATE oauth_accounts SET access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=? WHERE id=?"),
-            (_encrypt(new_access), _encrypt(new_refresh) if new_refresh else "",
-             expires_at, _db_now(), account_id))
+            _sql(f"UPDATE oauth_accounts SET {update_fields} WHERE id=?"),
+            update_values)
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn)
