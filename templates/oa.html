@@ -43,45 +43,6 @@
   </div>
   {% endif %}
 
-  <!-- 提供商卡片 -->
-  <div class="sec-title"><h2>授权登录</h2>
-    <span class="hint">使用内置公开客户端，无需配置 OAuth 应用</span>
-  </div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-bottom:30px">
-    {% for key, cfg in providers.items() %}
-    <div class="card" style="padding:18px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="width:38px;height:38px;border-radius:10px;background:{{ cfg.color }};display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff">
-          {{ cfg.icon }}
-        </div>
-        <div>
-          <div style="font-size:14px;font-weight:700">{{ cfg.name }}</div>
-          <div style="font-size:11px;color:var(--muted)">{{ cfg.desc }}</div>
-        </div>
-      </div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;font-family:monospace">
-        Client ID: {{ cfg.client_id_preview }}
-      </div>
-      <a class="btn primary" href="/oa/login/{{ key }}" style="width:100%;justify-content:center;font-size:13px">
-        登录 {{ cfg.name }}
-      </a>
-    </div>
-    {% endfor %}
-  </div>
-
-  <!-- 说明 -->
-  <div class="card" style="padding:16px;margin-bottom:30px;background:#fafbfc">
-    <div style="font-size:13px;font-weight:600;margin-bottom:8px">🔐 OAuth 认证说明</div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.8">
-      基于 sub2api 项目实现，使用内置公开 PKCE 客户端：<br>
-      • <strong>OpenAI</strong>：使用官方 Codex CLI 客户端，无需 Client Secret<br>
-      • <strong>Grok</strong>：使用 xAI 官方客户端，无需 Client Secret<br>
-      • <strong>Gemini</strong>：使用 Google Code Assist 客户端<br>
-      • 所有提供商均使用 <strong>PKCE</strong>（Proof Key for Code Exchange）确保安全<br>
-      • <strong>无需配置环境变量</strong>，直接点击登录按钮即可
-    </div>
-  </div>
-
   <!-- Token/JSON 导入 -->
   <div class="sec-title"><h2>导入账号</h2>
     <span class="hint">粘贴 Token 或 Codex Session JSON</span>
