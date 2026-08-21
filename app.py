@@ -310,7 +310,10 @@ def init_db():
                 try:
                     conn.execute(f"ALTER TABLE oauth_accounts ADD COLUMN {col} {typedef}")
                 except Exception:
-                    pass
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
         else:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS oauth_accounts (
