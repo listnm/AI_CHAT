@@ -37,6 +37,11 @@
     ❌ 连接失败：{{ request.args.get('error') }}
   </div>
   {% endif %}
+  {% if refreshed_count and refreshed_count > 0 %}
+  <div style="background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px">
+    🔄 已自动刷新 {{ refreshed_count }} 个即将过期的令牌
+  </div>
+  {% endif %}
 
   <!-- 提供商卡片 -->
   <div class="sec-title"><h2>授权登录</h2>
