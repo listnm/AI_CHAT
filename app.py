@@ -39,7 +39,7 @@ from providers import (
     claude_to_openai, openai_to_claude, relay_stream_claude,
     gemini_to_openai, openai_to_gemini, relay_stream_gemini,
 )
-from oauth_providers import PROVIDERS, generate_state, build_auth_url, exchange_code, refresh_token, get_user_info, parse_user_info, get_provider_config_for_flow
+from oauth_providers import PROVIDERS, generate_state, build_auth_url, exchange_code, refresh_token, get_user_info, parse_user_info
 
 # ================================================================
 #  基础配置（可用环境变量覆盖，start.bat 里可改）
@@ -1489,38 +1489,47 @@ def oa_page():
     accounts = _load_oauth_accounts()
     provider_configs = {}
     for key, cfg in PROVIDERS.items():
-        cid = os.environ.get(cfg["client_id_env"], "")
         provider_configs[key] = {
             "name": cfg["name"],
+            "desc": cfg["desc"],
             "icon": cfg["icon"],
             "color": cfg["color"],
-            "has_config": bool(cid),
-            "client_id_preview": cid[:8] + "****" if len(cid) > 8 else cid,
+            "client_id_preview": cfg["client_id"][:12] + "****",
         }
     return render_template("oa.html", accounts=accounts, providers=provider_configs)
 
 
 @app.route("/oa/login/<provider>")
 def oa_login(provider):
-    """跳转到 OAuth 授权页面"""
+    """跳转到 OAuth 授权页面（带 PKCE）"""
     if not _is_admin():
         return redirect("/admin")
     if provider not in PROVIDERS:
         return "未知提供商", 404
 
-    client_id, client_secret, redirect_uri = get_provider_config_for_flow(provider, request.host_url)
-    if not client_id:
-        return "未配置 Client ID，请在环境变量中设置", 400
+    # 构建重定向地址
+    cfg = PROVIDERS[provider]
+    redirect_uri = request.host_url.rstrip("/") + cfg["callback_path"]
 
+    # 生成 state 和 PKCE
+    from oauth_providers import generate_pkce_pair, generate_pkce_pair_openai
     state = generate_state()
-    _oauth_states[state] = provider
-    auth_url = build_auth_url(provider, client_id, redirect_uri, state)
+    if provider == "openai":
+        verifier, challenge, method = generate_pkce_pair_openai()
+    else:
+        verifier, challenge, method = generate_pkce_pair()
+
+    # 存储 state 和 code_verifier（用于回调时换取令牌）
+    _oauth_states[state] = {"provider": provider, "code_verifier": verifier}
+
+    # 构建授权 URL
+    auth_url = build_auth_url(provider, redirect_uri, state)
     return redirect(auth_url)
 
 
 @app.route("/oa/callback/<provider>")
 def oa_callback(provider):
-    """OAuth 回调，处理授权码"""
+    """OAuth 回调，处理授权码（带 PKCE）"""
     if provider not in PROVIDERS:
         return "未知提供商", 404
 
@@ -1533,15 +1542,16 @@ def oa_callback(provider):
     if not code or state not in _oauth_states:
         return redirect("/oa?error=invalid_state")
 
-    del _oauth_states[state]  # 消费 state，防止重放
-    expected_provider = _oauth_states.pop(state, provider)
+    # 消费 state，获取 code_verifier
+    state_data = _oauth_states.pop(state)
+    code_verifier = state_data.get("code_verifier", "")
 
-    client_id, client_secret, redirect_uri = get_provider_config_for_flow(provider, request.host_url)
-    if not client_id or not client_secret:
-        return redirect("/oa?error=missing_config")
+    # 构建重定向地址
+    cfg = PROVIDERS[provider]
+    redirect_uri = request.host_url.rstrip("/") + cfg["callback_path"]
 
-    # 换取令牌
-    token_data = exchange_code(provider, client_id, client_secret, code, redirect_uri)
+    # 换取令牌（带 PKCE）
+    token_data = exchange_code(provider, code, redirect_uri, code_verifier)
     if "error" in token_data:
         return redirect(f"/oa?error=token_exchange_failed")
 
@@ -1659,15 +1669,7 @@ def oa_account_refresh(account_id):
     if not acc["refresh_token"]:
         return {"ok": False, "message": "该账号没有 refresh_token"}
 
-    provider = acc["provider"]
-    cfg = PROVIDERS.get(provider, {})
-    client_id = os.environ.get(cfg.get("client_id_env", ""), "")
-    client_secret = os.environ.get(cfg.get("client_secret_env", ""), "")
-
-    if not client_id or not client_secret:
-        return {"ok": False, "message": "未配置 Client ID/Secret"}
-
-    token_data = refresh_token(provider, client_id, client_secret, acc["refresh_token"])
+    token_data = refresh_token(acc["provider"], acc["refresh_token"])
     if "error" in token_data:
         return {"ok": False, "message": token_data["error"]}
 
