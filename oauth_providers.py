@@ -156,11 +156,21 @@ def refresh_access_token(provider_key, refresh_token_val):
         "client_id": p["client_id"],
         "refresh_token": refresh_token_val,
     }
+    # Grok 需要额外的 scope 参数
+    if provider_key == "grok":
+        data["scope"] = p.get("scope", "")
+
     try:
         r = req.post(p["token_url"], data=data,
                      headers={"Content-Type": "application/x-www-form-urlencoded"},
                      timeout=30)
-        r.raise_for_status()
+        if r.status_code != 200:
+            err = ""
+            try:
+                err = r.json().get("error_description", "") or r.json().get("error", "")
+            except Exception:
+                pass
+            return {"error": f"HTTP {r.status_code}: {err or r.text[:100]}"}
         result = r.json()
         if not result.get("refresh_token"):
             result["refresh_token"] = refresh_token_val
