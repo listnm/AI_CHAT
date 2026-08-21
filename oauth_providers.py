@@ -478,6 +478,155 @@ def grok_password_login(email: str, password: str) -> dict:
     return grok_sso_to_oauth(sso_token)
 
 
+def grok_password_login(email: str, password: str) -> dict:
+    """
+    通过 Grok 邮箱密码登录获取 OAuth 令牌。
+    基于 sub2api 实现：RPC 登录 → 获取 SSO → Device Code → Token
+    """
+    import requests as req
+    import time
+
+    client_id = "b1a00492-073a-47ea-816f-4c329264a828"
+    scope = "openid profile email offline_access grok-cli:access api:access"
+
+    session = req.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*",
+        "Origin": "https://accounts.x.ai",
+        "Referer": "https://accounts.x.ai/sign-in?redirect=grok-com&email=true",
+    })
+
+    # Step 1: RPC 登录
+    try:
+        resp = session.post(
+            "https://accounts.x.ai/api/rpc",
+            json={"method": "signIn", "params": {"email": email, "password": password}},
+            headers={"Content-Type": "application/json"},
+            timeout=15
+        )
+        resp.raise_for_status()
+        login_data = resp.json()
+    except Exception as e:
+        return {"ok": False, "message": f"登录请求失败: {str(e)[:100]}"}
+
+    # 检查是否有 cookie setter URL
+    cookie_setter_url = login_data.get("result", {}).get("cookieSetterUrl", "")
+    if cookie_setter_url:
+        try:
+            session.get(cookie_setter_url, timeout=10)
+        except Exception:
+            pass
+
+    # 提取 SSO cookie
+    sso_token = ""
+    for cookie in session.cookies:
+        if cookie.name == "sso":
+            sso_token = cookie.value
+            break
+
+    if not sso_token:
+        return {"ok": False, "message": "登录成功但未获取到 SSO token"}
+
+    # Step 2: 用 SSO token 走 Device Code 流程
+    return _grok_device_code_flow(client_id, scope, sso_token, session)
+
+
+def _grok_device_code_flow(client_id, scope, sso_token, session=None):
+    """Grok Device Code OAuth 流程"""
+    import requests as req
+    import time
+
+    if session is None:
+        session = req.Session()
+
+    # 设置 SSO cookie
+    session.cookies.set("sso", sso_token, domain=".x.ai", path="/")
+    session.cookies.set("sso-rw", sso_token, domain=".x.ai", path="/")
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/json",
+    })
+
+    # Step 1: 启动 Device Code
+    try:
+        resp = session.post(
+            "https://auth.x.ai/oauth2/device/code",
+            data={"client_id": client_id, "scope": scope},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15
+        )
+        resp.raise_for_status()
+        device_data = resp.json()
+    except Exception as e:
+        return {"ok": False, "message": f"Device Code 失败: {str(e)[:100]}"}
+
+    device_code = device_data.get("device_code", "")
+    user_code = device_data.get("user_code", "")
+
+    if not device_code or not user_code:
+        return {"ok": False, "message": "未获取到 device_code"}
+
+    # Step 2: 验证
+    try:
+        session.post(
+            "https://auth.x.ai/oauth2/device/verify",
+            data={"user_code": user_code},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=True, timeout=15
+        )
+    except Exception:
+        pass
+
+    # Step 3: 批准
+    try:
+        session.post(
+            "https://auth.x.ai/oauth2/device/approve",
+            data={"user_code": user_code, "action": "allow", "principal_type": "User", "principal_id": ""},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            allow_redirects=True, timeout=15
+        )
+    except Exception:
+        pass
+
+    # Step 4: 轮询获取 token
+    for attempt in range(10):
+        time.sleep(2)
+        try:
+            resp = session.post(
+                "https://auth.x.ai/oauth2/token",
+                data={"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "client_id": client_id, "device_code": device_code},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=15
+            )
+            if resp.status_code == 200:
+                token_data = resp.json()
+                access_token = token_data.get("access_token", "")
+                if access_token:
+                    user_info = fetch_user_info("grok", access_token)
+                    from datetime import datetime, timezone, timedelta
+                    expires_in = token_data.get("expires_in", 0)
+                    return {
+                        "ok": True,
+                        "access_token": access_token,
+                        "refresh_token": token_data.get("refresh_token", ""),
+                        "email": user_info.get("email", "") if user_info else "",
+                        "display_name": user_info.get("name", "") if user_info else "",
+                        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat() if expires_in else "",
+                    }
+            else:
+                err = resp.json() if "json" in resp.headers.get("content-type", "") else {}
+                err_msg = err.get("error", "")
+                if err_msg in ("authorization_pending", "slow_down"):
+                    time.sleep(5 if err_msg == "slow_down" else 2)
+                    continue
+                return {"ok": False, "message": f"获取 token 失败: {err_msg or resp.text[:100]}"}
+        except Exception:
+            continue
+
+    return {"ok": False, "message": "Device Code 超时"}
+
+
 def grok_sso_login(sso_token: str) -> dict:
     """
     使用 Grok SSO cookie 通过 Device Code OAuth 流程获取令牌。
