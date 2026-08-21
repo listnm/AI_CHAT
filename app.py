@@ -274,7 +274,10 @@ def init_db():
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} DEFAULT {default}")
                 except Exception:
-                    pass  # 列已存在则跳过（SQLite 和 PostgreSQL 异常不同）
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
 
         # OAuth 账号表
         if _USE_PG:
