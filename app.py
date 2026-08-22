@@ -152,12 +152,12 @@ _PG_POOL = None
 
 _STATION_COLUMNS = (
     "id, name, base_url, api_key_encrypted, models, selected_model, "
-    "latency_ms, last_test_at, is_default, remark, group_name, is_active, created_at, updated_at"
+    "latency_ms, last_test_at, is_default, remark, group_name, is_active, created_at, updated_at, sso_token_encrypted"
 )
 _UPDATEABLE_FIELDS = {
     "name", "base_url", "models", "selected_model", "latency_ms",
     "last_test_at", "is_default", "remark", "api_key_encrypted",
-    "group_name", "is_active",
+    "group_name", "is_active", "sso_token_encrypted",
 }
 
 
@@ -279,7 +279,7 @@ def init_db():
                 )
                 """
             )
-            for col, default in [("selected_model", "''"), ("group_name", "''"), ("is_active", "1")]:
+            for col, default in [("selected_model", "''"), ("group_name", "''"), ("is_active", "1"), ("sso_token_encrypted", "''")]:
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} DEFAULT {default}")
                     conn.commit()
@@ -352,6 +352,13 @@ init_db()
 
 
 def _row_to_station(row) -> dict:
+    sso_token = ""
+    try:
+        val = row["sso_token_encrypted"]
+        if val:
+            sso_token = _decrypt(val)
+    except Exception:
+        pass
     return {
         "id": row["id"],
         "name": row["name"],
@@ -365,6 +372,7 @@ def _row_to_station(row) -> dict:
         "remark": row["remark"] or "",
         "group_name": row["group_name"] or "",
         "is_active": bool(row["is_active"]),
+        "sso_token": sso_token,
     }
 
 
@@ -396,11 +404,12 @@ def find_station(station_id: str) -> dict | None:
 def save_station(st: dict):
     conn = get_db()
     try:
+        sso_val = st.get("sso_token", "")
         conn.execute(
             _sql(
                 f"""INSERT INTO stations
                 ({_STATION_COLUMNS})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
             ),
             (
                 st["id"], st["name"], st["base_url"], _encrypt(st["api_key"]),
@@ -409,6 +418,7 @@ def save_station(st: dict):
                 bool(st.get("is_default")), st.get("remark", ""),
                 st.get("group_name", ""), bool(st.get("is_active", True)),
                 _db_datetime(st.get("created_at")) or _db_now(), _db_now(),
+                _encrypt(sso_val) if sso_val else "",
             ),
         )
         _close_db(conn, commit=True)
@@ -1124,6 +1134,122 @@ def _relay_stream(upstream: requests.Response, station: dict):
     yield b"data: [DONE]\n\n"
 
 
+# ================================================================
+#  Grok 网页版 REST API（直接调用 grok.com，不走 CLI 代理）
+# ================================================================
+
+import uuid as _uuid
+
+def _grok_web_headers(sso_token):
+    return {
+        "Content-Type": "application/json",
+        "Accept": "*/*",
+        "Origin": "https://grok.com",
+        "Referer": "https://grok.com/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+        "Cookie": f"sso={sso_token};sso-rw={sso_token}",
+        "x-xai-request-id": str(_uuid.uuid4()),
+    }
+
+
+def _grok_web_chat(sso_token, model, messages, stream=True):
+    """
+    通过 grok.com REST API 发送聊天请求。
+    返回 OpenAI 兼容的 (status_code, headers, generator) 或 (status_code, headers, json_bytes)。
+    """
+    import requests as req
+    import json as _json
+
+    # 将 messages 转成单一 message 文本
+    text_parts = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(p.get("text", "") for p in content if p.get("type") == "text")
+        text_parts.append(f"[{role}]\n{content}")
+    message = "\n\n".join(text_parts)
+
+    url = "https://grok.com/rest/app-chat/conversations/new"
+    body = {
+        "temporary": False,
+        "modelName": model,
+        "message": message,
+        "fileAttachments": [],
+        "imageAttachments": [],
+        "disableSearch": False,
+        "enableImageGeneration": True,
+        "returnImageBytes": False,
+        "returnRawGrokInXaiRequest": False,
+        "enableImageStreaming": False,
+        "imageGenerationCount": 1,
+        "forceConcise": False,
+        "toolOverrides": {
+            "imageGen": False, "webSearch": True, "xSearch": True,
+            "xMediaSearch": True, "trendsSearch": True, "xPostAnalyze": True,
+        },
+        "enableSideBySide": True,
+        "sendFinalMetadata": True,
+        "customPersonality": "",
+        "deepsearchPreset": "",
+        "isReasoning": False,
+        "disableTextFollowUps": True,
+    }
+
+    try:
+        r = req.post(url, headers=_grok_web_headers(sso_token), json=body, stream=stream, timeout=(30, 600))
+    except Exception as e:
+        return 502, {}, _json.dumps({"error": {"message": str(e)[:200]}}).encode()
+
+    if r.status_code != 200:
+        err_msg = r.text[:300]
+        return r.status_code, {}, _json.dumps({"error": {"message": err_msg}}).encode()
+
+    if not stream:
+        # 非流式：累积所有 token 后返回
+        full_text = ""
+        for line in r.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            try:
+                obj = _json.loads(line)
+                token = obj.get("result", {}).get("response", {}).get("token", "")
+                if token:
+                    full_text += token
+            except Exception:
+                pass
+        resp_body = _json.dumps({
+            "id": f"chatcmpl-{_uuid.uuid4().hex[:12]}",
+            "object": "chat.completion",
+            "model": model,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": full_text}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }).encode()
+        return 200, {"Content-Type": "application/json"}, resp_body
+
+    # 流式：逐行解析 JSON，转成 OpenAI SSE 格式
+    def stream_gen():
+        for line in r.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            try:
+                obj = _json.loads(line)
+                token = obj.get("result", {}).get("response", {}).get("token", "")
+                if token:
+                    chunk = {
+                        "id": f"chatcmpl-{_uuid.uuid4().hex[:12]}",
+                        "object": "chat.completion.chunk",
+                        "model": model,
+                        "choices": [{"index": 0, "delta": {"content": token}, "finish_reason": None}],
+                    }
+                    yield f"data: {_json.dumps(chunk, ensure_ascii=False)}\n\n"
+            except Exception:
+                pass
+        yield "data: [DONE]\n\n"
+
+    return 200, {"Content-Type": "text/event-stream"}, stream_gen()
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def proxy_chat_completions():
     """
@@ -1169,6 +1295,28 @@ def proxy_chat_completions():
 
     last_error = "unknown"
     for st in candidates:
+        # 如果中转站有 SSO token，直接走 grok.com 网页 API（独立配额）
+        sso_token = st.get("sso_token", "")
+        if sso_token and ("grok" in st.get("remark", "").lower() or "grok" in st.get("base_url", "").lower()):
+            if is_auto:
+                model_list = st.get("models") or []
+                if st.get("selected_model"):
+                    model_list = [st["selected_model"]] + [m for m in model_list if m != st["selected_model"]]
+            else:
+                model_list = [model]
+            for try_model in (model_list or ["grok-3"]):
+                status, resp_headers, body = _grok_web_chat(sso_token, try_model, messages, stream)
+                if status == 200:
+                    if stream:
+                        return Response(body, mimetype="text/event-stream",
+                                        headers={"X-Provider-Name": st["name"], "X-Provider-Model": try_model})
+                    else:
+                        return Response(body, mimetype="application/json",
+                                        headers={"X-Provider-Name": st["name"], "X-Provider-Model": try_model})
+                last_error = f"{try_model}: HTTP {status}"
+                print(f"[Proxy] grok.com {try_model} 失败: {last_error}")
+            continue
+
         api_url = normalize_chat_url(st["base_url"])
         if not api_url or not st["api_key"]:
             last_error = f"{st['name']} 地址或 Key 为空"
@@ -1954,7 +2102,10 @@ def oa_account_sync_to_station(account_id):
                 "base_url": base_url,
                 "api_key_encrypted": _encrypt(access_token),
             }
-            # 如果 OA 账号设置了模型，同步到中转站的 selected_model
+            # 同步 SSO token 到中转站（用于 grok.com 网页 API）
+            sso_token = acc.get("sso_token", "")
+            if sso_token:
+                update_data["sso_token_encrypted"] = _encrypt(sso_token)
             if oa_model:
                 update_data["selected_model"] = oa_model
             update_station(existing["id"], update_data)
@@ -1966,6 +2117,7 @@ def oa_account_sync_to_station(account_id):
                 "name": name,
                 "base_url": base_url,
                 "api_key": access_token,
+                "sso_token": acc.get("sso_token", ""),
                 "models": [],
                 "selected_model": oa_model,
                 "latency_ms": None,
