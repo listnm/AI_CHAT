@@ -152,7 +152,7 @@ _PG_POOL = None
 
 _STATION_COLUMNS = (
     "id, name, base_url, api_key_encrypted, models, selected_model, "
-    "latency_ms, last_test_at, is_default, remark, group_name, is_active, created_at, updated_at, sso_token_encrypted"
+    "latency_ms, last_test_at, is_default, remark, group_name, is_active, created_at, updated_at"
 )
 _UPDATEABLE_FIELDS = {
     "name", "base_url", "models", "selected_model", "latency_ms",
@@ -379,11 +379,19 @@ def _row_to_station(row) -> dict:
 def load_stations() -> list:
     conn = get_db()
     try:
-        rows = conn.execute(
-            _sql(f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC")
-            if not _USE_PG else
-            f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC NULLS LAST"
-        ).fetchall()
+        try:
+            cols = _STATION_COLUMNS + ", sso_token_encrypted"
+            rows = conn.execute(
+                _sql(f"SELECT {cols} FROM stations ORDER BY is_default DESC, latency_ms ASC")
+                if not _USE_PG else
+                f"SELECT {cols} FROM stations ORDER BY is_default DESC, latency_ms ASC NULLS LAST"
+            ).fetchall()
+        except Exception:
+            rows = conn.execute(
+                _sql(f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC")
+                if not _USE_PG else
+                f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC NULLS LAST"
+            ).fetchall()
         return [_row_to_station(r) for r in rows]
     finally:
         _close_db(conn)
@@ -392,10 +400,17 @@ def load_stations() -> list:
 def find_station(station_id: str) -> dict | None:
     conn = get_db()
     try:
-        row = conn.execute(
-            _sql(f"SELECT {_STATION_COLUMNS} FROM stations WHERE id = ?"),
-            (station_id,),
-        ).fetchone()
+        try:
+            cols = _STATION_COLUMNS + ", sso_token_encrypted"
+            row = conn.execute(
+                _sql(f"SELECT {cols} FROM stations WHERE id = ?"),
+                (station_id,),
+            ).fetchone()
+        except Exception:
+            row = conn.execute(
+                _sql(f"SELECT {_STATION_COLUMNS} FROM stations WHERE id = ?"),
+                (station_id,),
+            ).fetchone()
         return _row_to_station(row) if row else None
     finally:
         _close_db(conn)
