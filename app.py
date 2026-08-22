@@ -1156,76 +1156,90 @@ def proxy_chat_completions():
     if not candidates:
         return {"error": {"message": f"找不到名为「{account_name}」的中转站", "type": "not_found", "code": 404}}, 404
 
+    # 额度/用量相关的错误关键词，触发模型轮询
+    _QUOTA_KEYWORDS = ("usage", "quota", "limit", "credit", "exceed", "used all", "free usage", "滚动")
+
+    def _is_quota_error(status, body):
+        if status in (429,):
+            return True
+        if status and 400 <= status < 500:
+            bl = (body or "").lower()
+            return any(kw in bl for kw in _QUOTA_KEYWORDS)
+        return False
+
     last_error = "unknown"
     for st in candidates:
         api_url = normalize_chat_url(st["base_url"])
         if not api_url or not st["api_key"]:
             last_error = f"{st['name']} 地址或 Key 为空"
             continue
-        effective_model = (
-            st["selected_model"] or (st["models"][0] if st["models"] else "")
-        ) if is_auto else model
-        if not effective_model:
-            last_error = f"{st['name']} 没有可用模型（请先在管理页测速刷新模型列表，或指定具体模型名）"
-            continue
 
         headers = {"Authorization": f"Bearer {st['api_key']}", "Content-Type": "application/json"}
-        # Grok CLI 代理需要特殊 headers
-        if "cli-chat-proxy.grok.com" in st.get("base_url", "") or "grok" in st.get("remark", "").lower():
+        is_grok = "cli-chat-proxy.grok.com" in st.get("base_url", "") or "grok" in st.get("remark", "").lower()
+        if is_grok:
             headers.update({
                 "X-Grok-Client-Version": "1.0.0",
                 "User-Agent": "GrokCLI/1.0",
                 "Accept": "application/json, text/event-stream",
             })
-        payload = {k: v for k, v in data.items() if k != "account"}
-        payload["model"] = effective_model
-        payload["messages"] = messages
-        payload["stream"] = stream
 
-        try:
-            upstream = requests.post(
-                api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
-            )
-            upstream.raise_for_status()
-            upstream.encoding = "utf-8"
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response is not None else 0
-            body = ""
-            if e.response is not None:
-                try:
-                    err = e.response.json().get("error", {})
-                    body = err.get("message", "") if isinstance(err, dict) else str(err)
-                except Exception:
-                    body = e.response.text[:200]
-            # 4xx 是客户端/Key 的问题，直接返回不换中转站；5xx/429 才切换
-            if status and status < 500 and status != 429:
-                return {"error": {"message": body or f"HTTP {status}", "type": "upstream_error", "code": status}}, status
-            last_error = f"HTTP {status}" + (f"：{body[:80]}" if body else "")
-            continue
-        except requests.exceptions.Timeout:
-            last_error = f"{st['name']} 连接超时"
-            continue
-        except requests.exceptions.RequestException as e:
-            last_error = f"{st['name']}：{str(e)[:100]}"
+        # 构建候选模型列表（用于轮询）
+        if is_auto:
+            model_list = st.get("models") or []
+            if st.get("selected_model"):
+                # selected_model 放第一位，其余跟上
+                model_list = [st["selected_model"]] + [m for m in model_list if m != st["selected_model"]]
+        else:
+            model_list = [model]
+
+        if not model_list:
+            last_error = f"{st['name']} 没有可用模型"
             continue
 
-        provider_headers = {
-            "X-Provider-Name": _ascii_header(st["name"]),
-            "X-Provider-Model": _ascii_header(effective_model),
-        }
-        if stream:
-            return Response(
-                stream_with_context(_relay_stream(upstream, st)),
-                mimetype="text/event-stream; charset=utf-8",
-                headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no",
-                         "Connection": "keep-alive", **provider_headers},
-            )
-        return app.response_class(
-            response=upstream.content,
-            mimetype="application/json; charset=utf-8",
-            headers=provider_headers,
-        )
+        for try_model in model_list:
+            payload = {k: v for k, v in data.items() if k != "account"}
+            payload["model"] = try_model
+            payload["messages"] = messages
+            payload["stream"] = stream
 
+            try:
+                upstream = requests.post(
+                    api_url, headers=headers, json=payload, stream=stream, timeout=(30, 600),
+                )
+                upstream.raise_for_status()
+                upstream.encoding = "utf-8"
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else 0
+                body = ""
+                if e.response is not None:
+                    try:
+                        err = e.response.json().get("error", {})
+                        body = err.get("message", "") if isinstance(err, dict) else str(err)
+                    except Exception:
+                        body = e.response.text[:200]
+                # 额度用完 → 尝试下一个模型
+                if _is_quota_error(status, body):
+                    print(f"[Proxy] 模型 {try_model} 额度用完，尝试下一个...")
+                    last_error = f"{try_model}: {body[:80]}"
+                    continue
+                # 4xx 其他错误 → 不换模型，直接返回
+                if status and status < 500 and status != 429:
+                    return {"error": {"message": body or f"HTTP {status}", "type": "upstream_error", "code": status}}, status
+                # 5xx → 换下一个模型
+                last_error = f"HTTP {status}" + (f"：{body[:80]}" if body else "")
+                continue
+            except requests.exceptions.RequestException as e:
+                last_error = str(e)[:100]
+                continue
+
+            # 成功
+            if stream:
+                return Response(_relay_stream(upstream, st), mimetype="text/event-stream",
+                                headers={"X-Provider-Name": st["name"], "X-Provider-Model": try_model})
+            else:
+                resp = Response(upstream.content, mimetype="application/json",
+                                headers={"X-Provider-Name": st["name"], "X-Provider-Model": try_model})
+                return resp
     return {"error": {"message": f"所有中转站均不可用：{last_error}", "type": "all_failed", "code": 502}}, 502
 
 
