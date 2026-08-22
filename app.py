@@ -1883,37 +1883,27 @@ def oa_account_sync_to_station(account_id):
     if not acc:
         return {"ok": False, "message": "账号不存在"}
 
-    # 获取最新的 access_token
-    access_token = acc.get("access_token", "")
-    if not access_token:
-        return {"ok": False, "message": "无 access_token"}
-
-    # 如果令牌过期，尝试刷新（支持 SSO 回退）
+    # 每次同步都先刷新令牌，确保中转站拿到最新的 token
     from datetime import datetime, timezone, timedelta
-    if acc.get("expires_at"):
+    access_token = acc.get("access_token", "")
+    token_data = refresh_access_token(acc["provider"], acc.get("refresh_token", ""), acc.get("sso_token", ""))
+    if token_data.get("access_token"):
+        access_token = token_data["access_token"]
+        # 更新数据库中的令牌
+        new_refresh = token_data.get("refresh_token", acc.get("refresh_token", ""))
+        new_sso = token_data.get("sso_token", "")
+        new_expires = token_data.get("expires_at", "")
         try:
-            exp = datetime.fromisoformat(acc["expires_at"].replace("Z", "+00:00"))
-            if exp < datetime.now(timezone.utc):
-                token_data = refresh_access_token(acc["provider"], acc.get("refresh_token", ""), acc.get("sso_token", ""))
-                if token_data.get("access_token"):
-                    access_token = token_data["access_token"]
-                    # 更新数据库中的令牌
-                    new_refresh = token_data.get("refresh_token", acc.get("refresh_token", ""))
-                    new_sso = token_data.get("sso_token", "")
-                    new_expires = token_data.get("expires_at", "")
-                    try:
-                        conn = get_db()
-                        update_fields = "access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=?"
-                        update_values = [_encrypt(access_token), _encrypt(new_refresh) if new_refresh else "",
-                                         new_expires, _db_now()]
-                        if new_sso:
-                            update_fields += ", sso_token_encrypted=?"
-                            update_values.append(_encrypt(new_sso))
-                        update_values.append(account_id)
-                        conn.execute(_sql(f"UPDATE oauth_accounts SET {update_fields} WHERE id=?"), update_values)
-                        _close_db(conn, commit=True)
-                    except Exception:
-                        pass
+            conn = get_db()
+            update_fields = "access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=?"
+            update_values = [_encrypt(access_token), _encrypt(new_refresh) if new_refresh else "",
+                             new_expires, _db_now()]
+            if new_sso:
+                update_fields += ", sso_token_encrypted=?"
+                update_values.append(_encrypt(new_sso))
+            update_values.append(account_id)
+            conn.execute(_sql(f"UPDATE oauth_accounts SET {update_fields} WHERE id=?"), update_values)
+            _close_db(conn, commit=True)
         except Exception:
             pass
 
