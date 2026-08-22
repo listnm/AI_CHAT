@@ -193,13 +193,12 @@ function modelOptions(s) {
   return opts;
 }
 function modelInput(s) {
-  const val = esc(s.selected_model || '');
+  const val = esc(s.selected_model || '自动');
   const listId = 'ml-' + s.id;
-  let dl = '';
-  if (s.models && s.models.length) {
-    dl = `<datalist id="${listId}">` + s.models.map(m => `<option value="${esc(m)}">`).join('') + '</datalist>';
-  }
-  return `<input class="model-sel" list="${listId}" value="${val}" placeholder="自动"
+  const models = s.models || [];
+  const options = ['自动', ...models.filter(m => m !== '自动')];
+  const dl = `<datalist id="${listId}">${options.map(m => `<option value="${esc(m)}">`).join('')}</datalist>`;
+  return `<input class="model-sel" list="${listId}" value="${val}"
     onchange="setModel('${s.id}',this.value)"
     onkeydown="if(event.key==='Enter'){setModel('${s.id}',this.value);event.preventDefault();}"
     style="flex:1;min-width:0;padding:4px 8px;border-radius:6px;border:1px solid var(--line);font-size:12px;font-family:Consolas,monospace">${dl}`;
@@ -278,9 +277,11 @@ function copyShownKey(id) {
   if (s && s._fullKey) copyText(s._fullKey);
 }
 async function setModel(id, val) {
-  const d = await api('/api/stations/' + id, {method: 'PUT', body: JSON.stringify({selected_model: val})});
+  const selected = (val || '').trim();
+  const model = selected === '自动' || selected.toLowerCase() === 'auto' ? '' : selected;
+  const d = await api('/api/stations/' + id, {method: 'PUT', body: JSON.stringify({selected_model: model})});
   toast(d.message, d.ok);
-  if (d.ok) { const s = stations.find(x => x.id === id); if (s) s.selected_model = val; }
+  if (d.ok) { const s = stations.find(x => x.id === id); if (s) s.selected_model = model; }
 }
 function openModal(mode, id) {
   editingId = mode === 'edit' ? id : null;
