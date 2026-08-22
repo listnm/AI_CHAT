@@ -178,7 +178,9 @@ header { margin-bottom: 16px; }
   border: 1px solid var(--line); background: #f7fbf8; color: var(--text);
   font-size: 12px; font-family: Consolas, monospace; cursor: pointer;
 }
+.model-sel:hover { border-color: #a9cabb; }
 .model-sel:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(14, 167, 94, .14); }
+.model-sel option { background: #fff; color: #1f2937; font-family: Consolas, monospace; }
 .row .cnt { color: var(--muted); font-size: 11px; flex-shrink: 0; }
 
 .card-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
