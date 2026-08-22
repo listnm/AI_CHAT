@@ -2000,13 +2000,17 @@ def oa_account_set_model(account_id):
         _close_db(conn)
         raise
 
-    # 同步模型到对应的中转站（通过名称匹配）
+    # 同步模型到对应的中转站（通过名称或 remark 匹配）
     try:
         acc = _find_oauth_account(account_id)
         if acc:
+            provider = acc.get("provider", "")
             stations = load_stations()
             for s in stations:
                 if s["name"] == acc["email"] or s["name"] == acc["display_name"]:
+                    update_station(s["id"], {"selected_model": model})
+                    break
+                if f"OAuth 导入 - {provider}" in (s.get("remark") or ""):
                     update_station(s["id"], {"selected_model": model})
                     break
     except Exception:
