@@ -249,6 +249,7 @@ def init_db():
             for col, typedef in [
                 ("group_name", "TEXT NOT NULL DEFAULT ''"),
                 ("is_active", "BOOLEAN NOT NULL DEFAULT TRUE"),
+                ("sso_token_encrypted", "TEXT DEFAULT ''"),
             ]:
                 try:
                     conn.execute(f"ALTER TABLE stations ADD COLUMN {col} {typedef}")
@@ -387,6 +388,11 @@ def load_stations() -> list:
                 f"SELECT {cols} FROM stations ORDER BY is_default DESC, latency_ms ASC NULLS LAST"
             ).fetchall()
         except Exception:
+            # psycopg 在 SQL 错误后必须先回滚，才能执行兼容旧表的回退查询
+            try:
+                conn.rollback()
+            except Exception:
+                pass
             rows = conn.execute(
                 _sql(f"SELECT {_STATION_COLUMNS} FROM stations ORDER BY is_default DESC, latency_ms ASC")
                 if not _USE_PG else
@@ -420,22 +426,38 @@ def save_station(st: dict):
     conn = get_db()
     try:
         sso_val = st.get("sso_token", "")
-        conn.execute(
-            _sql(
-                f"""INSERT INTO stations
-                ({_STATION_COLUMNS})
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-            ),
-            (
-                st["id"], st["name"], st["base_url"], _encrypt(st["api_key"]),
-                _models_value(st.get("models", [])), st.get("selected_model", ""),
-                st.get("latency_ms"), _db_datetime(st.get("last_test_at")),
-                bool(st.get("is_default")), st.get("remark", ""),
-                st.get("group_name", ""), bool(st.get("is_active", True)),
-                _db_datetime(st.get("created_at")) or _db_now(), _db_now(),
-                _encrypt(sso_val) if sso_val else "",
-            ),
+        values = (
+            st["id"], st["name"], st["base_url"], _encrypt(st["api_key"]),
+            _models_value(st.get("models", [])), st.get("selected_model", ""),
+            st.get("latency_ms"), _db_datetime(st.get("last_test_at")),
+            bool(st.get("is_default")), st.get("remark", ""),
+            st.get("group_name", ""), bool(st.get("is_active", True)),
+            _db_datetime(st.get("created_at")) or _db_now(), _db_now(),
+            _encrypt(sso_val) if sso_val else "",
         )
+        try:
+            conn.execute(
+                _sql(
+                    f"""INSERT INTO stations
+                    ({_STATION_COLUMNS}, sso_token_encrypted)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                ),
+                values,
+            )
+        except Exception:
+            # 兼容尚未完成迁移的旧表，回滚后按旧结构写入
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            conn.execute(
+                _sql(
+                    f"""INSERT INTO stations
+                    ({_STATION_COLUMNS})
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                ),
+                values[:-1],
+            )
         _close_db(conn, commit=True)
     except Exception:
         _close_db(conn)
