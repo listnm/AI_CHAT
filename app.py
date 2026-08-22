@@ -1893,6 +1893,10 @@ def oa_account_sync_to_station(account_id):
         new_refresh = token_data.get("refresh_token", acc.get("refresh_token", ""))
         new_sso = token_data.get("sso_token", "")
         new_expires = token_data.get("expires_at", "")
+        if not new_expires:
+            expires_in = token_data.get("expires_in", 0)
+            if expires_in:
+                new_expires = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).isoformat()
         try:
             conn = get_db()
             update_fields = "access_token_encrypted=?, refresh_token_encrypted=?, expires_at=?, updated_at=?"
