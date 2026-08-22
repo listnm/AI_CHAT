@@ -192,17 +192,6 @@ function modelOptions(s) {
   }
   return opts;
 }
-function modelInput(s) {
-  const val = esc(s.selected_model || '自动');
-  const listId = 'ml-' + s.id;
-  const models = s.models || [];
-  const options = ['自动', ...models.filter(m => m !== '自动')];
-  const dl = `<datalist id="${listId}">${options.map(m => `<option value="${esc(m)}">`).join('')}</datalist>`;
-  return `<input class="model-sel" list="${listId}" value="${val}"
-    onchange="setModel('${s.id}',this.value)"
-    onkeydown="if(event.key==='Enter'){setModel('${s.id}',this.value);event.preventDefault();}"
-    style="flex:1;min-width:0;padding:4px 8px;border-radius:6px;border:1px solid var(--line);font-size:12px;font-family:Consolas,monospace">${dl}`;
-}
 function render() {
   renderStats();
   const grid = $('grid');
@@ -242,7 +231,7 @@ function render() {
         <button class="icon-btn" title="复制" onclick="copyText('${esc(s.base_url)}')">⧉</button></div>
       <div class="row"><span class="lbl">密钥</span>${keyText}${keyBtn}</div>
       <div class="row"><span class="lbl">模型</span>
-        ${modelInput(s)}
+        <select class="model-sel" onchange="setModel('${s.id}',this.value)" title="默认模型：转发与游乐场 model=auto 时使用">${modelOptions(s)}</select>
         <span class="cnt">${cnt}</span></div>
       <div class="card-foot">
         ${isTesting?'<button class="btn soft sm" disabled><span class="spin" style="border-color:rgba(14,167,94,.3);border-top-color:#0ea75e"></span> 测速中</button>':'<button class="btn soft sm" onclick="testStation(\''+s.id+'\')">↯ 测速</button>'}
@@ -277,11 +266,9 @@ function copyShownKey(id) {
   if (s && s._fullKey) copyText(s._fullKey);
 }
 async function setModel(id, val) {
-  const selected = (val || '').trim();
-  const model = selected === '自动' || selected.toLowerCase() === 'auto' ? '' : selected;
-  const d = await api('/api/stations/' + id, {method: 'PUT', body: JSON.stringify({selected_model: model})});
+  const d = await api('/api/stations/' + id, {method: 'PUT', body: JSON.stringify({selected_model: val})});
   toast(d.message, d.ok);
-  if (d.ok) { const s = stations.find(x => x.id === id); if (s) s.selected_model = model; }
+  if (d.ok) { const s = stations.find(x => x.id === id); if (s) s.selected_model = val; }
 }
 function openModal(mode, id) {
   editingId = mode === 'edit' ? id : null;
